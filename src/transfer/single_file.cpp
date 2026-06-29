@@ -1,61 +1,26 @@
 #include "lan/transfer/single_file.h"
 
 #include <cerrno>
-#include <cstddef>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
 #include <system_error>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
-#include "lan/common/parse.h"
 #include "lan/common/stopwatch.h"
 #include "lan/fs/file_descriptor.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/tcp.h"
 #include "lan/protocol/frame.h"
+#include "lan/transfer/chunk_codec.h"
+#include "lan/transfer/file_metadata.h"
+#include "lan/transfer/part_file_guard.h"
 
 namespace lan {
 
 namespace {
-
-constexpr std::size_t chunk_header_size = 8;
-
-struct FileBeginMetadata {
-    std::string name;
-    std::uint64_t size = 0;
-    std::string sha256;
-};
-
-struct ChunkBodyView {
-    std::uint64_t offset = 0;
-    const std::byte* data = nullptr;
-    std::size_t size = 0;
-};
-
-class PartFileGuard {
-public:
-    explicit PartFileGuard(std::filesystem::path path) : path_(std::move(path)) {}
-
-    ~PartFileGuard() {
-        if (!committed_) {
-            std::error_code ec;
-            std::filesystem::remove(path_, ec);
-        }
-    }
-
-    PartFileGuard(const PartFileGuard&) = delete;
-    PartFileGuard& operator=(const PartFileGuard&) = delete;
-
-    void commit() {
-        committed_ = true;
-    }
-
-private:
-    std::filesystem::path path_;
-    bool committed_ = false;
-};
 
 Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
@@ -183,100 +148,6 @@ Result<bool> wait_for_ack(const FileDescriptor& socket, std::string_view context
 Result<ReceiveFileReport> fail_receive_with_error(const FileDescriptor& socket, Error error) {
     (void)send_error_frame(socket, error.message);
     return Result<ReceiveFileReport>::failure(std::move(error));
-}
-
-void write_u64_be(std::byte* output, std::uint64_t value) {
-    for (int i = 7; i >= 0; --i) {
-        output[7 - i] = static_cast<std::byte>((value >> (i * 8)) & 0xff);
-    }
-}
-
-std::uint64_t read_u64_be(const std::byte* input) {
-    std::uint64_t value = 0;
-    for (std::size_t i = 0; i < chunk_header_size; ++i) {
-        value = (value << 8) | std::to_integer<std::uint64_t>(input[i]);
-    }
-    return value;
-}
-
-std::vector<std::byte> encode_chunk_body(std::uint64_t offset, const std::byte* data, std::size_t size) {
-    std::vector<std::byte> body(chunk_header_size + size);
-    write_u64_be(body.data(), offset);
-    std::memcpy(body.data() + chunk_header_size, data, size);
-    return body;
-}
-
-Result<ChunkBodyView> decode_chunk_body(const Frame& frame) {
-    if (frame.body.size() < chunk_header_size) {
-        return Result<ChunkBodyView>::failure(
-            make_error(ErrorCode::protocol_error, "chunk body is missing offset header"));
-    }
-
-    return Result<ChunkBodyView>::success(ChunkBodyView{
-        .offset = read_u64_be(frame.body.data()),
-        .data = frame.body.data() + chunk_header_size,
-        .size = frame.body.size() - chunk_header_size,
-    });
-}
-
-std::string encode_file_begin(const FileBeginMetadata& metadata) {
-    return "name=" + metadata.name + "\n" +
-           "size=" + std::to_string(metadata.size) + "\n" +
-           "sha256=" + metadata.sha256 + "\n";
-}
-
-Result<FileBeginMetadata> decode_file_begin(std::string_view body) {
-    FileBeginMetadata metadata;
-    bool has_name = false;
-    bool has_size = false;
-    bool has_sha256 = false;
-
-    std::size_t start = 0;
-    while (start < body.size()) {
-        const auto end = body.find('\n', start);
-        const auto line = body.substr(start, end == std::string_view::npos ? body.size() - start : end - start);
-
-        const auto separator = line.find('=');
-        if (separator != std::string_view::npos) {
-            const auto key = line.substr(0, separator);
-            const auto value = line.substr(separator + 1);
-
-            if (key == "name") {
-                metadata.name = std::string(value);
-                has_name = true;
-            } else if (key == "size") {
-                auto parsed = parse_size(value);
-                if (!parsed) {
-                    return Result<FileBeginMetadata>::failure(parsed.error());
-                }
-                metadata.size = parsed.value();
-                has_size = true;
-            } else if (key == "sha256") {
-                metadata.sha256 = std::string(value);
-                has_sha256 = true;
-            }
-        }
-
-        if (end == std::string_view::npos) {
-            break;
-        }
-        start = end + 1;
-    }
-
-    if (!has_name || metadata.name.empty()) {
-        return Result<FileBeginMetadata>::failure(
-            make_error(ErrorCode::protocol_error, "file_begin is missing name"));
-    }
-    if (!has_size) {
-        return Result<FileBeginMetadata>::failure(
-            make_error(ErrorCode::protocol_error, "file_begin is missing size"));
-    }
-    if (!has_sha256 || metadata.sha256.empty()) {
-        return Result<FileBeginMetadata>::failure(
-            make_error(ErrorCode::protocol_error, "file_begin is missing sha256"));
-    }
-
-    return Result<FileBeginMetadata>::success(std::move(metadata));
 }
 
 std::filesystem::path part_path_for(const std::filesystem::path& target) {
