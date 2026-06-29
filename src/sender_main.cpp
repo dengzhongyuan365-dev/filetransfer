@@ -3,6 +3,7 @@
 
 #include "lan/app/sender_config.h"
 #include "lan/common/size.h"
+#include "lan/net/tcp.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
@@ -33,6 +34,21 @@ int main(int argc, char* argv[]) {
     std::cout << "  chunk size: " << lan::format_size(final_config.chunk_size) << " ("
               << final_config.chunk_size << " bytes)\n";
     std::cout << "  resume: " << (final_config.resume ? "true" : "false") << '\n';
+
+    auto socket = lan::connect_tcp(final_config.target.host, final_config.target.port);
+    if (!socket) {
+        std::cerr << socket.error().message << '\n';
+        return 1;
+    }
+
+    const std::string hello = "HELLO " + final_config.source_path.filename().string() + "\n";
+    auto sent = lan::send_all(socket.value(), hello);
+    if (!sent) {
+        std::cerr << sent.error().message << '\n';
+        return 1;
+    }
+
+    std::cout << "sent: " << hello;
 
     return 0;
 }

@@ -8,6 +8,7 @@ add_library(lan_core
     fs/file_descriptor.cpp
     fs/file_hash.cpp
     fs/local_copy.cpp
+    net/tcp.cpp
     app/sender_config.cpp
     app/receiver_config.cpp
 )
