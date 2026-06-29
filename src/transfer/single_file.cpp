@@ -34,6 +34,29 @@ struct ChunkBodyView {
     std::size_t size = 0;
 };
 
+class PartFileGuard {
+public:
+    explicit PartFileGuard(std::filesystem::path path) : path_(std::move(path)) {}
+
+    ~PartFileGuard() {
+        if (!committed_) {
+            std::error_code ec;
+            std::filesystem::remove(path_, ec);
+        }
+    }
+
+    PartFileGuard(const PartFileGuard&) = delete;
+    PartFileGuard& operator=(const PartFileGuard&) = delete;
+
+    void commit() {
+        committed_ = true;
+    }
+
+private:
+    std::filesystem::path path_;
+    bool committed_ = false;
+};
+
 Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
 }
@@ -441,6 +464,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
     if (!output) {
         return fail_receive_with_error(client.value(), output.error());
     }
+    PartFileGuard part_file(part_path);
 
     auto begin_ack = send_ack_frame(client.value(), "ready");
     if (!begin_ack) {
@@ -529,6 +553,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
                        "failed to rename " + quote_path(part_path) + " to " +
                            quote_path(target.value()) + ": " + ec.message()));
     }
+    part_file.commit();
 
     auto end_ack = send_ack_frame(client.value(), "stored");
     if (!end_ack) {
