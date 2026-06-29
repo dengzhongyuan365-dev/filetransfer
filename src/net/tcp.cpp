@@ -150,10 +150,10 @@ Result<FileDescriptor> connect_tcp(std::string_view host, std::uint16_t port) {
         make_error(ErrorCode::network_error, errno_message("failed to connect TCP socket")));
 }
 
-Result<bool> send_all(const FileDescriptor& socket, std::string_view data) {
+Result<bool> send_all(const FileDescriptor& socket, const char* data, std::size_t size) {
     std::size_t sent = 0;
-    while (sent < data.size()) {
-        const auto result = ::send(socket.get(), data.data() + sent, data.size() - sent, 0);
+    while (sent < size) {
+        const auto result = ::send(socket.get(), data + sent, size - sent, 0);
         if (result < 0) {
             if (errno == EINTR) {
                 continue;
@@ -169,6 +169,34 @@ Result<bool> send_all(const FileDescriptor& socket, std::string_view data) {
         }
 
         sent += static_cast<std::size_t>(result);
+    }
+
+    return Result<bool>::success(true);
+}
+
+Result<bool> send_all(const FileDescriptor& socket, std::string_view data) {
+    return send_all(socket, data.data(), data.size());
+}
+
+Result<bool> recv_exact(const FileDescriptor& socket, char* data, std::size_t size) {
+    std::size_t received = 0;
+    while (received < size) {
+        const auto result = ::recv(socket.get(), data + received, size - received, 0);
+        if (result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+
+            return Result<bool>::failure(
+                make_error(ErrorCode::network_error, errno_message("failed to receive TCP data")));
+        }
+
+        if (result == 0) {
+            return Result<bool>::failure(
+                make_error(ErrorCode::network_error, "failed to receive TCP data: connection closed"));
+        }
+
+        received += static_cast<std::size_t>(result);
     }
 
     return Result<bool>::success(true);

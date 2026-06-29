@@ -3,6 +3,7 @@
 
 #include "lan/app/receiver_config.h"
 #include "lan/net/tcp.h"
+#include "lan/protocol/frame.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_receiver_args(argc, argv);
@@ -47,13 +48,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    auto message = lan::recv_some(client.value(), 4096);
-    if (!message) {
-        std::cerr << message.error().message << '\n';
+    auto frame = lan::read_frame(client.value());
+    if (!frame) {
+        std::cerr << frame.error().message << '\n';
         return 1;
     }
 
-    std::cout << "received: " << message.value();
+    std::cout << "received frame:\n";
+    std::cout << "  type: " << lan::message_type_name(frame.value().type) << '\n';
+    std::cout << "  body: " << lan::body_as_string(frame.value()) << '\n';
 
     return 0;
 }

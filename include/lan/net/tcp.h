@@ -13,7 +13,9 @@ namespace lan {
 Result<FileDescriptor> listen_tcp(std::string_view bind_address, std::uint16_t port);
 Result<FileDescriptor> accept_tcp(const FileDescriptor& listener);
 Result<FileDescriptor> connect_tcp(std::string_view host, std::uint16_t port);
+Result<bool> send_all(const FileDescriptor& socket, const char* data, std::size_t size);
 Result<bool> send_all(const FileDescriptor& socket, std::string_view data);
+Result<bool> recv_exact(const FileDescriptor& socket, char* data, std::size_t size);
 Result<std::string> recv_some(const FileDescriptor& socket, std::size_t max_bytes);
 
 }  // namespace lan

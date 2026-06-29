@@ -4,6 +4,7 @@
 #include "lan/app/sender_config.h"
 #include "lan/common/size.h"
 #include "lan/net/tcp.h"
+#include "lan/protocol/frame.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
@@ -41,14 +42,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const std::string hello = "HELLO " + final_config.source_path.filename().string() + "\n";
-    auto sent = lan::send_all(socket.value(), hello);
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string(final_config.source_path.filename().string());
+
+    auto sent = lan::write_frame(socket.value(), hello);
     if (!sent) {
         std::cerr << sent.error().message << '\n';
         return 1;
     }
 
-    std::cout << "sent: " << hello;
+    std::cout << "sent frame:\n";
+    std::cout << "  type: " << lan::message_type_name(hello.type) << '\n';
+    std::cout << "  body: " << lan::body_as_string(hello) << '\n';
 
     return 0;
 }
