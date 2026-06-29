@@ -26,7 +26,11 @@ target_link_libraries(lan_core PUBLIC
 add_executable(sender sender_main.cpp)
 add_executable(receiver receiver_main.cpp)
 add_executable(local-copy local_copy_main.cpp)
+add_executable(lan_tests lan_tests.cpp)
 
 target_link_libraries(sender PRIVATE lan_core)
 target_link_libraries(receiver PRIVATE lan_core)
 target_link_libraries(local-copy PRIVATE lan_core)
+target_link_libraries(lan_tests PRIVATE lan_core)
+
+add_test(NAME lan_tests COMMAND lan_tests)
