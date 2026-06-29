@@ -45,6 +45,9 @@ int main(int argc, char* argv[]) {
     std::cout << "received file\n";
     std::cout << "  path: " << received.value().target_path.string() << '\n';
     std::cout << "  size: " << lan::format_size(received.value().bytes_received) << '\n';
+    std::cout << "  elapsed: " << received.value().elapsed_seconds << " s\n";
+    std::cout << "  average speed: "
+              << lan::format_rate(received.value().bytes_received, received.value().elapsed_seconds) << '\n';
     std::cout << "  sha256: " << received.value().sha256 << '\n';
 
     return 0;

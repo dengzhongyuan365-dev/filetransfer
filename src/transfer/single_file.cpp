@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "lan/common/parse.h"
+#include "lan/common/stopwatch.h"
 #include "lan/fs/file_descriptor.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/tcp.h"
@@ -301,6 +302,7 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         return Result<SendFileReport>::failure(source.error());
     }
 
+    Stopwatch transfer_timer;
     std::vector<std::byte> buffer(static_cast<std::size_t>(config.chunk_size));
     std::uint64_t bytes_sent = 0;
 
@@ -347,6 +349,7 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         .file_name = file_name,
         .bytes_sent = bytes_sent,
         .sha256 = hash.value().hex_digest,
+        .elapsed_seconds = transfer_timer.elapsed_seconds(),
     });
 }
 
@@ -400,6 +403,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
         return Result<ReceiveFileReport>::failure(begin_ack.error());
     }
 
+    Stopwatch transfer_timer;
     std::uint64_t bytes_received = 0;
 
     while (true) {
@@ -472,6 +476,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
         .target_path = target.value(),
         .bytes_received = bytes_received,
         .sha256 = received_hash.value().hex_digest,
+        .elapsed_seconds = transfer_timer.elapsed_seconds(),
     });
 }
 

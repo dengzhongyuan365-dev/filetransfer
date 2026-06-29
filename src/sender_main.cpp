@@ -44,6 +44,9 @@ int main(int argc, char* argv[]) {
     std::cout << "sent file\n";
     std::cout << "  name: " << sent.value().file_name << '\n';
     std::cout << "  size: " << lan::format_size(sent.value().bytes_sent) << '\n';
+    std::cout << "  elapsed: " << sent.value().elapsed_seconds << " s\n";
+    std::cout << "  average speed: "
+              << lan::format_rate(sent.value().bytes_sent, sent.value().elapsed_seconds) << '\n';
     std::cout << "  sha256: " << sent.value().sha256 << '\n';
 
     return 0;

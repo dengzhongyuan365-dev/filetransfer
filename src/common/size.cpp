@@ -27,4 +27,13 @@ std::string format_size(std::uint64_t bytes) {
     return output.str();
 }
 
+std::string format_rate(std::uint64_t bytes, double seconds) {
+    if (seconds <= 0.0) {
+        return "n/a";
+    }
+
+    const auto bytes_per_second = static_cast<std::uint64_t>(static_cast<double>(bytes) / seconds);
+    return format_size(bytes_per_second) + "/s";
+}
+
 }  // namespace lan
