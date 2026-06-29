@@ -1,6 +1,7 @@
 #include "lan/transfer/single_file.h"
 
 #include <cerrno>
+#include <cstddef>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
@@ -19,10 +20,18 @@ namespace lan {
 
 namespace {
 
+constexpr std::size_t chunk_header_size = 8;
+
 struct FileBeginMetadata {
     std::string name;
     std::uint64_t size = 0;
     std::string sha256;
+};
+
+struct ChunkBodyView {
+    std::uint64_t offset = 0;
+    const std::byte* data = nullptr;
+    std::size_t size = 0;
 };
 
 Error make_error(ErrorCode code, std::string message) {
@@ -151,6 +160,40 @@ Result<bool> wait_for_ack(const FileDescriptor& socket, std::string_view context
 Result<ReceiveFileReport> fail_receive_with_error(const FileDescriptor& socket, Error error) {
     (void)send_error_frame(socket, error.message);
     return Result<ReceiveFileReport>::failure(std::move(error));
+}
+
+void write_u64_be(std::byte* output, std::uint64_t value) {
+    for (int i = 7; i >= 0; --i) {
+        output[7 - i] = static_cast<std::byte>((value >> (i * 8)) & 0xff);
+    }
+}
+
+std::uint64_t read_u64_be(const std::byte* input) {
+    std::uint64_t value = 0;
+    for (std::size_t i = 0; i < chunk_header_size; ++i) {
+        value = (value << 8) | std::to_integer<std::uint64_t>(input[i]);
+    }
+    return value;
+}
+
+std::vector<std::byte> encode_chunk_body(std::uint64_t offset, const std::byte* data, std::size_t size) {
+    std::vector<std::byte> body(chunk_header_size + size);
+    write_u64_be(body.data(), offset);
+    std::memcpy(body.data() + chunk_header_size, data, size);
+    return body;
+}
+
+Result<ChunkBodyView> decode_chunk_body(const Frame& frame) {
+    if (frame.body.size() < chunk_header_size) {
+        return Result<ChunkBodyView>::failure(
+            make_error(ErrorCode::protocol_error, "chunk body is missing offset header"));
+    }
+
+    return Result<ChunkBodyView>::success(ChunkBodyView{
+        .offset = read_u64_be(frame.body.data()),
+        .data = frame.body.data() + chunk_header_size,
+        .size = frame.body.size() - chunk_header_size,
+    });
 }
 
 std::string encode_file_begin(const FileBeginMetadata& metadata) {
@@ -323,7 +366,8 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
 
         Frame chunk;
         chunk.type = MessageType::chunk;
-        chunk.body.assign(buffer.begin(), buffer.begin() + bytes_read);
+        chunk.body = encode_chunk_body(
+            bytes_sent, buffer.data(), static_cast<std::size_t>(bytes_read));
 
         auto chunk_result = write_frame(socket.value(), chunk);
         if (!chunk_result) {
@@ -422,12 +466,31 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
                 make_error(ErrorCode::protocol_error, "expected chunk or file_end frame"));
         }
 
-        auto write_result = write_all_file(output.value(), frame.value().body.data(), frame.value().body.size());
+        auto chunk = decode_chunk_body(frame.value());
+        if (!chunk) {
+            return fail_receive_with_error(client.value(), chunk.error());
+        }
+
+        if (chunk.value().offset != bytes_received) {
+            return fail_receive_with_error(
+                client.value(),
+                make_error(ErrorCode::protocol_error,
+                           "chunk offset does not match received byte count"));
+        }
+
+        if (chunk.value().size > metadata.value().size - bytes_received) {
+            return fail_receive_with_error(
+                client.value(),
+                make_error(ErrorCode::protocol_error,
+                           "chunk exceeds declared file size"));
+        }
+
+        auto write_result = write_all_file(output.value(), chunk.value().data, chunk.value().size);
         if (!write_result) {
             return fail_receive_with_error(client.value(), write_result.error());
         }
 
-        bytes_received += static_cast<std::uint64_t>(frame.value().body.size());
+        bytes_received += static_cast<std::uint64_t>(chunk.value().size);
     }
 
     if (bytes_received != metadata.value().size) {
