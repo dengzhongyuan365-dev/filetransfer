@@ -1,10 +1,14 @@
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 #include "lan/app/receiver_config.h"
@@ -17,7 +21,6 @@ namespace {
 
 struct TestContext {
     std::filesystem::path root;
-    std::uint16_t port_base = 0;
 };
 
 bool expect(bool condition, const std::string& message) {
@@ -63,6 +66,19 @@ lan::SenderConfig sender_config(const std::filesystem::path& source, std::uint16
 
 void wait_for_receiver_to_listen() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+}
+
+void write_u64_be(std::byte* output, std::uint64_t value) {
+    for (int i = 7; i >= 0; --i) {
+        output[7 - i] = static_cast<std::byte>((value >> (i * 8)) & 0xff);
+    }
+}
+
+std::vector<std::byte> chunk_body(std::uint64_t offset, const std::string& payload) {
+    std::vector<std::byte> body(8 + payload.size());
+    write_u64_be(body.data(), offset);
+    std::memcpy(body.data() + 8, payload.data(), payload.size());
+    return body;
 }
 
 bool test_single_file_transfer(const TestContext& context) {
@@ -149,6 +165,71 @@ bool test_partial_file_cleanup_after_disconnect(const TestContext& context) {
            expect(!std::filesystem::exists(receive_dir / "broken.txt.part"), "part file was left behind");
 }
 
+bool test_invalid_chunk_offset_is_rejected(const TestContext& context) {
+    const auto receive_dir = context.root / "invalid-offset-receiver";
+    std::filesystem::create_directories(receive_dir);
+
+    const auto port = test_port(3);
+    auto receiver = std::async(std::launch::async, [config = receiver_config(receive_dir, port)] {
+        return lan::receive_single_file(config);
+    });
+
+    wait_for_receiver_to_listen();
+
+    auto socket = lan::connect_tcp("127.0.0.1", port);
+    if (!expect(static_cast<bool>(socket), socket ? "" : socket.error().message)) {
+        return false;
+    }
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("offset.txt");
+    auto hello_written = lan::write_frame(socket.value(), hello);
+    if (!expect(static_cast<bool>(hello_written), hello_written ? "" : hello_written.error().message)) {
+        return false;
+    }
+
+    lan::Frame begin;
+    begin.type = lan::MessageType::file_begin;
+    begin.body = lan::bytes_from_string("name=offset.txt\nsize=3\nsha256=00\n");
+    auto begin_written = lan::write_frame(socket.value(), begin);
+    if (!expect(static_cast<bool>(begin_written), begin_written ? "" : begin_written.error().message)) {
+        return false;
+    }
+
+    auto ack = lan::read_frame(socket.value());
+    if (!expect(static_cast<bool>(ack), ack ? "" : ack.error().message)) {
+        return false;
+    }
+    if (!expect(ack.value().type == lan::MessageType::ack, "receiver did not ack file_begin")) {
+        return false;
+    }
+
+    lan::Frame chunk;
+    chunk.type = lan::MessageType::chunk;
+    chunk.body = chunk_body(1, "abc");
+    auto chunk_written = lan::write_frame(socket.value(), chunk);
+    if (!expect(static_cast<bool>(chunk_written), chunk_written ? "" : chunk_written.error().message)) {
+        return false;
+    }
+
+    auto error = lan::read_frame(socket.value());
+    if (!expect(static_cast<bool>(error), error ? "" : error.error().message)) {
+        return false;
+    }
+    if (!expect(error.value().type == lan::MessageType::error, "receiver did not reject invalid offset")) {
+        return false;
+    }
+
+    auto received = receiver.get();
+    if (!expect(!received, "receiver unexpectedly accepted an invalid chunk offset")) {
+        return false;
+    }
+
+    return expect(!std::filesystem::exists(receive_dir / "offset.txt"), "final file was created") &&
+           expect(!std::filesystem::exists(receive_dir / "offset.txt.part"), "part file was left behind");
+}
+
 bool run_test(const std::string& name, bool (*test)(const TestContext&), const TestContext& context) {
     std::cout << "running " << name << '\n';
     const bool passed = test(context);
@@ -172,6 +253,9 @@ int main() {
         ++failures;
     }
     if (!run_test("partial_file_cleanup_after_disconnect", test_partial_file_cleanup_after_disconnect, context)) {
+        ++failures;
+    }
+    if (!run_test("invalid_chunk_offset_is_rejected", test_invalid_chunk_offset_is_rejected, context)) {
         ++failures;
     }
 
