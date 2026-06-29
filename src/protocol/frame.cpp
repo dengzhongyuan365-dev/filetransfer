@@ -50,6 +50,7 @@ bool is_valid_message_type(std::uint8_t value) {
         case MessageType::chunk:
         case MessageType::file_end:
         case MessageType::error:
+        case MessageType::ack:
             return true;
     }
 
@@ -70,6 +71,8 @@ std::string message_type_name(MessageType type) {
             return "file_end";
         case MessageType::error:
             return "error";
+        case MessageType::ack:
+            return "ack";
     }
 
     return "unknown";

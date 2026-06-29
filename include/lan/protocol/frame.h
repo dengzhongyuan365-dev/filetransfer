@@ -17,6 +17,7 @@ enum class MessageType : std::uint8_t {
     chunk = 3,
     file_end = 4,
     error = 5,
+    ack = 6,
 };
 
 struct Frame {
