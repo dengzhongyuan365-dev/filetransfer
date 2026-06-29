@@ -2,8 +2,8 @@
 #include <utility>
 
 #include "lan/app/receiver_config.h"
-#include "lan/net/tcp.h"
-#include "lan/protocol/frame.h"
+#include "lan/common/size.h"
+#include "lan/transfer/single_file.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_receiver_args(argc, argv);
@@ -33,30 +33,19 @@ int main(int argc, char* argv[]) {
     std::cout << "  dir: " << final_config.receive_dir.string() << '\n';
     std::cout << "  allow overwrite: " << (final_config.allow_overwrite ? "true" : "false") << '\n';
 
-    auto listener = lan::listen_tcp(final_config.bind_address, final_config.port);
-    if (!listener) {
-        std::cerr << listener.error().message << '\n';
-        return 1;
-    }
-
-    std::cout << "waiting for one connection...\n";
+    std::cout << "waiting for one file...\n";
     std::cout.flush();
 
-    auto client = lan::accept_tcp(listener.value());
-    if (!client) {
-        std::cerr << client.error().message << '\n';
+    auto received = lan::receive_single_file(final_config);
+    if (!received) {
+        std::cerr << received.error().message << '\n';
         return 1;
     }
 
-    auto frame = lan::read_frame(client.value());
-    if (!frame) {
-        std::cerr << frame.error().message << '\n';
-        return 1;
-    }
-
-    std::cout << "received frame:\n";
-    std::cout << "  type: " << lan::message_type_name(frame.value().type) << '\n';
-    std::cout << "  body: " << lan::body_as_string(frame.value()) << '\n';
+    std::cout << "received file\n";
+    std::cout << "  path: " << received.value().target_path.string() << '\n';
+    std::cout << "  size: " << lan::format_size(received.value().bytes_received) << '\n';
+    std::cout << "  sha256: " << received.value().sha256 << '\n';
 
     return 0;
 }

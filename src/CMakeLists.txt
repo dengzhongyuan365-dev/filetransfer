@@ -10,6 +10,7 @@ add_library(lan_core
     fs/local_copy.cpp
     net/tcp.cpp
     protocol/frame.cpp
+    transfer/single_file.cpp
     app/sender_config.cpp
     app/receiver_config.cpp
 )

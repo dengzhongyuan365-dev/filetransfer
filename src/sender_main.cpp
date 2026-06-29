@@ -3,8 +3,7 @@
 
 #include "lan/app/sender_config.h"
 #include "lan/common/size.h"
-#include "lan/net/tcp.h"
-#include "lan/protocol/frame.h"
+#include "lan/transfer/single_file.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
@@ -36,25 +35,16 @@ int main(int argc, char* argv[]) {
               << final_config.chunk_size << " bytes)\n";
     std::cout << "  resume: " << (final_config.resume ? "true" : "false") << '\n';
 
-    auto socket = lan::connect_tcp(final_config.target.host, final_config.target.port);
-    if (!socket) {
-        std::cerr << socket.error().message << '\n';
-        return 1;
-    }
-
-    lan::Frame hello;
-    hello.type = lan::MessageType::hello;
-    hello.body = lan::bytes_from_string(final_config.source_path.filename().string());
-
-    auto sent = lan::write_frame(socket.value(), hello);
+    auto sent = lan::send_single_file(final_config);
     if (!sent) {
         std::cerr << sent.error().message << '\n';
         return 1;
     }
 
-    std::cout << "sent frame:\n";
-    std::cout << "  type: " << lan::message_type_name(hello.type) << '\n';
-    std::cout << "  body: " << lan::body_as_string(hello) << '\n';
+    std::cout << "sent file\n";
+    std::cout << "  name: " << sent.value().file_name << '\n';
+    std::cout << "  size: " << lan::format_size(sent.value().bytes_sent) << '\n';
+    std::cout << "  sha256: " << sent.value().sha256 << '\n';
 
     return 0;
 }
