@@ -86,7 +86,8 @@ Result<FileBeginMetadata> decode_file_begin(std::string_view body) {
 }
 
 std::string encode_file_begin_ack(const FileBeginAckMetadata& metadata) {
-    return "offset=" + std::to_string(metadata.offset) + "\n";
+    return "offset=" + std::to_string(metadata.offset) + "\n" +
+           "complete=" + (metadata.complete ? "1" : "0") + "\n";
 }
 
 Result<FileBeginAckMetadata> decode_file_begin_ack(std::string_view body) {
@@ -114,6 +115,15 @@ Result<FileBeginAckMetadata> decode_file_begin_ack(std::string_view body) {
                 }
                 metadata.offset = parsed.value();
                 has_offset = true;
+            } else if (key == "complete") {
+                if (value == "1" || value == "true") {
+                    metadata.complete = true;
+                } else if (value == "0" || value == "false") {
+                    metadata.complete = false;
+                } else {
+                    return Result<FileBeginAckMetadata>::failure(
+                        make_error(ErrorCode::protocol_error, "file_begin ack has invalid complete value"));
+                }
             }
         }
 

@@ -199,22 +199,71 @@ Result<std::filesystem::path> safe_target_path(const ReceiverConfig& config, std
     auto target = config.receive_dir / filename;
 
     std::error_code ec;
-    if (std::filesystem::is_directory(target, ec)) {
+    const auto status = std::filesystem::status(target, ec);
+    if (status.type() == std::filesystem::file_type::directory) {
         return Result<std::filesystem::path>::failure(
             make_error(ErrorCode::invalid_argument, "target path is a directory: " + quote_path(target)));
     }
 
-    if (std::filesystem::exists(target, ec) && !config.allow_overwrite) {
-        return Result<std::filesystem::path>::failure(
-            make_error(ErrorCode::invalid_argument, "target already exists: " + quote_path(target)));
-    }
-
-    if (ec) {
+    if (ec && status.type() != std::filesystem::file_type::not_found) {
         return Result<std::filesystem::path>::failure(
             make_error(ErrorCode::io_error, "failed to inspect target " + quote_path(target) + ": " + ec.message()));
     }
 
     return Result<std::filesystem::path>::success(std::move(target));
+}
+
+Result<bool> existing_target_matches(const std::filesystem::path& target,
+                                     const FileBeginMetadata& metadata) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(target, ec);
+    if (status.type() == std::filesystem::file_type::not_found) {
+        return Result<bool>::success(false);
+    }
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to inspect target " + quote_path(target) + ": " + ec.message()));
+    }
+    if (!std::filesystem::exists(status)) {
+        return Result<bool>::success(false);
+    }
+
+    const auto size = std::filesystem::file_size(target, ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to read target size " + quote_path(target) + ": " + ec.message()));
+    }
+    if (size != metadata.size) {
+        return Result<bool>::success(false);
+    }
+
+    auto hash = hash_file(target);
+    if (!hash) {
+        return Result<bool>::failure(hash.error());
+    }
+
+    return Result<bool>::success(hash.value().hex_digest == metadata.sha256);
+}
+
+Result<bool> require_target_writable(const ReceiverConfig& config,
+                                     const std::filesystem::path& target) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(target, ec);
+    if (status.type() == std::filesystem::file_type::not_found) {
+        return Result<bool>::success(true);
+    }
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error, "failed to inspect target " + quote_path(target) + ": " + ec.message()));
+    }
+    if (std::filesystem::exists(status) && !config.allow_overwrite) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::invalid_argument, "target already exists: " + quote_path(target)));
+    }
+
+    return Result<bool>::success(true);
 }
 
 Result<std::uint64_t> choose_resume_offset(const std::filesystem::path& part_path,
@@ -347,6 +396,10 @@ Result<SendFileReport> send_single_file_to_connection(
         return Result<SendFileReport>::failure(
             make_error(ErrorCode::protocol_error, "receiver requested offset beyond source file size"));
     }
+    if (begin_ack.value().complete && begin_ack.value().offset != size.value()) {
+        return Result<SendFileReport>::failure(
+            make_error(ErrorCode::protocol_error, "receiver marked file complete at wrong offset"));
+    }
 
     auto source = open_for_read(config.source_path);
     if (!source) {
@@ -377,7 +430,7 @@ Result<SendFileReport> send_single_file_to_connection(
     };
     publish_progress();
 
-    while (true) {
+    while (!begin_ack.value().complete) {
         if (cancellation.is_cancelled()) {
             return Result<SendFileReport>::failure(
                 make_error(ErrorCode::cancelled, "send file transfer cancelled"));
@@ -495,6 +548,49 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
     auto target = safe_target_path(config, metadata.value().name);
     if (!target) {
         return fail_receive_with_error(connection, target.error());
+    }
+
+    auto matched = existing_target_matches(target.value(), metadata.value());
+    if (!matched) {
+        return fail_receive_with_error(connection, matched.error());
+    }
+    if (matched.value()) {
+        auto begin_ack = send_ack_frame(
+            connection,
+            encode_file_begin_ack(FileBeginAckMetadata{
+                .offset = metadata.value().size,
+                .complete = true,
+            }));
+        if (!begin_ack) {
+            return Result<ReceiveFileReport>::failure(begin_ack.error());
+        }
+
+        auto end = read_frame(connection);
+        if (!end) {
+            return Result<ReceiveFileReport>::failure(end.error());
+        }
+        if (end.value().type != MessageType::file_end) {
+            return fail_receive_with_error(
+                connection,
+                make_error(ErrorCode::protocol_error, "expected file_end frame"));
+        }
+
+        auto end_ack = send_ack_frame(connection, "stored");
+        if (!end_ack) {
+            return Result<ReceiveFileReport>::failure(end_ack.error());
+        }
+
+        return Result<ReceiveFileReport>::success(ReceiveFileReport{
+            .target_path = target.value(),
+            .bytes_received = metadata.value().size,
+            .sha256 = metadata.value().sha256,
+            .elapsed_seconds = 0.0,
+        });
+    }
+
+    auto writable = require_target_writable(config, target.value());
+    if (!writable) {
+        return fail_receive_with_error(connection, writable.error());
     }
 
     const auto part_path = part_path_for(target.value());

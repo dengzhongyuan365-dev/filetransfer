@@ -751,6 +751,93 @@ TEST(SendSingleFileTest, RestartsWhenPartFileIsTooLarge) {
     EXPECT_EQ(progress_bytes, expected_progress);
 }
 
+TEST(SendSingleFileTest, SkipsWhenTargetAlreadyMatches) {
+    TempDir temp("send-skip-existing-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+    write_text(receive_dir / "source.txt", "abcdef");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    std::vector<std::uint64_t> progress_bytes;
+    auto sent = lan::send_single_file_to_connection(
+        sender_config, pair.client, [&](const lan::SendFileProgress& progress) {
+            progress_bytes.push_back(progress.bytes_sent);
+        });
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(sent.value().bytes_sent, 6);
+    EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_progress = {6};
+    EXPECT_EQ(progress_bytes, expected_progress);
+}
+
+TEST(SendSingleFileTest, RejectsDifferentExistingTargetWithoutOverwrite) {
+    TempDir temp("send-existing-different-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+    write_text(receive_dir / "source.txt", "different");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+    receiver_config.allow_overwrite = false;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    auto sent = lan::send_single_file_to_connection(sender_config, pair.client);
+
+    receiver.join();
+
+    ASSERT_FALSE(sent);
+    ASSERT_FALSE(received);
+    EXPECT_EQ(received.error().code, lan::ErrorCode::invalid_argument);
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "different");
+}
+
 TEST(ManifestTest, RecursivelyScansRegularFiles) {
     TempDir temp("manifest-test");
     write_text(temp.path() / "a.txt", "a");

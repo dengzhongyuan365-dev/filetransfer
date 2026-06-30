@@ -17,6 +17,7 @@ struct FileBeginMetadata {
 
 struct FileBeginAckMetadata {
     std::uint64_t offset = 0;
+    bool complete = false;
 };
 
 std::string encode_file_begin(const FileBeginMetadata& metadata);
