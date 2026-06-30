@@ -243,6 +243,11 @@ public:
         sync_report = report;
     }
 
+    void on_directory_progress(const lan::ReceiveSyncProgress& progress) override {
+        directory_progress_processed.push_back(progress.processed_files);
+        directory_progress_totals.push_back(progress.manifest_files);
+    }
+
     void on_client_error(const lan::Error& error) override {
         client_error = true;
         last_error = error;
@@ -264,6 +269,8 @@ public:
     lan::Error last_error;
     std::vector<std::uint64_t> file_progress_bytes;
     std::vector<std::uint64_t> file_progress_totals;
+    std::vector<std::uint64_t> directory_progress_processed;
+    std::vector<std::uint64_t> directory_progress_totals;
 
 private:
     std::mutex mutex_;
@@ -685,6 +692,11 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_EQ(served.value().failed_connections, 0);
     EXPECT_EQ(events.sync_report.skipped_files, 1);
     EXPECT_EQ(events.sync_report.full_files, 1);
+
+    const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
+    const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
+    EXPECT_EQ(events.directory_progress_processed, expected_processed);
+    EXPECT_EQ(events.directory_progress_totals, expected_totals);
 
     auto src_hash = lan::hash_file(source.path() / "new.txt");
     auto dst_hash = lan::hash_file(receive.path() / "new.txt");

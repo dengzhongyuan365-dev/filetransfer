@@ -18,6 +18,8 @@ ReceiverServer::ReceiverServer(NetworkBackend& backend) : backend_(backend) {}
 
 void ReceiverServerEvents::on_file_progress(const ReceiveFileProgress&) {}
 
+void ReceiverServerEvents::on_directory_progress(const ReceiveSyncProgress&) {}
+
 Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
                                                  ReceiverServerEvents& events) {
     stop_requested_.store(false);
@@ -90,7 +92,13 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
 
     if (body_as_string(hello.value()) == "sync") {
         auto synced = sync_receiver_from_connection(
-            config, static_cast<std::uint32_t>(config.block_size), connection, hello.value());
+            config,
+            static_cast<std::uint32_t>(config.block_size),
+            connection,
+            hello.value(),
+            [&events](const ReceiveSyncProgress& progress) {
+                events.on_directory_progress(progress);
+            });
         if (!synced) {
             return Result<bool>::failure(synced.error());
         }

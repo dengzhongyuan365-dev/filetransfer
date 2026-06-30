@@ -464,6 +464,15 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
                                                         std::uint32_t block_size,
                                                         Connection& connection,
                                                         const Frame& hello) {
+    return sync_receiver_from_connection(config, block_size, connection, hello, {});
+}
+
+Result<ReceiveSyncReport> sync_receiver_from_connection(
+    const ReceiverConfig& config,
+    std::uint32_t block_size,
+    Connection& connection,
+    const Frame& hello,
+    ReceiveSyncProgressCallback on_progress) {
     if (hello.type != MessageType::hello || body_as_string(hello) != "sync") {
         return fail_sync_receiver(
             connection,
@@ -479,10 +488,27 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
     ReceiveSyncReport report;
     report.manifest_files = manifest_files;
     report.block_size = plan.value().block_size;
+    std::uint64_t processed_files = 0;
+    auto publish_progress = [&] {
+        if (on_progress) {
+            on_progress(ReceiveSyncProgress{
+                .manifest_files = report.manifest_files,
+                .processed_files = processed_files,
+                .skipped_files = report.skipped_files,
+                .full_files = report.full_files,
+                .delta_files = report.delta_files,
+                .files_written = report.files_written,
+                .block_size = report.block_size,
+            });
+        }
+    };
+    publish_progress();
 
     for (const auto& entry : plan.value().entries) {
         if (entry.action == SyncAction::skip) {
             ++report.skipped_files;
+            ++processed_files;
+            publish_progress();
             continue;
         }
 
@@ -502,6 +528,8 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
         } else {
             ++report.delta_files;
         }
+        ++processed_files;
+        publish_progress();
     }
 
     auto done = read_frame(connection);
