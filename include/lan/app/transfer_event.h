@@ -19,6 +19,7 @@ enum class TransferKind {
 };
 
 struct TransferProgress {
+    std::uint64_t transfer_id = 0;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -35,6 +36,7 @@ struct TransferProgress {
 };
 
 struct TransferStarted {
+    std::uint64_t transfer_id = 0;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -42,6 +44,7 @@ struct TransferStarted {
 };
 
 struct TransferCompleted {
+    std::uint64_t transfer_id = 0;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -56,6 +59,7 @@ struct TransferCompleted {
 };
 
 struct TransferFailed {
+    std::uint64_t transfer_id = 0;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -64,6 +68,7 @@ struct TransferFailed {
 };
 
 struct TransferCancelled {
+    std::uint64_t transfer_id = 0;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;

@@ -260,10 +260,12 @@ private:
 class CapturingSenderEvents final : public lan::SenderTransferEvents {
 public:
     void on_transfer_started(const lan::TransferStarted& started) override {
+        started_ids.push_back(started.transfer_id);
         started_kinds.push_back(started.kind);
     }
 
     void on_transfer_progress(const lan::TransferProgress& progress) override {
+        progress_ids.push_back(progress.transfer_id);
         directions.push_back(progress.direction);
         kinds.push_back(progress.kind);
         if (progress.kind == lan::TransferKind::file) {
@@ -277,14 +279,20 @@ public:
     }
 
     void on_transfer_completed(const lan::TransferCompleted& completed) override {
+        completed_ids.push_back(completed.transfer_id);
         completed_kinds.push_back(completed.kind);
     }
 
     void on_transfer_failed(const lan::TransferFailed& failed) override {
+        failed_ids.push_back(failed.transfer_id);
         failed_kinds.push_back(failed.kind);
         failed_errors.push_back(failed.error.code);
     }
 
+    std::vector<std::uint64_t> started_ids;
+    std::vector<std::uint64_t> progress_ids;
+    std::vector<std::uint64_t> completed_ids;
+    std::vector<std::uint64_t> failed_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
@@ -308,14 +316,21 @@ public:
     }
 
     void on_transfer_started(const lan::TransferStarted& started) override {
+        started_ids.push_back(started.transfer_id);
         started_kinds.push_back(started.kind);
     }
 
+    void on_transfer_progress(const lan::TransferProgress& progress) override {
+        progress_ids.push_back(progress.transfer_id);
+    }
+
     void on_transfer_completed(const lan::TransferCompleted& completed) override {
+        completed_ids.push_back(completed.transfer_id);
         completed_kinds.push_back(completed.kind);
     }
 
     void on_transfer_failed(const lan::TransferFailed& failed) override {
+        failed_ids.push_back(failed.transfer_id);
         failed_kinds.push_back(failed.kind);
     }
 
@@ -358,6 +373,10 @@ public:
     lan::ReceiveFileReport file_report;
     lan::ReceiveSyncReport sync_report;
     lan::Error last_error;
+    std::vector<std::uint64_t> started_ids;
+    std::vector<std::uint64_t> progress_ids;
+    std::vector<std::uint64_t> completed_ids;
+    std::vector<std::uint64_t> failed_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
@@ -800,18 +819,23 @@ TEST(SenderTransferRunnerTest, SendsFileThroughInjectedNetworkBackend) {
 
     const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::file};
     const std::vector<lan::TransferKind> expected_completed = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     EXPECT_EQ(events.started_kinds, expected_started);
     EXPECT_EQ(events.completed_kinds, expected_completed);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
 
     const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
     const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    const std::vector<std::uint64_t> expected_progress_ids(expected_progress.size(), 1);
     const std::vector<lan::TransferDirection> expected_directions(
         expected_progress.size(), lan::TransferDirection::send);
     const std::vector<lan::TransferKind> expected_kinds(
         expected_progress.size(), lan::TransferKind::file);
     EXPECT_EQ(events.directions, expected_directions);
     EXPECT_EQ(events.kinds, expected_kinds);
+    EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.file_progress_bytes, expected_progress);
     EXPECT_EQ(events.file_progress_totals, expected_totals);
 }
@@ -864,18 +888,23 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
 
     const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::directory};
     const std::vector<lan::TransferKind> expected_completed = {lan::TransferKind::directory};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     EXPECT_EQ(events.started_kinds, expected_started);
     EXPECT_EQ(events.completed_kinds, expected_completed);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
 
     const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
     const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
+    const std::vector<std::uint64_t> expected_progress_ids(expected_processed.size(), 1);
     const std::vector<lan::TransferDirection> expected_directions(
         expected_processed.size(), lan::TransferDirection::send);
     const std::vector<lan::TransferKind> expected_kinds(
         expected_processed.size(), lan::TransferKind::directory);
     EXPECT_EQ(events.directions, expected_directions);
     EXPECT_EQ(events.kinds, expected_kinds);
+    EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.directory_progress_processed, expected_processed);
     EXPECT_EQ(events.directory_progress_totals, expected_totals);
 }
@@ -901,10 +930,13 @@ TEST(SenderTransferRunnerTest, ReportsLifecycleFailureWhenConnectionFails) {
 
     const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::file};
     const std::vector<lan::TransferKind> expected_failed = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     const std::vector<lan::ErrorCode> expected_errors = {lan::ErrorCode::network_error};
     EXPECT_EQ(events.started_kinds, expected_started);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.completed_kinds.empty());
     EXPECT_EQ(events.failed_kinds, expected_failed);
+    EXPECT_EQ(events.failed_ids, expected_lifecycle_ids);
     EXPECT_EQ(events.failed_errors, expected_errors);
     EXPECT_TRUE(events.directions.empty());
     EXPECT_TRUE(events.kinds.empty());
@@ -954,8 +986,11 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_FALSE(events.file_received);
     EXPECT_FALSE(events.client_error);
     const std::vector<lan::TransferKind> expected_lifecycle = {lan::TransferKind::directory};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     EXPECT_EQ(events.started_kinds, expected_lifecycle);
     EXPECT_EQ(events.completed_kinds, expected_lifecycle);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
     EXPECT_EQ(served.value().accepted_connections, 1);
     EXPECT_EQ(served.value().failed_connections, 0);
@@ -964,6 +999,8 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
 
     const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
     const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
+    const std::vector<std::uint64_t> expected_progress_ids(expected_processed.size(), 1);
+    EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.directory_progress_processed, expected_processed);
     EXPECT_EQ(events.directory_progress_totals, expected_totals);
 
@@ -1050,13 +1087,18 @@ TEST(ReceiverServerTest, EmitsFileProgressEvents) {
     EXPECT_TRUE(events.file_received);
     EXPECT_FALSE(events.directory_synced);
     const std::vector<lan::TransferKind> expected_lifecycle = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     EXPECT_EQ(events.started_kinds, expected_lifecycle);
     EXPECT_EQ(events.completed_kinds, expected_lifecycle);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
     EXPECT_EQ(read_text(receive_dir / "progress.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
     const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    const std::vector<std::uint64_t> expected_progress_ids(expected_bytes.size(), 1);
+    EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.file_progress_bytes, expected_bytes);
     EXPECT_EQ(events.file_progress_totals, expected_totals);
 }

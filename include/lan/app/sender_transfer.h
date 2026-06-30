@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+
 #include "lan/app/sender_config.h"
 #include "lan/app/transfer_event.h"
 #include "lan/common/result.h"
@@ -31,6 +34,7 @@ public:
 
 private:
     NetworkBackend& backend_;
+    std::atomic_uint64_t next_transfer_id_ = 1;
 };
 
 Result<SenderTransferReport> run_sender_transfer(const SenderConfig& config,

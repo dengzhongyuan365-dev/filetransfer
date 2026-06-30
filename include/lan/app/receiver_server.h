@@ -50,6 +50,7 @@ private:
 
     NetworkBackend& backend_;
     std::atomic_bool stop_requested_ = false;
+    std::atomic_uint64_t next_transfer_id_ = 1;
     std::mutex listener_mutex_;
     Listener* active_listener_ = nullptr;
 };

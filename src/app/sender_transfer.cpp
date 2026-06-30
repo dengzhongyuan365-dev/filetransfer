@@ -8,8 +8,11 @@ namespace lan {
 
 namespace {
 
-TransferStarted make_sender_started(const SenderConfig& config, TransferKind kind) {
+TransferStarted make_sender_started(std::uint64_t transfer_id,
+                                    const SenderConfig& config,
+                                    TransferKind kind) {
     return TransferStarted{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = kind,
         .path = config.source_path,
@@ -17,8 +20,12 @@ TransferStarted make_sender_started(const SenderConfig& config, TransferKind kin
     };
 }
 
-TransferFailed make_sender_failed(const SenderConfig& config, TransferKind kind, const Error& error) {
+TransferFailed make_sender_failed(std::uint64_t transfer_id,
+                                  const SenderConfig& config,
+                                  TransferKind kind,
+                                  const Error& error) {
     return TransferFailed{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = kind,
         .path = config.source_path,
@@ -27,9 +34,11 @@ TransferFailed make_sender_failed(const SenderConfig& config, TransferKind kind,
     };
 }
 
-TransferCompleted make_sender_file_completed(const SenderConfig& config,
+TransferCompleted make_sender_file_completed(std::uint64_t transfer_id,
+                                             const SenderConfig& config,
                                              const SendFileReport& report) {
     return TransferCompleted{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = TransferKind::file,
         .path = config.source_path,
@@ -39,9 +48,11 @@ TransferCompleted make_sender_file_completed(const SenderConfig& config,
     };
 }
 
-TransferCompleted make_sender_directory_completed(const SenderConfig& config,
+TransferCompleted make_sender_directory_completed(std::uint64_t transfer_id,
+                                                  const SenderConfig& config,
                                                   const SendSyncReport& report) {
     return TransferCompleted{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = TransferKind::directory,
         .path = config.source_path,
@@ -55,10 +66,10 @@ TransferCompleted make_sender_directory_completed(const SenderConfig& config,
     };
 }
 
-}  // namespace
-
-void SenderTransferEvents::on_file_progress(const SendFileProgress& progress) {
-    on_transfer_progress(TransferProgress{
+TransferProgress make_sender_file_progress(std::uint64_t transfer_id,
+                                           const SendFileProgress& progress) {
+    return TransferProgress{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = TransferKind::file,
         .path = progress.source_path,
@@ -66,11 +77,13 @@ void SenderTransferEvents::on_file_progress(const SendFileProgress& progress) {
         .current_bytes = progress.bytes_sent,
         .total_bytes = progress.total_bytes,
         .elapsed_seconds = progress.elapsed_seconds,
-    });
+    };
 }
 
-void SenderTransferEvents::on_directory_progress(const SendSyncProgress& progress) {
-    on_transfer_progress(TransferProgress{
+TransferProgress make_sender_directory_progress(std::uint64_t transfer_id,
+                                                const SendSyncProgress& progress) {
+    return TransferProgress{
+        .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = TransferKind::directory,
         .path = {},
@@ -82,21 +95,28 @@ void SenderTransferEvents::on_directory_progress(const SendSyncProgress& progres
         .delta_files = progress.delta_files,
         .payload_bytes = progress.delta_payload_bytes_sent,
         .elapsed_seconds = progress.elapsed_seconds,
-    });
+    };
 }
+
+}  // namespace
+
+void SenderTransferEvents::on_file_progress(const SendFileProgress&) {}
+
+void SenderTransferEvents::on_directory_progress(const SendSyncProgress&) {}
 
 SenderTransferRunner::SenderTransferRunner(NetworkBackend& backend) : backend_(backend) {}
 
 Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& config,
                                                        SenderTransferEvents& events) {
+    const auto transfer_id = next_transfer_id_.fetch_add(1);
     const auto kind = std::filesystem::is_directory(config.source_path)
                           ? TransferKind::directory
                           : TransferKind::file;
-    events.on_transfer_started(make_sender_started(config, kind));
+    events.on_transfer_started(make_sender_started(transfer_id, config, kind));
 
     auto connection = backend_.connect(config.target.host, config.target.port);
     if (!connection) {
-        events.on_transfer_failed(make_sender_failed(config, kind, connection.error()));
+        events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, connection.error()));
         return Result<SenderTransferReport>::failure(connection.error());
     }
 
@@ -106,32 +126,36 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
             config,
             static_cast<std::uint32_t>(config.chunk_size),
             *connection.value(),
-            [&events](const SendSyncProgress& progress) {
+            [transfer_id, &events](const SendSyncProgress& progress) {
+                events.on_transfer_progress(
+                    make_sender_directory_progress(transfer_id, progress));
                 events.on_directory_progress(progress);
             });
         if (!synced) {
-            events.on_transfer_failed(make_sender_failed(config, kind, synced.error()));
+            events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, synced.error()));
             return Result<SenderTransferReport>::failure(synced.error());
         }
 
         report.kind = TransferKind::directory;
         report.directory = std::move(synced).value();
-        events.on_transfer_completed(make_sender_directory_completed(config, report.directory));
+        events.on_transfer_completed(
+            make_sender_directory_completed(transfer_id, config, report.directory));
         return Result<SenderTransferReport>::success(std::move(report));
     }
 
     auto sent = send_single_file_to_connection(
-        config, *connection.value(), [&events](const SendFileProgress& progress) {
+        config, *connection.value(), [transfer_id, &events](const SendFileProgress& progress) {
+            events.on_transfer_progress(make_sender_file_progress(transfer_id, progress));
             events.on_file_progress(progress);
         });
     if (!sent) {
-        events.on_transfer_failed(make_sender_failed(config, kind, sent.error()));
+        events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, sent.error()));
         return Result<SenderTransferReport>::failure(sent.error());
     }
 
     report.kind = TransferKind::file;
     report.file = std::move(sent).value();
-    events.on_transfer_completed(make_sender_file_completed(config, report.file));
+    events.on_transfer_completed(make_sender_file_completed(transfer_id, config, report.file));
     return Result<SenderTransferReport>::success(std::move(report));
 }
 
