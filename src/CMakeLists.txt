@@ -16,6 +16,7 @@ add_library(lan_core
     transfer/manifest.cpp
     transfer/part_file_guard.cpp
     transfer/sync_plan.cpp
+    transfer/sync_executor.cpp
     protocol/frame.cpp
     transfer/single_file.cpp
     app/sender_config.cpp
