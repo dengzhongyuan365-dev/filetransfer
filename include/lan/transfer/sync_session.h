@@ -32,6 +32,7 @@ struct SendSyncReport {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t delta_frames_sent = 0;
+    std::uint64_t delta_payload_bytes_sent = 0;
     std::uint32_t block_size = 0;
     double elapsed_seconds = 0.0;
 };
@@ -43,6 +44,7 @@ struct SendSyncProgress {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t delta_frames_sent = 0;
+    std::uint64_t delta_payload_bytes_sent = 0;
     std::uint32_t block_size = 0;
     double elapsed_seconds = 0.0;
 };
@@ -53,6 +55,7 @@ struct ReceiveSyncReport {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t files_written = 0;
+    std::uint64_t delta_payload_bytes_received = 0;
     std::uint32_t block_size = 0;
     double elapsed_seconds = 0.0;
 };
@@ -64,6 +67,7 @@ struct ReceiveSyncProgress {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t files_written = 0;
+    std::uint64_t delta_payload_bytes_received = 0;
     std::uint32_t block_size = 0;
     double elapsed_seconds = 0.0;
 };

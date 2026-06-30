@@ -45,6 +45,7 @@ public:
                   << progress.manifest_files << "  skipped " << progress.skipped_files
                   << "  full " << progress.full_files << "  delta " << progress.delta_files
                   << "  written " << progress.files_written
+                  << "  payload " << lan::format_size(progress.delta_payload_bytes_received)
                   << "  elapsed " << progress.elapsed_seconds << " s";
         std::cerr.flush();
     }
@@ -57,6 +58,8 @@ public:
         std::cout << "  full: " << synced.full_files << '\n';
         std::cout << "  delta: " << synced.delta_files << '\n';
         std::cout << "  files written: " << synced.files_written << '\n';
+        std::cout << "  delta payload received: "
+                  << lan::format_size(synced.delta_payload_bytes_received) << '\n';
         std::cout << "  block size: " << lan::format_size(synced.block_size) << '\n';
         std::cout << "  elapsed: " << synced.elapsed_seconds << " s\n";
     }

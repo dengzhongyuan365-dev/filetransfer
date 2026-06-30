@@ -22,6 +22,14 @@ Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
 }
 
+struct DeltaStreamSendReport {
+    std::uint64_t payload_bytes_sent = 0;
+};
+
+struct DeltaStreamReceiveReport {
+    std::uint64_t payload_bytes_received = 0;
+};
+
 Result<bool> send_error_frame(Connection& connection, std::string_view message) {
     Frame frame;
     frame.type = MessageType::error;
@@ -107,9 +115,10 @@ Result<bool> verify_file_hash(const std::filesystem::path& path, const ManifestE
     return Result<bool>::success(true);
 }
 
-Result<bool> apply_delta_stream_to_target(Connection& connection,
-                                          const std::filesystem::path& receive_root,
-                                          const SyncPlanEntry& entry) {
+Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
+    Connection& connection,
+    const std::filesystem::path& receive_root,
+    const SyncPlanEntry& entry) {
     const auto target = receive_root / entry.manifest_entry.relative_path;
     const auto part_path = part_path_for(target);
     std::filesystem::create_directories(target.parent_path());
@@ -117,27 +126,29 @@ Result<bool> apply_delta_stream_to_target(Connection& connection,
 
     auto begin_frame = read_frame(connection);
     if (!begin_frame) {
-        return Result<bool>::failure(begin_frame.error());
+        return Result<DeltaStreamReceiveReport>::failure(begin_frame.error());
     }
     if (begin_frame.value().type != MessageType::delta_begin) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::protocol_error, "expected delta_begin frame"));
     }
+    DeltaStreamReceiveReport report;
+    report.payload_bytes_received += begin_frame.value().body.size();
 
     auto header = decode_delta_header(begin_frame.value().body);
     if (!header) {
-        return Result<bool>::failure(header.error());
+        return Result<DeltaStreamReceiveReport>::failure(header.error());
     }
     if (header.value().source_size != entry.manifest_entry.size ||
         header.value().source_sha256 != entry.manifest_entry.sha256) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::protocol_error, "delta header does not match sync plan entry"));
     }
 
     std::ifstream basis(target, std::ios::binary);
     std::ofstream output(part_path, std::ios::binary | std::ios::trunc);
     if (!output) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::io_error, "failed to open " + quote_path(part_path)));
     }
 
@@ -145,7 +156,7 @@ Result<bool> apply_delta_stream_to_target(Connection& connection,
     while (true) {
         auto frame = read_frame(connection);
         if (!frame) {
-            return Result<bool>::failure(frame.error());
+            return Result<DeltaStreamReceiveReport>::failure(frame.error());
         }
 
         if (frame.value().type == MessageType::delta_end) {
@@ -153,73 +164,82 @@ Result<bool> apply_delta_stream_to_target(Connection& connection,
         }
 
         if (frame.value().type != MessageType::delta) {
-            return Result<bool>::failure(
+            return Result<DeltaStreamReceiveReport>::failure(
                 make_error(ErrorCode::protocol_error, "expected delta or delta_end frame"));
         }
+        report.payload_bytes_received += frame.value().body.size();
 
         auto op = decode_delta_op(frame.value().body);
         if (!op) {
-            return Result<bool>::failure(op.error());
+            return Result<DeltaStreamReceiveReport>::failure(op.error());
         }
 
         auto applied = apply_delta_op(basis, output, op.value());
         if (!applied) {
-            return Result<bool>::failure(applied.error());
+            return Result<DeltaStreamReceiveReport>::failure(applied.error());
         }
         ++ops_received;
     }
 
     if (ops_received != header.value().op_count) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::protocol_error, "delta op count does not match delta header"));
     }
 
     output.close();
     if (!output) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::io_error, "failed to close " + quote_path(part_path)));
     }
 
     auto verified = verify_file_hash(part_path, entry.manifest_entry);
     if (!verified) {
-        return Result<bool>::failure(verified.error());
+        return Result<DeltaStreamReceiveReport>::failure(verified.error());
     }
 
     std::error_code ec;
     std::filesystem::rename(part_path, target, ec);
     if (ec) {
-        return Result<bool>::failure(
+        return Result<DeltaStreamReceiveReport>::failure(
             make_error(ErrorCode::io_error,
                        "failed to rename " + quote_path(part_path) + " to " +
                            quote_path(target) + ": " + ec.message()));
     }
 
     part_file.commit();
-    return Result<bool>::success(true);
+    return Result<DeltaStreamReceiveReport>::success(report);
 }
 
-Result<bool> send_delta_stream(Connection& connection, const DeltaPlan& delta) {
+Result<DeltaStreamSendReport> send_delta_stream(Connection& connection, const DeltaPlan& delta) {
+    DeltaStreamSendReport report;
     Frame begin;
     begin.type = MessageType::delta_begin;
     begin.body = encode_delta_header(delta);
+    report.payload_bytes_sent += begin.body.size();
     auto begin_written = write_frame(connection, begin);
     if (!begin_written) {
-        return begin_written;
+        return Result<DeltaStreamSendReport>::failure(begin_written.error());
     }
 
     for (const auto& op : delta.ops) {
         Frame frame;
         frame.type = MessageType::delta;
         frame.body = encode_delta_op(op);
+        report.payload_bytes_sent += frame.body.size();
         auto written = write_frame(connection, frame);
         if (!written) {
-            return written;
+            return Result<DeltaStreamSendReport>::failure(written.error());
         }
     }
 
     Frame end;
     end.type = MessageType::delta_end;
-    return write_frame(connection, end);
+    auto end_written = write_frame(connection, end);
+    if (!end_written) {
+        return Result<DeltaStreamSendReport>::failure(end_written.error());
+    }
+
+    return Result<DeltaStreamSendReport>::success(report);
 }
 
 Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
@@ -408,6 +428,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                 .full_files = report.full_files,
                 .delta_files = report.delta_files,
                 .delta_frames_sent = report.delta_frames_sent,
+                .delta_payload_bytes_sent = report.delta_payload_bytes_sent,
                 .block_size = report.block_size,
                 .elapsed_seconds = transfer_timer.elapsed_seconds(),
             });
@@ -432,6 +453,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         if (!delta_written) {
             return Result<SendSyncReport>::failure(delta_written.error());
         }
+        report.delta_payload_bytes_sent += delta_written.value().payload_bytes_sent;
 
         auto delta_ack = wait_for_ack(connection, "delta");
         if (!delta_ack) {
@@ -535,6 +557,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
                 .full_files = report.full_files,
                 .delta_files = report.delta_files,
                 .files_written = report.files_written,
+                .delta_payload_bytes_received = report.delta_payload_bytes_received,
                 .block_size = report.block_size,
                 .elapsed_seconds = transfer_timer.elapsed_seconds(),
             });
@@ -554,6 +577,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
         if (!applied) {
             return fail_sync_receiver(connection, applied.error());
         }
+        report.delta_payload_bytes_received += applied.value().payload_bytes_received;
 
         auto ack = send_ack_frame(connection, "delta applied");
         if (!ack) {
