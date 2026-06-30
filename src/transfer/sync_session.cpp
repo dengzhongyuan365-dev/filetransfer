@@ -374,6 +374,13 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
 Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                                                  std::uint32_t block_size,
                                                  Connection& connection) {
+    return sync_sender_to_connection(config, block_size, connection, {});
+}
+
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection,
+                                                 SendSyncProgressCallback on_progress) {
     (void)block_size;
 
     auto manifest = build_manifest(config.source_path);
@@ -389,10 +396,27 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
     SendSyncReport report;
     report.manifest_files = manifest.value().files.size();
     report.block_size = plan.value().block_size;
+    std::uint64_t processed_files = 0;
+    auto publish_progress = [&] {
+        if (on_progress) {
+            on_progress(SendSyncProgress{
+                .manifest_files = report.manifest_files,
+                .processed_files = processed_files,
+                .skipped_files = report.skipped_files,
+                .full_files = report.full_files,
+                .delta_files = report.delta_files,
+                .delta_frames_sent = report.delta_frames_sent,
+                .block_size = report.block_size,
+            });
+        }
+    };
+    publish_progress();
 
     for (const auto& entry : plan.value().entries) {
         if (entry.action == SyncAction::skip) {
             ++report.skipped_files;
+            ++processed_files;
+            publish_progress();
             continue;
         }
 
@@ -417,6 +441,8 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         } else {
             ++report.delta_files;
         }
+        ++processed_files;
+        publish_progress();
     }
 
     auto done = send_ack_frame(connection, "sync done");
@@ -428,12 +454,18 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
 }
 
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size) {
+    return sync_sender(config, block_size, {});
+}
+
+Result<SendSyncReport> sync_sender(const SenderConfig& config,
+                                   std::uint32_t block_size,
+                                   SendSyncProgressCallback on_progress) {
     auto connection = default_network_backend().connect(config.target.host, config.target.port);
     if (!connection) {
         return Result<SendSyncReport>::failure(connection.error());
     }
 
-    return sync_sender_to_connection(config, block_size, *connection.value());
+    return sync_sender_to_connection(config, block_size, *connection.value(), std::move(on_progress));
 }
 
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size) {

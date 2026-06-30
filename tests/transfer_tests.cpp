@@ -578,9 +578,15 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
         lan::Error{lan::ErrorCode::internal_error, "sender did not run"});
     auto receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(
         lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::vector<std::uint64_t> sender_progress_processed;
+    std::vector<std::uint64_t> sender_progress_totals;
 
     std::thread sender([&] {
-        sender_result = lan::sync_sender_to_connection(sender_config, 5, pair.client);
+        sender_result = lan::sync_sender_to_connection(
+            sender_config, 5, pair.client, [&](const lan::SendSyncProgress& progress) {
+                sender_progress_processed.push_back(progress.processed_files);
+                sender_progress_totals.push_back(progress.manifest_files);
+            });
     });
     std::thread receiver([&] {
         auto initial_hello = lan::read_frame(pair.server);
@@ -604,6 +610,11 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_EQ(sender_result.value().full_files, 1);
     EXPECT_EQ(sender_result.value().delta_files, 1);
     EXPECT_EQ(sender_result.value().delta_frames_sent, 2);
+
+    const std::vector<std::uint64_t> expected_sender_processed = {0, 1, 2, 3};
+    const std::vector<std::uint64_t> expected_sender_totals = {3, 3, 3, 3};
+    EXPECT_EQ(sender_progress_processed, expected_sender_processed);
+    EXPECT_EQ(sender_progress_totals, expected_sender_totals);
 
     EXPECT_EQ(receiver_result.value().manifest_files, 3);
     EXPECT_EQ(receiver_result.value().skipped_files, 1);
