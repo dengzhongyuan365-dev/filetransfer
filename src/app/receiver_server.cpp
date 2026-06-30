@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "lan/protocol/frame.h"
+#include "lan/protocol/hello.h"
 
 namespace lan {
 
@@ -179,9 +180,14 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
             make_error(ErrorCode::protocol_error, "expected hello frame"));
     }
 
+    auto hello_metadata = decode_hello_frame(hello.value());
+    if (!hello_metadata) {
+        return Result<bool>::failure(hello_metadata.error());
+    }
+
     const auto transfer_id = next_transfer_id_.fetch_add(1);
-    const auto kind = body_as_string(hello.value()) == "sync" ? TransferKind::directory
-                                                              : TransferKind::file;
+    const auto kind = hello_metadata.value().mode == HelloMode::sync ? TransferKind::directory
+                                                                     : TransferKind::file;
     events.on_transfer_started(make_receiver_started(transfer_id, config, kind));
 
     if (kind == TransferKind::directory) {

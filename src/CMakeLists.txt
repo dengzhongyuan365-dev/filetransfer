@@ -19,6 +19,7 @@ add_library(lan_core
     transfer/sync_plan.cpp
     transfer/sync_executor.cpp
     protocol/frame.cpp
+    protocol/hello.cpp
     transfer/sync_codec.cpp
     transfer/sync_session.cpp
     transfer/single_file.cpp

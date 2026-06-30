@@ -9,6 +9,7 @@
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
+#include "lan/protocol/hello.h"
 #include "lan/transfer/delta.h"
 #include "lan/transfer/manifest.h"
 #include "lan/transfer/part_file_guard.h"
@@ -245,7 +246,7 @@ Result<DeltaStreamSendReport> send_delta_stream(Connection& connection, const De
 Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
     Frame hello;
     hello.type = MessageType::hello;
-    hello.body = bytes_from_string("sync");
+    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::sync});
     auto hello_written = write_frame(connection, hello);
     if (!hello_written) {
         return Result<SyncPlan>::failure(hello_written.error());
@@ -374,7 +375,11 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
     if (!hello) {
         return Result<ReceiveSyncNegotiationReport>::failure(hello.error());
     }
-    if (hello.value().type != MessageType::hello || body_as_string(hello.value()) != "sync") {
+    auto hello_metadata = decode_hello_frame(hello.value());
+    if (!hello_metadata) {
+        return fail_receiver(*client.value(), hello_metadata.error());
+    }
+    if (hello_metadata.value().mode != HelloMode::sync) {
         return fail_receiver(
             *client.value(),
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
@@ -509,7 +514,11 @@ Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint3
     if (!hello) {
         return Result<ReceiveSyncReport>::failure(hello.error());
     }
-    if (hello.value().type != MessageType::hello || body_as_string(hello.value()) != "sync") {
+    auto hello_metadata = decode_hello_frame(hello.value());
+    if (!hello_metadata) {
+        return fail_sync_receiver(*client.value(), hello_metadata.error());
+    }
+    if (hello_metadata.value().mode != HelloMode::sync) {
         return fail_sync_receiver(
             *client.value(),
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
@@ -531,7 +540,11 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
     Connection& connection,
     const Frame& hello,
     ReceiveSyncProgressCallback on_progress) {
-    if (hello.type != MessageType::hello || body_as_string(hello) != "sync") {
+    auto hello_metadata = decode_hello_frame(hello);
+    if (!hello_metadata) {
+        return fail_sync_receiver(connection, hello_metadata.error());
+    }
+    if (hello_metadata.value().mode != HelloMode::sync) {
         return fail_sync_receiver(
             connection,
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));

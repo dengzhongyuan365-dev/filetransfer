@@ -23,6 +23,7 @@
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
+#include "lan/protocol/hello.h"
 #include "lan/transfer/block_signature.h"
 #include "lan/transfer/chunk_codec.h"
 #include "lan/transfer/delta.h"
@@ -416,6 +417,35 @@ TEST(ChunkCodecTest, RoundTripsOffsetAndPayload) {
     ASSERT_EQ(decoded.value().size, payload.size());
     EXPECT_EQ(decoded.value().data[0], std::byte{'a'});
     EXPECT_EQ(decoded.value().data[2], std::byte{'c'});
+}
+
+TEST(HelloCodecTest, RoundTripsVersionedHello) {
+    lan::HelloMetadata metadata{
+        .protocol_version = lan::current_hello_version,
+        .mode = lan::HelloMode::sync,
+    };
+
+    auto decoded = lan::decode_hello_body(lan::encode_hello(metadata));
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded.value().protocol_version, lan::current_hello_version);
+    EXPECT_EQ(decoded.value().mode, lan::HelloMode::sync);
+}
+
+TEST(HelloCodecTest, AcceptsLegacyHelloBodies) {
+    auto file = lan::decode_hello_body(lan::bytes_from_string("file"));
+    auto sync = lan::decode_hello_body(lan::bytes_from_string("sync"));
+
+    ASSERT_TRUE(file);
+    ASSERT_TRUE(sync);
+    EXPECT_EQ(file.value().mode, lan::HelloMode::file);
+    EXPECT_EQ(sync.value().mode, lan::HelloMode::sync);
+}
+
+TEST(HelloCodecTest, RejectsUnsupportedVersion) {
+    auto decoded = lan::decode_hello_body(lan::bytes_from_string("lan/99 sync"));
+
+    ASSERT_FALSE(decoded);
+    EXPECT_EQ(decoded.error().code, lan::ErrorCode::protocol_error);
 }
 
 TEST(ReceiveSingleFileTest, ReportsProgressForChunks) {

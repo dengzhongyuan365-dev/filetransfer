@@ -15,6 +15,7 @@
 #include "lan/app/sender_config.h"
 #include "lan/net/tcp.h"
 #include "lan/protocol/frame.h"
+#include "lan/protocol/hello.h"
 #include "lan/transfer/single_file.h"
 
 namespace {
@@ -132,7 +133,7 @@ bool test_partial_file_cleanup_after_disconnect(const TestContext& context) {
 
     lan::Frame hello;
     hello.type = lan::MessageType::hello;
-    hello.body = lan::bytes_from_string("broken.txt");
+    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file});
     auto hello_written = lan::write_frame(socket.value(), hello);
     if (!expect(static_cast<bool>(hello_written), hello_written ? "" : hello_written.error().message)) {
         return false;
@@ -183,7 +184,7 @@ bool test_invalid_chunk_offset_is_rejected(const TestContext& context) {
 
     lan::Frame hello;
     hello.type = lan::MessageType::hello;
-    hello.body = lan::bytes_from_string("offset.txt");
+    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file});
     auto hello_written = lan::write_frame(socket.value(), hello);
     if (!expect(static_cast<bool>(hello_written), hello_written ? "" : hello_written.error().message)) {
         return false;

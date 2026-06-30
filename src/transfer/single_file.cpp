@@ -14,6 +14,7 @@
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
+#include "lan/protocol/hello.h"
 #include "lan/transfer/chunk_codec.h"
 #include "lan/transfer/file_metadata.h"
 #include "lan/transfer/part_file_guard.h"
@@ -228,7 +229,7 @@ Result<SendFileReport> send_single_file_to_connection(
 
     Frame hello;
     hello.type = MessageType::hello;
-    hello.body = bytes_from_string("file");
+    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::file});
     auto hello_result = write_frame(connection, hello);
     if (!hello_result) {
         return Result<SendFileReport>::failure(hello_result.error());
@@ -336,9 +337,13 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
     if (!hello) {
         return Result<ReceiveFileReport>::failure(hello.error());
     }
-    if (hello.value().type != MessageType::hello) {
+    auto metadata = decode_hello_frame(hello.value());
+    if (!metadata) {
+        return Result<ReceiveFileReport>::failure(metadata.error());
+    }
+    if (metadata.value().mode != HelloMode::file) {
         return Result<ReceiveFileReport>::failure(
-            make_error(ErrorCode::protocol_error, "expected hello frame"));
+            make_error(ErrorCode::protocol_error, "expected file hello frame"));
     }
 
     return receive_single_file_from_connection(config, *client.value(), hello.value());
@@ -355,9 +360,13 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
     Connection& connection,
     const Frame& hello,
     ReceiveFileProgressCallback on_progress) {
-    if (hello.type != MessageType::hello) {
+    auto hello_metadata = decode_hello_frame(hello);
+    if (!hello_metadata) {
+        return Result<ReceiveFileReport>::failure(hello_metadata.error());
+    }
+    if (hello_metadata.value().mode != HelloMode::file) {
         return Result<ReceiveFileReport>::failure(
-            make_error(ErrorCode::protocol_error, "expected hello frame"));
+            make_error(ErrorCode::protocol_error, "expected file hello frame"));
     }
 
     auto begin = read_frame(connection);
