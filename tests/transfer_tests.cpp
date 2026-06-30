@@ -233,6 +233,11 @@ public:
         file_report = report;
     }
 
+    void on_file_progress(const lan::ReceiveFileProgress& progress) override {
+        file_progress_bytes.push_back(progress.bytes_received);
+        file_progress_totals.push_back(progress.total_bytes);
+    }
+
     void on_directory_synced(const lan::ReceiveSyncReport& report) override {
         directory_synced = true;
         sync_report = report;
@@ -257,6 +262,8 @@ public:
     lan::ReceiveFileReport file_report;
     lan::ReceiveSyncReport sync_report;
     lan::Error last_error;
+    std::vector<std::uint64_t> file_progress_bytes;
+    std::vector<std::uint64_t> file_progress_totals;
 
 private:
     std::mutex mutex_;
@@ -289,6 +296,83 @@ TEST(ChunkCodecTest, RoundTripsOffsetAndPayload) {
     ASSERT_EQ(decoded.value().size, payload.size());
     EXPECT_EQ(decoded.value().data[0], std::byte{'a'});
     EXPECT_EQ(decoded.value().data[2], std::byte{'c'});
+}
+
+TEST(ReceiveSingleFileTest, ReportsProgressForChunks) {
+    TempDir temp("receive-progress-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+
+    auto hash = lan::hash_file(source);
+    ASSERT_TRUE(hash);
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("file");
+
+    std::vector<std::uint64_t> progress_bytes;
+    std::vector<std::uint64_t> progress_totals;
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+
+    std::thread receiver([&] {
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello, [&](const lan::ReceiveFileProgress& progress) {
+                progress_bytes.push_back(progress.bytes_received);
+                progress_totals.push_back(progress.total_bytes);
+            });
+    });
+
+    lan::Frame begin;
+    begin.type = lan::MessageType::file_begin;
+    begin.body = lan::bytes_from_string(lan::encode_file_begin(lan::FileBeginMetadata{
+        .name = "progress.txt",
+        .size = 6,
+        .sha256 = hash.value().hex_digest,
+    }));
+    ASSERT_TRUE(lan::write_frame(pair.client, begin));
+
+    auto begin_ack = lan::read_frame(pair.client);
+    ASSERT_TRUE(begin_ack);
+    ASSERT_EQ(begin_ack.value().type, lan::MessageType::ack);
+
+    lan::Frame first_chunk;
+    first_chunk.type = lan::MessageType::chunk;
+    auto first_payload = lan::bytes_from_string("abc");
+    first_chunk.body = lan::encode_chunk_body(0, first_payload.data(), first_payload.size());
+    ASSERT_TRUE(lan::write_frame(pair.client, first_chunk));
+
+    lan::Frame second_chunk;
+    second_chunk.type = lan::MessageType::chunk;
+    auto second_payload = lan::bytes_from_string("def");
+    second_chunk.body = lan::encode_chunk_body(3, second_payload.data(), second_payload.size());
+    ASSERT_TRUE(lan::write_frame(pair.client, second_chunk));
+
+    lan::Frame end;
+    end.type = lan::MessageType::file_end;
+    ASSERT_TRUE(lan::write_frame(pair.client, end));
+
+    auto end_ack = lan::read_frame(pair.client);
+    ASSERT_TRUE(end_ack);
+    ASSERT_EQ(end_ack.value().type, lan::MessageType::ack);
+
+    receiver.join();
+
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(read_text(receive_dir / "progress.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
+    const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    EXPECT_EQ(progress_bytes, expected_bytes);
+    EXPECT_EQ(progress_totals, expected_totals);
 }
 
 TEST(ManifestTest, RecursivelyScansRegularFiles) {
@@ -557,6 +641,89 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     ASSERT_TRUE(src_hash);
     ASSERT_TRUE(dst_hash);
     EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
+}
+
+TEST(ReceiverServerTest, EmitsFileProgressEvents) {
+    TempDir temp("receiver-server-progress-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+
+    auto hash = lan::hash_file(source);
+    ASSERT_TRUE(hash);
+
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    MemoryConnection client(server_to_client, client_to_server);
+    auto server_connection =
+        std::make_unique<MemoryConnection>(client_to_server, server_to_client);
+
+    auto listener =
+        std::make_unique<SingleConnectionListener>(std::move(server_connection));
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+    receiver_config.once = true;
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServer server(backend);
+
+    auto served_future = std::async(std::launch::async, [&] {
+        return server.run(receiver_config, events);
+    });
+
+    ASSERT_TRUE(events.wait_until_listening());
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("file");
+    ASSERT_TRUE(lan::write_frame(client, hello));
+
+    lan::Frame begin;
+    begin.type = lan::MessageType::file_begin;
+    begin.body = lan::bytes_from_string(lan::encode_file_begin(lan::FileBeginMetadata{
+        .name = "progress.txt",
+        .size = 6,
+        .sha256 = hash.value().hex_digest,
+    }));
+    ASSERT_TRUE(lan::write_frame(client, begin));
+
+    auto begin_ack = lan::read_frame(client);
+    ASSERT_TRUE(begin_ack);
+    ASSERT_EQ(begin_ack.value().type, lan::MessageType::ack);
+
+    auto first_payload = lan::bytes_from_string("abc");
+    lan::Frame first_chunk;
+    first_chunk.type = lan::MessageType::chunk;
+    first_chunk.body = lan::encode_chunk_body(0, first_payload.data(), first_payload.size());
+    ASSERT_TRUE(lan::write_frame(client, first_chunk));
+
+    auto second_payload = lan::bytes_from_string("def");
+    lan::Frame second_chunk;
+    second_chunk.type = lan::MessageType::chunk;
+    second_chunk.body = lan::encode_chunk_body(3, second_payload.data(), second_payload.size());
+    ASSERT_TRUE(lan::write_frame(client, second_chunk));
+
+    lan::Frame end;
+    end.type = lan::MessageType::file_end;
+    ASSERT_TRUE(lan::write_frame(client, end));
+
+    auto end_ack = lan::read_frame(client);
+    ASSERT_TRUE(end_ack);
+    ASSERT_EQ(end_ack.value().type, lan::MessageType::ack);
+
+    auto served = served_future.get();
+    ASSERT_TRUE(served) << served.error().message;
+    EXPECT_TRUE(events.file_received);
+    EXPECT_FALSE(events.directory_synced);
+    EXPECT_EQ(read_text(receive_dir / "progress.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
+    const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    EXPECT_EQ(events.file_progress_bytes, expected_bytes);
+    EXPECT_EQ(events.file_progress_totals, expected_totals);
 }
 
 TEST(ReceiverServerTest, StopsWhileWaitingForConnection) {

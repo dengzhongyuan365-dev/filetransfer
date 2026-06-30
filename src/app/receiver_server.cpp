@@ -16,6 +16,8 @@ Error make_error(ErrorCode code, std::string message) {
 
 ReceiverServer::ReceiverServer(NetworkBackend& backend) : backend_(backend) {}
 
+void ReceiverServerEvents::on_file_progress(const ReceiveFileProgress&) {}
+
 Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
                                                  ReceiverServerEvents& events) {
     stop_requested_.store(false);
@@ -97,7 +99,10 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
         return Result<bool>::success(true);
     }
 
-    auto received = receive_single_file_from_connection(config, connection, hello.value());
+    auto received = receive_single_file_from_connection(
+        config, connection, hello.value(), [&events](const ReceiveFileProgress& progress) {
+            events.on_file_progress(progress);
+        });
     if (!received) {
         return Result<bool>::failure(received.error());
     }

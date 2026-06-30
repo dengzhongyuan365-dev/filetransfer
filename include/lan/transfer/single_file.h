@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 #include "lan/app/receiver_config.h"
@@ -26,10 +27,25 @@ struct ReceiveFileReport {
     double elapsed_seconds = 0.0;
 };
 
+struct ReceiveFileProgress {
+    std::filesystem::path target_path;
+    std::string file_name;
+    std::uint64_t bytes_received = 0;
+    std::uint64_t total_bytes = 0;
+    double elapsed_seconds = 0.0;
+};
+
+using ReceiveFileProgressCallback = std::function<void(const ReceiveFileProgress&)>;
+
 Result<SendFileReport> send_single_file(const SenderConfig& config);
 Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config);
 Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConfig& config,
                                                               Connection& connection,
                                                               const Frame& hello);
+Result<ReceiveFileReport> receive_single_file_from_connection(
+    const ReceiverConfig& config,
+    Connection& connection,
+    const Frame& hello,
+    ReceiveFileProgressCallback on_progress);
 
 }  // namespace lan

@@ -317,6 +317,14 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
 Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConfig& config,
                                                               Connection& connection,
                                                               const Frame& hello) {
+    return receive_single_file_from_connection(config, connection, hello, {});
+}
+
+Result<ReceiveFileReport> receive_single_file_from_connection(
+    const ReceiverConfig& config,
+    Connection& connection,
+    const Frame& hello,
+    ReceiveFileProgressCallback on_progress) {
     if (hello.type != MessageType::hello) {
         return Result<ReceiveFileReport>::failure(
             make_error(ErrorCode::protocol_error, "expected hello frame"));
@@ -355,6 +363,18 @@ Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConf
 
     Stopwatch transfer_timer;
     std::uint64_t bytes_received = 0;
+    auto publish_progress = [&] {
+        if (on_progress) {
+            on_progress(ReceiveFileProgress{
+                .target_path = target.value(),
+                .file_name = metadata.value().name,
+                .bytes_received = bytes_received,
+                .total_bytes = metadata.value().size,
+                .elapsed_seconds = transfer_timer.elapsed_seconds(),
+            });
+        }
+    };
+    publish_progress();
 
     while (true) {
         auto frame = read_frame(connection);
@@ -397,6 +417,7 @@ Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConf
         }
 
         bytes_received += static_cast<std::uint64_t>(chunk.value().size);
+        publish_progress();
     }
 
     if (bytes_received != metadata.value().size) {

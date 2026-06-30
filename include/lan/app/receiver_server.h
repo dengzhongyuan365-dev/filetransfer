@@ -25,6 +25,7 @@ public:
     virtual ~ReceiverServerEvents() = default;
 
     virtual void on_listening(const ReceiverConfig& config) = 0;
+    virtual void on_file_progress(const ReceiveFileProgress& progress);
     virtual void on_file_received(const ReceiveFileReport& report) = 0;
     virtual void on_directory_synced(const ReceiveSyncReport& report) = 0;
     virtual void on_client_error(const Error& error) = 0;
