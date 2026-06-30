@@ -12,7 +12,6 @@ namespace {
 constexpr std::array<char, 4> magic = {'L', 'F', 'T', 'P'};
 constexpr std::uint8_t protocol_version = 1;
 constexpr std::size_t header_size = 16;
-constexpr std::uint64_t max_body_size = 64ull * 1024ull * 1024ull;
 
 Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
@@ -63,7 +62,7 @@ bool is_valid_message_type(std::uint8_t value) {
 }  // namespace
 
 Result<bool> write_frame_body(auto&& send_bytes, const Frame& frame) {
-    if (frame.body.size() > max_body_size) {
+    if (frame.body.size() > max_frame_body_size) {
         return Result<bool>::failure(
             make_error(ErrorCode::protocol_error, "frame body is too large"));
     }
@@ -116,7 +115,7 @@ Result<Frame> read_frame_body(auto&& recv_bytes) {
     }
 
     const auto body_size = read_u64_be(header.data() + 8);
-    if (body_size > max_body_size) {
+    if (body_size > max_frame_body_size) {
         return Result<Frame>::failure(
             make_error(ErrorCode::protocol_error, "frame body is too large"));
     }

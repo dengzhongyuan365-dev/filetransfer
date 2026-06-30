@@ -12,6 +12,8 @@
 
 namespace lan {
 
+inline constexpr std::uint64_t max_frame_body_size = 64ull * 1024ull * 1024ull;
+
 enum class MessageType : std::uint8_t {
     hello = 1,
     file_begin = 2,

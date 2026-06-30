@@ -89,6 +89,22 @@ std::filesystem::path part_path_for(const std::filesystem::path& target) {
     return part;
 }
 
+std::uint64_t estimated_delta_plan_body_size(const DeltaPlan& plan) {
+    std::uint64_t size = 8;  // source_size
+    size += 4 + plan.source_sha256.size();
+    size += 4;  // op count
+
+    for (const auto& op : plan.ops) {
+        size += 1;  // op type
+        size += 8;  // basis_offset
+        size += 8;  // size
+        size += 8;  // data size
+        size += op.data.size();
+    }
+
+    return size;
+}
+
 Result<bool> verify_file_hash(const std::filesystem::path& path, const ManifestEntry& entry) {
     auto hash = hash_file(path);
     if (!hash) {
@@ -318,6 +334,12 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         auto delta = build_delta(source, entry.basis_signatures, plan.value().block_size);
         if (!delta) {
             return Result<SendSyncReport>::failure(delta.error());
+        }
+        if (estimated_delta_plan_body_size(delta.value()) > max_frame_body_size) {
+            return Result<SendSyncReport>::failure(
+                make_error(ErrorCode::invalid_argument,
+                           "delta frame for " + entry.manifest_entry.relative_path.generic_string() +
+                               " is larger than 64 MiB; streaming delta frames are not implemented yet"));
         }
 
         Frame delta_frame;
