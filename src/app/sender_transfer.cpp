@@ -46,6 +46,19 @@ TransferCancelled make_sender_cancelled(std::uint64_t transfer_id,
     };
 }
 
+TransferCompletionStatus to_completion_status(FileTransferStatus status) {
+    switch (status) {
+        case FileTransferStatus::transferred:
+            return TransferCompletionStatus::transferred;
+        case FileTransferStatus::resumed:
+            return TransferCompletionStatus::resumed;
+        case FileTransferStatus::skipped:
+            return TransferCompletionStatus::skipped;
+    }
+
+    return TransferCompletionStatus::transferred;
+}
+
 TransferCompleted make_sender_file_completed(std::uint64_t transfer_id,
                                              const SenderConfig& config,
                                              const SendFileReport& report) {
@@ -56,6 +69,8 @@ TransferCompleted make_sender_file_completed(std::uint64_t transfer_id,
         .path = config.source_path,
         .name = report.file_name,
         .bytes = report.bytes_sent,
+        .status = to_completion_status(report.status),
+        .resumed_from = report.resumed_from,
         .elapsed_seconds = report.elapsed_seconds,
     };
 }
