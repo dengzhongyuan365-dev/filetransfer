@@ -1,5 +1,6 @@
 #include "lan/app/receiver_config.h"
 
+#include <limits>
 #include <string_view>
 
 #include "lan/common/path.h"
@@ -33,10 +34,12 @@ Result<std::string_view> next_value(int argc, char* argv[], int& index, std::str
 
 std::string receiver_usage() {
     return "Usage:\n"
-           "  receiver --port <port> --dir <receive-dir> [--bind <address>] [--allow-overwrite]\n\n"
+           "  receiver --port <port> --dir <receive-dir> [--bind <address>] "
+           "[--allow-overwrite] [--block-size <size>]\n\n"
            "Examples:\n"
            "  receiver --port 9000 --dir ~/Downloads/reviewdir\n"
-           "  receiver --bind 0.0.0.0 --port 9000 --dir ~/Downloads/reviewdir\n";
+           "  receiver --bind 0.0.0.0 --port 9000 --dir ~/Downloads/reviewdir\n"
+           "  receiver --port 9000 --dir ~/Downloads/reviewdir --block-size 1MiB\n";
 }
 
 Result<ReceiverConfig> parse_receiver_args(int argc, char* argv[]) {
@@ -78,6 +81,20 @@ Result<ReceiverConfig> parse_receiver_args(int argc, char* argv[]) {
             has_dir = true;
         } else if (arg == "--allow-overwrite") {
             config.allow_overwrite = true;
+        } else if (arg == "--block-size") {
+            auto value = next_value(argc, argv, i, arg);
+            if (!value) {
+                return Result<ReceiverConfig>::failure(value.error());
+            }
+            auto size = parse_size(value.value());
+            if (!size) {
+                return Result<ReceiverConfig>::failure(size.error());
+            }
+            if (size.value() == 0) {
+                return Result<ReceiverConfig>::failure(
+                    invalid_argument("block size must be greater than zero"));
+            }
+            config.block_size = size.value();
         } else {
             return Result<ReceiverConfig>::failure(
                 invalid_argument("unknown option: " + std::string(arg)));
@@ -107,6 +124,11 @@ Result<ReceiverConfig> validate_receiver_config(ReceiverConfig config) {
     }
 
     config.receive_dir = std::move(dir).value();
+    if (config.block_size > std::numeric_limits<std::uint32_t>::max()) {
+        return Result<ReceiverConfig>::failure(
+            invalid_argument("block size must fit in uint32_t"));
+    }
+
     return Result<ReceiverConfig>::success(std::move(config));
 }
 

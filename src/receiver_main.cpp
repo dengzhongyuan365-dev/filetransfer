@@ -35,6 +35,8 @@ int main(int argc, char* argv[]) {
     std::cout << "  port: " << final_config.port << '\n';
     std::cout << "  dir: " << final_config.receive_dir.string() << '\n';
     std::cout << "  allow overwrite: " << (final_config.allow_overwrite ? "true" : "false") << '\n';
+    std::cout << "  block size: " << lan::format_size(final_config.block_size) << " ("
+              << final_config.block_size << " bytes)\n";
 
     std::cout << "waiting for one transfer...\n";
     std::cout.flush();
@@ -64,7 +66,7 @@ int main(int argc, char* argv[]) {
 
     if (lan::body_as_string(hello.value()) == "sync") {
         auto synced = lan::sync_receiver_from_connection(
-            final_config, 4 * 1024 * 1024, *client.value(), hello.value());
+            final_config, static_cast<std::uint32_t>(final_config.block_size), *client.value(), hello.value());
         if (!synced) {
             std::cerr << synced.error().message << '\n';
             return 1;

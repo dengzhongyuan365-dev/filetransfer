@@ -14,6 +14,7 @@ struct ReceiverConfig {
     std::uint16_t port = 0;
     std::filesystem::path receive_dir;
     bool allow_overwrite = false;
+    std::uint64_t block_size = 4 * 1024 * 1024;
 };
 
 std::string receiver_usage();
