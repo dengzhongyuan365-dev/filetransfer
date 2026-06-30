@@ -197,4 +197,36 @@ void TransferSnapshotStore::clear() {
     trackers_.clear();
 }
 
+const TransferSnapshotStore& SnapshottingTransferEvents::snapshot_store() const {
+    return snapshots_;
+}
+
+TransferSnapshotStore& SnapshottingTransferEvents::snapshot_store() {
+    return snapshots_;
+}
+
+void SnapshottingTransferEvents::clear_snapshots() {
+    snapshots_.clear();
+}
+
+void SnapshottingTransferEvents::on_transfer_started(const TransferStarted& started) {
+    snapshots_.apply(started);
+}
+
+void SnapshottingTransferEvents::on_transfer_progress(const TransferProgress& progress) {
+    snapshots_.apply(progress);
+}
+
+void SnapshottingTransferEvents::on_transfer_completed(const TransferCompleted& completed) {
+    snapshots_.apply(completed);
+}
+
+void SnapshottingTransferEvents::on_transfer_failed(const TransferFailed& failed) {
+    snapshots_.apply(failed);
+}
+
+void SnapshottingTransferEvents::on_transfer_cancelled(const TransferCancelled& cancelled) {
+    snapshots_.apply(cancelled);
+}
+
 }  // namespace lan

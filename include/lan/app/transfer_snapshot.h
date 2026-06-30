@@ -69,4 +69,20 @@ private:
     std::map<std::uint64_t, TransferSnapshotTracker> trackers_;
 };
 
+class SnapshottingTransferEvents : public TransferEvents {
+public:
+    const TransferSnapshotStore& snapshot_store() const;
+    TransferSnapshotStore& snapshot_store();
+    void clear_snapshots();
+
+    void on_transfer_started(const TransferStarted& started) override;
+    void on_transfer_progress(const TransferProgress& progress) override;
+    void on_transfer_completed(const TransferCompleted& completed) override;
+    void on_transfer_failed(const TransferFailed& failed) override;
+    void on_transfer_cancelled(const TransferCancelled& cancelled) override;
+
+private:
+    TransferSnapshotStore snapshots_;
+};
+
 }  // namespace lan

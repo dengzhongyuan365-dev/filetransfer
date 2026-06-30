@@ -294,6 +294,94 @@ TEST(TransferSnapshotStoreTest, RejectsDuplicateStartsAndUnknownUpdates) {
     EXPECT_TRUE(store.snapshots().empty());
 }
 
+TEST(SnapshottingTransferEventsTest, AppliesEventsToStore) {
+    lan::SnapshottingTransferEvents events;
+
+    events.on_transfer_started(lan::TransferStarted{
+        .transfer_id = 11,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+    });
+    events.on_transfer_progress(lan::TransferProgress{
+        .transfer_id = 11,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+        .current_bytes = 5,
+        .total_bytes = 10,
+    });
+
+    const auto* running = events.snapshot_store().find(11);
+    ASSERT_NE(running, nullptr);
+    EXPECT_EQ(running->state, lan::TransferState::running);
+    EXPECT_EQ(running->current_bytes, 5);
+    EXPECT_EQ(running->total_bytes, 10);
+
+    events.on_transfer_completed(lan::TransferCompleted{
+        .transfer_id = 11,
+        .state = lan::TransferState::completed,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+        .bytes = 10,
+    });
+
+    const auto* completed = events.snapshot_store().find(11);
+    ASSERT_NE(completed, nullptr);
+    EXPECT_EQ(completed->state, lan::TransferState::completed);
+    EXPECT_EQ(completed->current_bytes, 10);
+}
+
+TEST(SnapshottingTransferEventsTest, CanBeExtendedByCallingBaseHandlers) {
+    class CountingEvents final : public lan::SnapshottingTransferEvents {
+    public:
+        void on_transfer_started(const lan::TransferStarted& started) override {
+            SnapshottingTransferEvents::on_transfer_started(started);
+            ++started_count;
+        }
+
+        void on_transfer_failed(const lan::TransferFailed& failed) override {
+            SnapshottingTransferEvents::on_transfer_failed(failed);
+            ++failed_count;
+        }
+
+        int started_count = 0;
+        int failed_count = 0;
+    };
+
+    CountingEvents events;
+    events.on_transfer_started(lan::TransferStarted{
+        .transfer_id = 12,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    });
+    events.on_transfer_failed(lan::TransferFailed{
+        .transfer_id = 12,
+        .state = lan::TransferState::failed,
+        .path = {},
+        .name = {},
+        .error = lan::Error{lan::ErrorCode::network_error, "connection closed"},
+        .category = lan::ErrorCategory::network,
+        .retryable = true,
+    });
+
+    EXPECT_EQ(events.started_count, 1);
+    EXPECT_EQ(events.failed_count, 1);
+    const auto* snapshot = events.snapshot_store().find(12);
+    ASSERT_NE(snapshot, nullptr);
+    EXPECT_EQ(snapshot->state, lan::TransferState::failed);
+    ASSERT_TRUE(snapshot->error);
+    EXPECT_EQ(snapshot->error->code, lan::ErrorCode::network_error);
+    EXPECT_TRUE(snapshot->retryable);
+}
+
 struct MemoryPipe {
     std::mutex mutex;
     std::condition_variable data_available;
