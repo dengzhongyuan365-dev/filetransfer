@@ -23,6 +23,7 @@ add_library(lan_core
     transfer/sync_session.cpp
     transfer/single_file.cpp
     app/sender_config.cpp
+    app/sender_transfer.cpp
     app/receiver_config.cpp
     app/receiver_server.cpp
 )

@@ -18,6 +18,7 @@
 #include "lan/app/receiver_config.h"
 #include "lan/app/receiver_server.h"
 #include "lan/app/sender_config.h"
+#include "lan/app/sender_transfer.h"
 #include "lan/common/error.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
@@ -147,6 +148,20 @@ MemoryConnectionPair make_memory_connection_pair() {
     };
 }
 
+struct UniqueMemoryConnectionPair {
+    std::unique_ptr<lan::Connection> client;
+    std::unique_ptr<lan::Connection> server;
+};
+
+UniqueMemoryConnectionPair make_unique_memory_connection_pair() {
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    return UniqueMemoryConnectionPair{
+        .client = std::make_unique<MemoryConnection>(server_to_client, client_to_server),
+        .server = std::make_unique<MemoryConnection>(client_to_server, server_to_client),
+    };
+}
+
 class SingleConnectionListener final : public lan::Listener {
 public:
     explicit SingleConnectionListener(std::unique_ptr<lan::Connection> connection)
@@ -216,6 +231,48 @@ public:
 
 private:
     std::unique_ptr<lan::Listener> listener_;
+};
+
+class FakeConnectBackend final : public lan::NetworkBackend {
+public:
+    explicit FakeConnectBackend(std::unique_ptr<lan::Connection> connection)
+        : connection_(std::move(connection)) {}
+
+    lan::Result<std::unique_ptr<lan::Listener>> listen(std::string_view, std::uint16_t) override {
+        return lan::Result<std::unique_ptr<lan::Listener>>::failure(
+            lan::Error{lan::ErrorCode::network_error, "fake backend does not listen"});
+    }
+
+    lan::Result<std::unique_ptr<lan::Connection>> connect(std::string_view,
+                                                          std::uint16_t) override {
+        if (!connection_) {
+            return lan::Result<std::unique_ptr<lan::Connection>>::failure(
+                lan::Error{lan::ErrorCode::network_error, "connection already consumed"});
+        }
+
+        return lan::Result<std::unique_ptr<lan::Connection>>::success(std::move(connection_));
+    }
+
+private:
+    std::unique_ptr<lan::Connection> connection_;
+};
+
+class CapturingSenderEvents final : public lan::SenderTransferEvents {
+public:
+    void on_file_progress(const lan::SendFileProgress& progress) override {
+        file_progress_bytes.push_back(progress.bytes_sent);
+        file_progress_totals.push_back(progress.total_bytes);
+    }
+
+    void on_directory_progress(const lan::SendSyncProgress& progress) override {
+        directory_progress_processed.push_back(progress.processed_files);
+        directory_progress_totals.push_back(progress.manifest_files);
+    }
+
+    std::vector<std::uint64_t> file_progress_bytes;
+    std::vector<std::uint64_t> file_progress_totals;
+    std::vector<std::uint64_t> directory_progress_processed;
+    std::vector<std::uint64_t> directory_progress_totals;
 };
 
 class CapturingReceiverEvents final : public lan::ReceiverServerEvents {
@@ -659,6 +716,107 @@ TEST(SyncSessionTest, RejectsUnexpectedHelloThroughConnectionInterface) {
     EXPECT_EQ(error_frame.value().type, lan::MessageType::error);
     EXPECT_NE(lan::body_as_string(error_frame.value()).find("expected sync hello frame"),
               std::string::npos);
+}
+
+TEST(SenderTransferRunnerTest, SendsFileThroughInjectedNetworkBackend) {
+    TempDir temp("sender-transfer-file-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    write_text(source, "abcdef");
+    std::filesystem::create_directories(receive_dir);
+
+    lan::SenderConfig sender_config;
+    sender_config.target.host = "memory";
+    sender_config.target.port = 1;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_unique_memory_connection_pair();
+    auto server = std::move(pair.server);
+    FakeConnectBackend backend(std::move(pair.client));
+    CapturingSenderEvents events;
+    lan::SenderTransferRunner runner(backend);
+    auto receiver_result = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(*server);
+        if (!hello) {
+            receiver_result = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        receiver_result =
+            lan::receive_single_file_from_connection(receiver_config, *server, hello.value());
+    });
+
+    auto transferred = runner.run(sender_config, events);
+    receiver.join();
+
+    ASSERT_TRUE(transferred) << transferred.error().message;
+    ASSERT_TRUE(receiver_result) << receiver_result.error().message;
+    EXPECT_EQ(transferred.value().kind, lan::SenderTransferKind::file);
+    EXPECT_EQ(transferred.value().file.bytes_sent, 6);
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
+    const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    EXPECT_EQ(events.file_progress_bytes, expected_progress);
+    EXPECT_EQ(events.file_progress_totals, expected_totals);
+}
+
+TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
+    TempDir source("sender-transfer-sync-source-test");
+    TempDir receive("sender-transfer-sync-receive-test");
+
+    write_text(source.path() / "same.txt", "same\n");
+    write_text(receive.path() / "same.txt", "same\n");
+    write_text(source.path() / "new.txt", "new\n");
+
+    lan::SenderConfig sender_config;
+    sender_config.target.host = "memory";
+    sender_config.target.port = 1;
+    sender_config.source_path = source.path();
+    sender_config.chunk_size = 5;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive.path();
+
+    auto pair = make_unique_memory_connection_pair();
+    auto server = std::move(pair.server);
+    FakeConnectBackend backend(std::move(pair.client));
+    CapturingSenderEvents events;
+    lan::SenderTransferRunner runner(backend);
+    auto receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(*server);
+        if (!hello) {
+            receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(hello.error());
+            return;
+        }
+        receiver_result =
+            lan::sync_receiver_from_connection(receiver_config, 5, *server, hello.value());
+    });
+
+    auto transferred = runner.run(sender_config, events);
+    receiver.join();
+
+    ASSERT_TRUE(transferred) << transferred.error().message;
+    ASSERT_TRUE(receiver_result) << receiver_result.error().message;
+    EXPECT_EQ(transferred.value().kind, lan::SenderTransferKind::directory);
+    EXPECT_EQ(transferred.value().directory.manifest_files, 2);
+    EXPECT_EQ(transferred.value().directory.skipped_files, 1);
+    EXPECT_EQ(transferred.value().directory.full_files, 1);
+    EXPECT_EQ(read_text(receive.path() / "new.txt"), "new\n");
+
+    const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
+    const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
+    EXPECT_EQ(events.directory_progress_processed, expected_processed);
+    EXPECT_EQ(events.directory_progress_totals, expected_totals);
 }
 
 TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
