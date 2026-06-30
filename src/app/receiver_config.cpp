@@ -121,6 +121,11 @@ Result<ReceiverConfig> parse_receiver_args(int argc, char* argv[]) {
 }
 
 Result<ReceiverConfig> validate_receiver_config(ReceiverConfig config) {
+    if (config.block_size == 0) {
+        return Result<ReceiverConfig>::failure(
+            invalid_argument("block size must be greater than zero"));
+    }
+
     auto dir = ensure_directory(config.receive_dir);
     if (!dir) {
         return Result<ReceiverConfig>::failure(dir.error());

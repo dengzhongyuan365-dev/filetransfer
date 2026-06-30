@@ -1,5 +1,6 @@
 #include "lan/app/sender_config.h"
 
+#include <limits>
 #include <string_view>
 
 #include "lan/common/path.h"
@@ -123,6 +124,15 @@ Result<SenderConfig> parse_sender_args(int argc, char* argv[]) {
 }
 
 Result<SenderConfig> validate_sender_config(SenderConfig config) {
+    if (config.chunk_size == 0) {
+        return Result<SenderConfig>::failure(
+            invalid_argument("chunk size must be greater than zero"));
+    }
+    if (config.chunk_size > std::numeric_limits<std::uint32_t>::max()) {
+        return Result<SenderConfig>::failure(
+            invalid_argument("chunk size must fit in uint32_t"));
+    }
+
     auto path = require_file_or_directory(config.source_path);
     if (!path) {
         return Result<SenderConfig>::failure(path.error());
