@@ -399,6 +399,12 @@ void MainWindow::apply_style() {
         }
         QPushButton:pressed {
             background: #eef2f7;
+            border-color: #aab6c8;
+        }
+        QPushButton:disabled {
+            background: #f3f4f6;
+            border-color: #e2e7ef;
+            color: #9aa3b2;
         }
         #primaryButton, #linkButton {
             background: #2563eb;
@@ -417,6 +423,11 @@ void MainWindow::apply_style() {
             background: #1e40af;
             border-color: #1e40af;
         }
+        #primaryButton:disabled, #linkButton:disabled {
+            background: #b8c7ee;
+            border-color: #b8c7ee;
+            color: #eef3ff;
+        }
         #secondaryButton {
             background: #ffffff;
             border-color: #d8dee8;
@@ -424,6 +435,19 @@ void MainWindow::apply_style() {
         }
         #secondaryButton:focus {
             border-color: #d8dee8;
+        }
+        #secondaryButton:hover {
+            background: #f8fafc;
+            border-color: #b8c2d2;
+        }
+        #secondaryButton:pressed {
+            background: #eef2f7;
+            border-color: #aab6c8;
+        }
+        #secondaryButton:disabled {
+            background: #f3f4f6;
+            border-color: #e2e7ef;
+            color: #9aa3b2;
         }
         #taskStopButton {
             min-width: 24px;
@@ -438,6 +462,11 @@ void MainWindow::apply_style() {
         }
         #taskStopButton:hover {
             background: #fdecec;
+            color: #8a2424;
+        }
+        #taskStopButton:pressed {
+            background: #f9dada;
+            color: #7f1d1d;
         }
         #taskStopButton:disabled {
             color: #a6adb8;
@@ -457,6 +486,14 @@ void MainWindow::apply_style() {
         #taskRemoveButton:hover {
             background: #eef2f7;
             color: #1e2430;
+        }
+        #taskRemoveButton:pressed {
+            background: #dfe5ee;
+            color: #111827;
+        }
+        #taskRemoveButton:disabled {
+            color: #a6adb8;
+            background: #f3f4f6;
         }
     )");
 }
@@ -478,6 +515,7 @@ void MainWindow::setup_discovery() {
 }
 
 bool MainWindow::start_receiver() {
+    receiver_ready_ = false;
     log_event(QString("Starting receiver in %1").arg(receive_dir_->text()));
     ReceiverConfig config;
     config.bind_address = "0.0.0.0";
@@ -536,6 +574,7 @@ bool MainWindow::start_receiver() {
         return false;
     }
     status_->setText(QString("Receiver listening on TCP %1.").arg(kTransferPort));
+    receiver_ready_ = true;
     log_event(QString("Receiver listening on 0.0.0.0:%1").arg(kTransferPort));
     return true;
 }
@@ -548,6 +587,7 @@ void MainWindow::stop_receiver() {
     receiver_runner_->join();
     receiver_runner_.reset();
     receiver_events_.reset();
+    receiver_ready_ = false;
     log_event("Receiver stopped.");
 }
 
@@ -594,6 +634,11 @@ void MainWindow::read_discovery() {
         const auto type = obj.value("type").toString();
         if (type == "discover") {
             if (obj.value("id").toString() != node_id_) {
+                if (!receiver_ready_) {
+                    log_event(QString("Ignored discover from %1 because receiver is not ready.")
+                                  .arg(sender.toString()));
+                    continue;
+                }
                 log_event(QString("Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
                 reply_to_discovery(sender, sender_port);
             }
@@ -601,6 +646,11 @@ void MainWindow::read_discovery() {
             log_event(QString("Received announce from %1").arg(sender.toString()));
             add_peer(sender, obj);
         } else if (type == "link_request") {
+            if (!receiver_ready_) {
+                log_event(QString("Ignored link request from %1 because receiver is not ready.")
+                              .arg(sender.toString()));
+                continue;
+            }
             log_event(QString("Received link request from %1").arg(sender.toString()));
             receive_link_request(sender, obj);
         } else if (type == "link_accept") {

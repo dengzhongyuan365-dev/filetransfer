@@ -103,6 +103,7 @@ private:
     QString pending_link_id_;
     QString pending_link_code_;
     QString node_id_;
+    bool receiver_ready_ = false;
     std::unique_ptr<ReceiverServerRunner> receiver_runner_;
     std::unique_ptr<GuiReceiverEvents> receiver_events_;
     std::unique_ptr<SenderTransferRunner> sender_runner_;
