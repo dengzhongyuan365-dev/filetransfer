@@ -118,4 +118,66 @@ void ReceiverServer::clear_active_listener(Listener* listener) {
     }
 }
 
+ReceiverServerRunner::ReceiverServerRunner(NetworkBackend& backend) : server_(backend) {}
+
+ReceiverServerRunner::~ReceiverServerRunner() {
+    stop();
+    if (thread_.joinable()) {
+        thread_.join();
+    }
+}
+
+Result<bool> ReceiverServerRunner::start(ReceiverConfig config, ReceiverServerEvents& events) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (running_) {
+            return Result<bool>::failure(
+                make_error(ErrorCode::invalid_argument, "receiver server is already running"));
+        }
+
+        if (thread_.joinable()) {
+            return Result<bool>::failure(
+                make_error(ErrorCode::invalid_argument,
+                           "previous receiver server run has not been joined"));
+        }
+
+        result_.reset();
+        running_ = true;
+    }
+
+    thread_ = std::thread([this, config = std::move(config), &events]() mutable {
+        auto result = server_.run(config, events);
+        std::lock_guard<std::mutex> lock(mutex_);
+        result_ = std::move(result);
+        running_ = false;
+    });
+
+    return Result<bool>::success(true);
+}
+
+void ReceiverServerRunner::stop() {
+    server_.stop();
+}
+
+Result<ReceiverServerReport> ReceiverServerRunner::join() {
+    if (thread_.joinable()) {
+        thread_.join();
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!result_) {
+        return Result<ReceiverServerReport>::failure(
+            make_error(ErrorCode::internal_error, "receiver server has not been started"));
+    }
+
+    auto result = std::move(*result_);
+    result_.reset();
+    return result;
+}
+
+bool ReceiverServerRunner::running() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return running_;
+}
+
 }  // namespace lan

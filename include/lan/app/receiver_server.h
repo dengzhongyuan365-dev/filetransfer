@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <optional>
+#include <thread>
 
 #include "lan/app/receiver_config.h"
 #include "lan/common/result.h"
@@ -47,6 +49,27 @@ private:
     std::atomic_bool stop_requested_ = false;
     std::mutex listener_mutex_;
     Listener* active_listener_ = nullptr;
+};
+
+class ReceiverServerRunner {
+public:
+    explicit ReceiverServerRunner(NetworkBackend& backend = default_network_backend());
+    ~ReceiverServerRunner();
+
+    ReceiverServerRunner(const ReceiverServerRunner&) = delete;
+    ReceiverServerRunner& operator=(const ReceiverServerRunner&) = delete;
+
+    Result<bool> start(ReceiverConfig config, ReceiverServerEvents& events);
+    void stop();
+    Result<ReceiverServerReport> join();
+    bool running() const;
+
+private:
+    ReceiverServer server_;
+    mutable std::mutex mutex_;
+    std::thread thread_;
+    bool running_ = false;
+    std::optional<Result<ReceiverServerReport>> result_;
 };
 
 }  // namespace lan

@@ -584,4 +584,30 @@ TEST(ReceiverServerTest, StopsWhileWaitingForConnection) {
     EXPECT_FALSE(events.client_error);
 }
 
+TEST(ReceiverServerRunnerTest, StartsStopsAndJoinsBackgroundServer) {
+    auto listener = std::make_unique<BlockingListener>();
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = std::filesystem::temp_directory_path();
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServerRunner runner(backend);
+
+    auto started = runner.start(receiver_config, events);
+    ASSERT_TRUE(started) << started.error().message;
+
+    ASSERT_TRUE(events.wait_until_listening());
+    EXPECT_TRUE(runner.running());
+
+    runner.stop();
+    auto served = runner.join();
+    ASSERT_TRUE(served) << served.error().message;
+
+    EXPECT_TRUE(served.value().stopped);
+    EXPECT_EQ(served.value().accepted_connections, 0);
+    EXPECT_EQ(served.value().failed_connections, 0);
+    EXPECT_FALSE(runner.running());
+}
+
 }  // namespace
