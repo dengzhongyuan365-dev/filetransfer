@@ -24,6 +24,7 @@ add_library(lan_core
     transfer/single_file.cpp
     app/sender_config.cpp
     app/receiver_config.cpp
+    app/receiver_server.cpp
 )
 
 target_include_directories(lan_core PUBLIC

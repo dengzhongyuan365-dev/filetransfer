@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "lan/app/receiver_config.h"
 #include "lan/common/parse.h"
 #include "lan/common/size.h"
 
@@ -28,6 +29,20 @@ TEST(FormatSizeTest, FormatsBytesAndBinaryUnits) {
 TEST(FormatRateTest, FormatsBytesPerSecond) {
     EXPECT_EQ(lan::format_rate(2048, 2.0), "1.00 KiB/s");
     EXPECT_EQ(lan::format_rate(2048, 0.0), "n/a");
+}
+
+TEST(ReceiverConfigTest, ParsesOnceMode) {
+    const char* args[] = {"receiver", "--port", "9000", "--dir", "/tmp", "--once"};
+    auto config = lan::parse_receiver_args(6, const_cast<char**>(args));
+    ASSERT_TRUE(config);
+    EXPECT_TRUE(config.value().once);
+}
+
+TEST(ReceiverConfigTest, DefaultsToPersistentMode) {
+    const char* args[] = {"receiver", "--port", "9000", "--dir", "/tmp"};
+    auto config = lan::parse_receiver_args(5, const_cast<char**>(args));
+    ASSERT_TRUE(config);
+    EXPECT_FALSE(config.value().once);
 }
 
 }  // namespace

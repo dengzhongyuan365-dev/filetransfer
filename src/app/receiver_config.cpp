@@ -35,10 +35,11 @@ Result<std::string_view> next_value(int argc, char* argv[], int& index, std::str
 std::string receiver_usage() {
     return "Usage:\n"
            "  receiver --port <port> --dir <receive-dir> [--bind <address>] "
-           "[--allow-overwrite] [--block-size <size>]\n\n"
+           "[--allow-overwrite] [--once] [--block-size <size>]\n\n"
            "Examples:\n"
            "  receiver --port 9000 --dir ~/Downloads/reviewdir\n"
            "  receiver --bind 0.0.0.0 --port 9000 --dir ~/Downloads/reviewdir\n"
+           "  receiver --port 9000 --dir ~/Downloads/reviewdir --once\n"
            "  receiver --port 9000 --dir ~/Downloads/reviewdir --block-size 1MiB\n";
 }
 
@@ -81,6 +82,8 @@ Result<ReceiverConfig> parse_receiver_args(int argc, char* argv[]) {
             has_dir = true;
         } else if (arg == "--allow-overwrite") {
             config.allow_overwrite = true;
+        } else if (arg == "--once") {
+            config.once = true;
         } else if (arg == "--block-size") {
             auto value = next_value(argc, argv, i, arg);
             if (!value) {

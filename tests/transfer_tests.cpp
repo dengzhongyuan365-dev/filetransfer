@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "lan/app/receiver_config.h"
+#include "lan/app/receiver_server.h"
 #include "lan/app/sender_config.h"
 #include "lan/common/error.h"
 #include "lan/fs/file_hash.h"
@@ -143,6 +144,78 @@ MemoryConnectionPair make_memory_connection_pair() {
         .server = MemoryConnection(client_to_server, server_to_client),
     };
 }
+
+class SingleConnectionListener final : public lan::Listener {
+public:
+    explicit SingleConnectionListener(std::unique_ptr<lan::Connection> connection)
+        : connection_(std::move(connection)) {}
+
+    lan::Result<std::unique_ptr<lan::Connection>> accept() override {
+        if (!connection_) {
+            return lan::Result<std::unique_ptr<lan::Connection>>::failure(
+                lan::Error{lan::ErrorCode::network_error, "no queued memory connection"});
+        }
+
+        return lan::Result<std::unique_ptr<lan::Connection>>::success(std::move(connection_));
+    }
+
+private:
+    std::unique_ptr<lan::Connection> connection_;
+};
+
+class FakeNetworkBackend final : public lan::NetworkBackend {
+public:
+    explicit FakeNetworkBackend(std::unique_ptr<lan::Listener> listener)
+        : listener_(std::move(listener)) {}
+
+    lan::Result<std::unique_ptr<lan::Listener>> listen(std::string_view, std::uint16_t) override {
+        if (!listener_) {
+            return lan::Result<std::unique_ptr<lan::Listener>>::failure(
+                lan::Error{lan::ErrorCode::network_error, "listener already consumed"});
+        }
+
+        return lan::Result<std::unique_ptr<lan::Listener>>::success(std::move(listener_));
+    }
+
+    lan::Result<std::unique_ptr<lan::Connection>> connect(std::string_view,
+                                                          std::uint16_t) override {
+        return lan::Result<std::unique_ptr<lan::Connection>>::failure(
+            lan::Error{lan::ErrorCode::network_error, "fake backend does not connect"});
+    }
+
+private:
+    std::unique_ptr<lan::Listener> listener_;
+};
+
+class CapturingReceiverEvents final : public lan::ReceiverServerEvents {
+public:
+    void on_listening(const lan::ReceiverConfig&) override {
+        listening = true;
+    }
+
+    void on_file_received(const lan::ReceiveFileReport& report) override {
+        file_received = true;
+        file_report = report;
+    }
+
+    void on_directory_synced(const lan::ReceiveSyncReport& report) override {
+        directory_synced = true;
+        sync_report = report;
+    }
+
+    void on_client_error(const lan::Error& error) override {
+        client_error = true;
+        last_error = error;
+    }
+
+    bool listening = false;
+    bool file_received = false;
+    bool directory_synced = false;
+    bool client_error = false;
+    lan::ReceiveFileReport file_report;
+    lan::ReceiveSyncReport sync_report;
+    lan::Error last_error;
+};
 
 TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
     lan::FileBeginMetadata metadata{
@@ -383,6 +456,61 @@ TEST(SyncSessionTest, RejectsUnexpectedHelloThroughConnectionInterface) {
     EXPECT_EQ(error_frame.value().type, lan::MessageType::error);
     EXPECT_NE(lan::body_as_string(error_frame.value()).find("expected sync hello frame"),
               std::string::npos);
+}
+
+TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
+    TempDir source("receiver-server-source-test");
+    TempDir receive("receiver-server-receive-test");
+
+    write_text(source.path() / "same.txt", "same\n");
+    write_text(receive.path() / "same.txt", "same\n");
+    write_text(source.path() / "new.txt", "new\n");
+
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    MemoryConnection client(server_to_client, client_to_server);
+    auto server_connection =
+        std::make_unique<MemoryConnection>(client_to_server, server_to_client);
+
+    auto listener =
+        std::make_unique<SingleConnectionListener>(std::move(server_connection));
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive.path();
+    receiver_config.once = true;
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source.path();
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServer server(backend);
+
+    auto sender_result = lan::Result<lan::SendSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "sender did not run"});
+    std::thread sender([&] {
+        sender_result = lan::sync_sender_to_connection(sender_config, 5, client);
+    });
+
+    auto served = server.run(receiver_config, events);
+    sender.join();
+
+    ASSERT_TRUE(sender_result) << sender_result.error().message;
+    ASSERT_TRUE(served) << served.error().message;
+    EXPECT_TRUE(events.listening);
+    EXPECT_TRUE(events.directory_synced);
+    EXPECT_FALSE(events.file_received);
+    EXPECT_FALSE(events.client_error);
+    EXPECT_EQ(served.value().accepted_connections, 1);
+    EXPECT_EQ(served.value().failed_connections, 0);
+    EXPECT_EQ(events.sync_report.skipped_files, 1);
+    EXPECT_EQ(events.sync_report.full_files, 1);
+
+    auto src_hash = lan::hash_file(source.path() / "new.txt");
+    auto dst_hash = lan::hash_file(receive.path() / "new.txt");
+    ASSERT_TRUE(src_hash);
+    ASSERT_TRUE(dst_hash);
+    EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
 }
 
 }  // namespace
