@@ -18,17 +18,26 @@ ReceiverServer::ReceiverServer(NetworkBackend& backend) : backend_(backend) {}
 
 Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
                                                  ReceiverServerEvents& events) {
+    stop_requested_.store(false);
+
     auto listener = backend_.listen(config.bind_address, config.port);
     if (!listener) {
         return Result<ReceiverServerReport>::failure(listener.error());
     }
 
+    set_active_listener(listener.value().get());
     events.on_listening(config);
 
     ReceiverServerReport report;
     do {
         auto client = listener.value()->accept();
         if (!client) {
+            if (stop_requested_.load()) {
+                report.stopped = true;
+                clear_active_listener(listener.value().get());
+                return Result<ReceiverServerReport>::success(report);
+            }
+            clear_active_listener(listener.value().get());
             return Result<ReceiverServerReport>::failure(client.error());
         }
 
@@ -43,9 +52,25 @@ Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
         }
 
         ++report.accepted_connections;
-    } while (!config.once);
+    } while (!config.once && !stop_requested_.load());
 
+    report.stopped = stop_requested_.load();
+    clear_active_listener(listener.value().get());
     return Result<ReceiverServerReport>::success(report);
+}
+
+void ReceiverServer::stop() {
+    stop_requested_.store(true);
+
+    Listener* listener = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(listener_mutex_);
+        listener = active_listener_;
+    }
+
+    if (listener != nullptr) {
+        listener->close();
+    }
 }
 
 Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
@@ -79,6 +104,18 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
 
     events.on_file_received(received.value());
     return Result<bool>::success(true);
+}
+
+void ReceiverServer::set_active_listener(Listener* listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
+    active_listener_ = listener;
+}
+
+void ReceiverServer::clear_active_listener(Listener* listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
+    if (active_listener_ == listener) {
+        active_listener_ = nullptr;
+    }
 }
 
 }  // namespace lan

@@ -108,9 +108,9 @@ Result<FileDescriptor> listen_tcp(std::string_view bind_address, std::uint16_t p
         make_error(ErrorCode::network_error, errno_message("failed to bind/listen TCP socket")));
 }
 
-Result<FileDescriptor> accept_tcp(const FileDescriptor& listener) {
+Result<FileDescriptor> accept_tcp(int listener_fd) {
     while (true) {
-        const int fd = ::accept(listener.get(), nullptr, nullptr);
+        const int fd = ::accept(listener_fd, nullptr, nullptr);
         if (fd >= 0) {
             return Result<FileDescriptor>::success(FileDescriptor(fd));
         }
@@ -122,6 +122,10 @@ Result<FileDescriptor> accept_tcp(const FileDescriptor& listener) {
         return Result<FileDescriptor>::failure(
             make_error(ErrorCode::network_error, errno_message("failed to accept TCP connection")));
     }
+}
+
+Result<FileDescriptor> accept_tcp(const FileDescriptor& listener) {
+    return accept_tcp(listener.get());
 }
 
 Result<FileDescriptor> connect_tcp(std::string_view host, std::uint16_t port) {

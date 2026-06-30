@@ -1,6 +1,7 @@
 #include "lan/net/posix_backend.h"
 
 #include <memory>
+#include <sys/socket.h>
 #include <utility>
 
 #include "lan/net/tcp.h"
@@ -24,13 +25,32 @@ const FileDescriptor& PosixConnection::socket() const {
 PosixListener::PosixListener(FileDescriptor listener) : listener_(std::move(listener)) {}
 
 Result<std::unique_ptr<Connection>> PosixListener::accept() {
-    auto client = accept_tcp(listener_);
+    int listener_fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        listener_fd = listener_.get();
+    }
+
+    if (listener_fd < 0) {
+        return Result<std::unique_ptr<Connection>>::failure(
+            Error{ErrorCode::cancelled, "listener is closed"});
+    }
+
+    auto client = accept_tcp(listener_fd);
     if (!client) {
         return Result<std::unique_ptr<Connection>>::failure(client.error());
     }
 
     return Result<std::unique_ptr<Connection>>::success(
         std::make_unique<PosixConnection>(std::move(client).value()));
+}
+
+void PosixListener::close() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (listener_) {
+        (void)::shutdown(listener_.get(), SHUT_RDWR);
+    }
+    listener_.reset();
 }
 
 Result<std::unique_ptr<Listener>> PosixNetworkBackend::listen(std::string_view bind_address,

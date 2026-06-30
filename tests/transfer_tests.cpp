@@ -2,10 +2,12 @@
 
 #include <cstddef>
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -159,8 +161,37 @@ public:
         return lan::Result<std::unique_ptr<lan::Connection>>::success(std::move(connection_));
     }
 
+    void close() override {
+        connection_.reset();
+    }
+
 private:
     std::unique_ptr<lan::Connection> connection_;
+};
+
+class BlockingListener final : public lan::Listener {
+public:
+    lan::Result<std::unique_ptr<lan::Connection>> accept() override {
+        std::unique_lock<std::mutex> lock(mutex_);
+        closed_changed_.wait(lock, [this] {
+            return closed_;
+        });
+        return lan::Result<std::unique_ptr<lan::Connection>>::failure(
+            lan::Error{lan::ErrorCode::cancelled, "listener closed"});
+    }
+
+    void close() override {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            closed_ = true;
+        }
+        closed_changed_.notify_all();
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable closed_changed_;
+    bool closed_ = false;
 };
 
 class FakeNetworkBackend final : public lan::NetworkBackend {
@@ -190,7 +221,11 @@ private:
 class CapturingReceiverEvents final : public lan::ReceiverServerEvents {
 public:
     void on_listening(const lan::ReceiverConfig&) override {
-        listening = true;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            listening = true;
+        }
+        listening_changed_.notify_all();
     }
 
     void on_file_received(const lan::ReceiveFileReport& report) override {
@@ -208,6 +243,13 @@ public:
         last_error = error;
     }
 
+    bool wait_until_listening() {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return listening_changed_.wait_for(lock, std::chrono::seconds(1), [this] {
+            return listening;
+        });
+    }
+
     bool listening = false;
     bool file_received = false;
     bool directory_synced = false;
@@ -215,6 +257,10 @@ public:
     lan::ReceiveFileReport file_report;
     lan::ReceiveSyncReport sync_report;
     lan::Error last_error;
+
+private:
+    std::mutex mutex_;
+    std::condition_variable listening_changed_;
 };
 
 TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
@@ -511,6 +557,31 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     ASSERT_TRUE(src_hash);
     ASSERT_TRUE(dst_hash);
     EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
+}
+
+TEST(ReceiverServerTest, StopsWhileWaitingForConnection) {
+    auto listener = std::make_unique<BlockingListener>();
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = std::filesystem::temp_directory_path();
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServer server(backend);
+
+    auto served_future = std::async(std::launch::async, [&] {
+        return server.run(receiver_config, events);
+    });
+
+    ASSERT_TRUE(events.wait_until_listening());
+    server.stop();
+
+    auto served = served_future.get();
+    ASSERT_TRUE(served) << served.error().message;
+    EXPECT_TRUE(served.value().stopped);
+    EXPECT_EQ(served.value().accepted_connections, 0);
+    EXPECT_EQ(served.value().failed_connections, 0);
+    EXPECT_FALSE(events.client_error);
 }
 
 }  // namespace

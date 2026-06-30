@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 
 #include "lan/app/receiver_config.h"
 #include "lan/common/result.h"
@@ -13,6 +15,7 @@ namespace lan {
 struct ReceiverServerReport {
     std::uint64_t accepted_connections = 0;
     std::uint64_t failed_connections = 0;
+    bool stopped = false;
 };
 
 class ReceiverServerEvents {
@@ -31,13 +34,19 @@ public:
 
     Result<ReceiverServerReport> run(const ReceiverConfig& config,
                                      ReceiverServerEvents& events);
+    void stop();
 
 private:
     Result<bool> handle_client(const ReceiverConfig& config,
                                Connection& connection,
                                ReceiverServerEvents& events);
+    void set_active_listener(Listener* listener);
+    void clear_active_listener(Listener* listener);
 
     NetworkBackend& backend_;
+    std::atomic_bool stop_requested_ = false;
+    std::mutex listener_mutex_;
+    Listener* active_listener_ = nullptr;
 };
 
 }  // namespace lan

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string_view>
 
 #include "lan/common/result.h"
@@ -27,8 +28,10 @@ public:
     explicit PosixListener(FileDescriptor listener);
 
     Result<std::unique_ptr<Connection>> accept() override;
+    void close() override;
 
 private:
+    std::mutex mutex_;
     FileDescriptor listener_;
 };
 

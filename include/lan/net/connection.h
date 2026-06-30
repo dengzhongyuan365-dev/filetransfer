@@ -31,6 +31,7 @@ public:
     Listener& operator=(const Listener&) = delete;
 
     virtual Result<std::unique_ptr<Connection>> accept() = 0;
+    virtual void close() = 0;
 
 protected:
     Listener() = default;
