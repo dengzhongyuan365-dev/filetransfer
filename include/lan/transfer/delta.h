@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 #include "lan/common/result.h"
@@ -25,6 +26,7 @@ struct DeltaOp {
 struct DeltaPlan {
     std::uint64_t source_size = 0;
     std::string source_sha256;
+    std::uint32_t op_count = 0;
     std::vector<DeltaOp> ops;
 };
 
@@ -34,5 +36,8 @@ Result<DeltaPlan> build_delta(const std::filesystem::path& source_path,
 Result<bool> apply_delta(const std::filesystem::path& basis_path,
                          const std::filesystem::path& output_path,
                          const std::vector<DeltaOp>& ops);
+Result<bool> apply_delta_op(std::ifstream& basis,
+                            std::ofstream& output,
+                            const DeltaOp& op);
 
 }  // namespace lan

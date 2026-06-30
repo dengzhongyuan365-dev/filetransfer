@@ -24,6 +24,8 @@ enum class MessageType : std::uint8_t {
     manifest = 7,
     sync_plan = 8,
     delta = 9,
+    delta_begin = 10,
+    delta_end = 11,
 };
 
 struct Frame {

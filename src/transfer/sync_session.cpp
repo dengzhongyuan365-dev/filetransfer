@@ -1,5 +1,6 @@
 #include "lan/transfer/sync_session.h"
 
+#include <fstream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -89,22 +90,6 @@ std::filesystem::path part_path_for(const std::filesystem::path& target) {
     return part;
 }
 
-std::uint64_t estimated_delta_plan_body_size(const DeltaPlan& plan) {
-    std::uint64_t size = 8;  // source_size
-    size += 4 + plan.source_sha256.size();
-    size += 4;  // op count
-
-    for (const auto& op : plan.ops) {
-        size += 1;  // op type
-        size += 8;  // basis_offset
-        size += 8;  // size
-        size += 8;  // data size
-        size += op.data.size();
-    }
-
-    return size;
-}
-
 Result<bool> verify_file_hash(const std::filesystem::path& path, const ManifestEntry& entry) {
     auto hash = hash_file(path);
     if (!hash) {
@@ -121,17 +106,77 @@ Result<bool> verify_file_hash(const std::filesystem::path& path, const ManifestE
     return Result<bool>::success(true);
 }
 
-Result<bool> apply_delta_to_target(const std::filesystem::path& receive_root,
-                                   const SyncPlanEntry& entry,
-                                   const DeltaPlan& delta) {
+Result<bool> apply_delta_stream_to_target(Connection& connection,
+                                          const std::filesystem::path& receive_root,
+                                          const SyncPlanEntry& entry) {
     const auto target = receive_root / entry.manifest_entry.relative_path;
     const auto part_path = part_path_for(target);
     std::filesystem::create_directories(target.parent_path());
     PartFileGuard part_file(part_path);
 
-    auto applied = apply_delta(target, part_path, delta.ops);
-    if (!applied) {
-        return Result<bool>::failure(applied.error());
+    auto begin_frame = read_frame(connection);
+    if (!begin_frame) {
+        return Result<bool>::failure(begin_frame.error());
+    }
+    if (begin_frame.value().type != MessageType::delta_begin) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::protocol_error, "expected delta_begin frame"));
+    }
+
+    auto header = decode_delta_header(begin_frame.value().body);
+    if (!header) {
+        return Result<bool>::failure(header.error());
+    }
+    if (header.value().source_size != entry.manifest_entry.size ||
+        header.value().source_sha256 != entry.manifest_entry.sha256) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::protocol_error, "delta header does not match sync plan entry"));
+    }
+
+    std::ifstream basis(target, std::ios::binary);
+    std::ofstream output(part_path, std::ios::binary | std::ios::trunc);
+    if (!output) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error, "failed to open " + quote_path(part_path)));
+    }
+
+    std::uint64_t ops_received = 0;
+    while (true) {
+        auto frame = read_frame(connection);
+        if (!frame) {
+            return Result<bool>::failure(frame.error());
+        }
+
+        if (frame.value().type == MessageType::delta_end) {
+            break;
+        }
+
+        if (frame.value().type != MessageType::delta) {
+            return Result<bool>::failure(
+                make_error(ErrorCode::protocol_error, "expected delta or delta_end frame"));
+        }
+
+        auto op = decode_delta_op(frame.value().body);
+        if (!op) {
+            return Result<bool>::failure(op.error());
+        }
+
+        auto applied = apply_delta_op(basis, output, op.value());
+        if (!applied) {
+            return Result<bool>::failure(applied.error());
+        }
+        ++ops_received;
+    }
+
+    if (ops_received != header.value().op_count) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::protocol_error, "delta op count does not match delta header"));
+    }
+
+    output.close();
+    if (!output) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error, "failed to close " + quote_path(part_path)));
     }
 
     auto verified = verify_file_hash(part_path, entry.manifest_entry);
@@ -150,6 +195,30 @@ Result<bool> apply_delta_to_target(const std::filesystem::path& receive_root,
 
     part_file.commit();
     return Result<bool>::success(true);
+}
+
+Result<bool> send_delta_stream(Connection& connection, const DeltaPlan& delta) {
+    Frame begin;
+    begin.type = MessageType::delta_begin;
+    begin.body = encode_delta_header(delta);
+    auto begin_written = write_frame(connection, begin);
+    if (!begin_written) {
+        return begin_written;
+    }
+
+    for (const auto& op : delta.ops) {
+        Frame frame;
+        frame.type = MessageType::delta;
+        frame.body = encode_delta_op(op);
+        auto written = write_frame(connection, frame);
+        if (!written) {
+            return written;
+        }
+    }
+
+    Frame end;
+    end.type = MessageType::delta_end;
+    return write_frame(connection, end);
 }
 
 Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
@@ -335,17 +404,7 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         if (!delta) {
             return Result<SendSyncReport>::failure(delta.error());
         }
-        if (estimated_delta_plan_body_size(delta.value()) > max_frame_body_size) {
-            return Result<SendSyncReport>::failure(
-                make_error(ErrorCode::invalid_argument,
-                           "delta frame for " + entry.manifest_entry.relative_path.generic_string() +
-                               " is larger than 64 MiB; streaming delta frames are not implemented yet"));
-        }
-
-        Frame delta_frame;
-        delta_frame.type = MessageType::delta;
-        delta_frame.body = encode_delta_plan(delta.value());
-        auto delta_written = write_frame(*connection.value(), delta_frame);
+        auto delta_written = send_delta_stream(*connection.value(), delta.value());
         if (!delta_written) {
             return Result<SendSyncReport>::failure(delta_written.error());
         }
@@ -421,22 +480,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
             continue;
         }
 
-        auto delta_frame = read_frame(connection);
-        if (!delta_frame) {
-            return Result<ReceiveSyncReport>::failure(delta_frame.error());
-        }
-        if (delta_frame.value().type != MessageType::delta) {
-            return fail_sync_receiver(
-                connection,
-                make_error(ErrorCode::protocol_error, "expected delta frame"));
-        }
-
-        auto delta = decode_delta_plan(delta_frame.value().body);
-        if (!delta) {
-            return fail_sync_receiver(connection, delta.error());
-        }
-
-        auto applied = apply_delta_to_target(config.receive_dir, entry, delta.value());
+        auto applied = apply_delta_stream_to_target(connection, config.receive_dir, entry);
         if (!applied) {
             return fail_sync_receiver(connection, applied.error());
         }

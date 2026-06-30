@@ -159,6 +159,7 @@ Result<DeltaPlan> build_delta(const std::filesystem::path& source_path,
     }
 
     flush_literal(plan.ops, literal);
+    plan.op_count = static_cast<std::uint32_t>(plan.ops.size());
     return Result<DeltaPlan>::success(std::move(plan));
 }
 
@@ -172,43 +173,44 @@ Result<bool> apply_delta(const std::filesystem::path& basis_path,
             make_error(ErrorCode::io_error, "failed to open delta output " + quote_path(output_path)));
     }
 
-    std::vector<std::byte> copy_buffer;
     for (const auto& op : ops) {
-        if (op.type == DeltaOpType::literal_data) {
-            auto written = write_bytes(output, op.data.data(), op.data.size());
-            if (!written) {
-                return written;
-            }
-            continue;
-        }
-
-        if (!basis) {
-            return Result<bool>::failure(
-                make_error(ErrorCode::io_error, "failed to open delta basis " + quote_path(basis_path)));
-        }
-
-        basis.clear();
-        basis.seekg(static_cast<std::streamoff>(op.basis_offset), std::ios::beg);
-        if (!basis) {
-            return Result<bool>::failure(make_error(ErrorCode::io_error, "failed to seek delta basis"));
-        }
-
-        copy_buffer.resize(static_cast<std::size_t>(op.size));
-        if (!copy_buffer.empty()) {
-            basis.read(reinterpret_cast<char*>(copy_buffer.data()),
-                       static_cast<std::streamsize>(copy_buffer.size()));
-            if (!basis) {
-                return Result<bool>::failure(make_error(ErrorCode::io_error, "failed to read delta basis"));
-            }
-        }
-
-        auto written = write_bytes(output, copy_buffer.data(), copy_buffer.size());
-        if (!written) {
-            return written;
+        auto applied = apply_delta_op(basis, output, op);
+        if (!applied) {
+            return applied;
         }
     }
 
     return Result<bool>::success(true);
+}
+
+Result<bool> apply_delta_op(std::ifstream& basis,
+                            std::ofstream& output,
+                            const DeltaOp& op) {
+    if (op.type == DeltaOpType::literal_data) {
+        return write_bytes(output, op.data.data(), op.data.size());
+    }
+
+    if (!basis) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error, "failed to open delta basis"));
+    }
+
+    basis.clear();
+    basis.seekg(static_cast<std::streamoff>(op.basis_offset), std::ios::beg);
+    if (!basis) {
+        return Result<bool>::failure(make_error(ErrorCode::io_error, "failed to seek delta basis"));
+    }
+
+    std::vector<std::byte> copy_buffer(static_cast<std::size_t>(op.size));
+    if (!copy_buffer.empty()) {
+        basis.read(reinterpret_cast<char*>(copy_buffer.data()),
+                   static_cast<std::streamsize>(copy_buffer.size()));
+        if (!basis) {
+            return Result<bool>::failure(make_error(ErrorCode::io_error, "failed to read delta basis"));
+        }
+    }
+
+    return write_bytes(output, copy_buffer.data(), copy_buffer.size());
 }
 
 }  // namespace lan

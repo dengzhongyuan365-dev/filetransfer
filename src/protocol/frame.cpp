@@ -53,6 +53,8 @@ bool is_valid_message_type(std::uint8_t value) {
         case MessageType::manifest:
         case MessageType::sync_plan:
         case MessageType::delta:
+        case MessageType::delta_begin:
+        case MessageType::delta_end:
             return true;
     }
 
@@ -156,6 +158,10 @@ std::string message_type_name(MessageType type) {
             return "sync_plan";
         case MessageType::delta:
             return "delta";
+        case MessageType::delta_begin:
+            return "delta_begin";
+        case MessageType::delta_end:
+            return "delta_end";
     }
 
     return "unknown";

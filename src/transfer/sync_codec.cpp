@@ -346,7 +346,7 @@ std::vector<std::byte> encode_delta_plan(const DeltaPlan& plan) {
     std::vector<std::byte> output;
     append_u64(output, plan.source_size);
     append_string(output, plan.source_sha256);
-    append_u32(output, static_cast<std::uint32_t>(plan.ops.size()));
+    append_u32(output, plan.op_count == 0 ? static_cast<std::uint32_t>(plan.ops.size()) : plan.op_count);
 
     for (const auto& op : plan.ops) {
         append_u8(output, static_cast<std::uint8_t>(op.type));
@@ -377,6 +377,7 @@ Result<DeltaPlan> decode_delta_plan(const std::vector<std::byte>& body) {
     DeltaPlan plan;
     plan.source_size = source_size.value();
     plan.source_sha256 = source_sha256.value();
+    plan.op_count = op_count.value();
     plan.ops.reserve(op_count.value());
 
     for (std::uint32_t i = 0; i < op_count.value(); ++i) {
@@ -415,6 +416,88 @@ Result<DeltaPlan> decode_delta_plan(const std::vector<std::byte>& body) {
     }
 
     return Result<DeltaPlan>::success(std::move(plan));
+}
+
+std::vector<std::byte> encode_delta_header(const DeltaPlan& plan) {
+    std::vector<std::byte> output;
+    append_u64(output, plan.source_size);
+    append_string(output, plan.source_sha256);
+    append_u32(output, static_cast<std::uint32_t>(plan.ops.size()));
+    return output;
+}
+
+Result<DeltaPlan> decode_delta_header(const std::vector<std::byte>& body) {
+    Reader reader(body);
+    auto source_size = reader.read_u64();
+    if (!source_size) {
+        return Result<DeltaPlan>::failure(source_size.error());
+    }
+    auto source_sha256 = reader.read_string();
+    if (!source_sha256) {
+        return Result<DeltaPlan>::failure(source_sha256.error());
+    }
+    auto op_count = reader.read_u32();
+    if (!op_count) {
+        return Result<DeltaPlan>::failure(op_count.error());
+    }
+
+    auto done = require_done(reader);
+    if (!done) {
+        return Result<DeltaPlan>::failure(done.error());
+    }
+
+    DeltaPlan plan;
+    plan.source_size = source_size.value();
+    plan.source_sha256 = source_sha256.value();
+    plan.op_count = op_count.value();
+    plan.ops.reserve(op_count.value());
+    return Result<DeltaPlan>::success(std::move(plan));
+}
+
+std::vector<std::byte> encode_delta_op(const DeltaOp& op) {
+    std::vector<std::byte> output;
+    append_u8(output, static_cast<std::uint8_t>(op.type));
+    append_u64(output, op.basis_offset);
+    append_u64(output, op.size);
+    append_u64(output, op.data.size());
+    append_bytes(output, op.data.data(), op.data.size());
+    return output;
+}
+
+Result<DeltaOp> decode_delta_op(const std::vector<std::byte>& body) {
+    Reader reader(body);
+    auto raw_type = reader.read_u8();
+    if (!raw_type) {
+        return Result<DeltaOp>::failure(raw_type.error());
+    }
+    if (raw_type.value() > static_cast<std::uint8_t>(DeltaOpType::literal_data)) {
+        return Result<DeltaOp>::failure(
+            make_error(ErrorCode::protocol_error, "invalid delta op type"));
+    }
+    auto basis_offset = reader.read_u64();
+    if (!basis_offset) {
+        return Result<DeltaOp>::failure(basis_offset.error());
+    }
+    auto size = reader.read_u64();
+    if (!size) {
+        return Result<DeltaOp>::failure(size.error());
+    }
+    auto data = reader.read_bytes();
+    if (!data) {
+        return Result<DeltaOp>::failure(data.error());
+    }
+
+    auto done = require_done(reader);
+    if (!done) {
+        return Result<DeltaOp>::failure(done.error());
+    }
+
+    return Result<DeltaOp>::success(DeltaOp{
+        .type = static_cast<DeltaOpType>(raw_type.value()),
+        .basis_offset = basis_offset.value(),
+        .size = size.value(),
+        .data = std::move(data).value(),
+    });
 }
 
 }  // namespace lan
