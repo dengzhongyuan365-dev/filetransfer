@@ -1,6 +1,7 @@
 find_package(OpenSSL REQUIRED)
 
 add_library(lan_core
+    common/error.cpp
     common/parse.cpp
     common/path.cpp
     common/size.cpp

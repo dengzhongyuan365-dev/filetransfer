@@ -68,6 +68,32 @@ TEST(FormatRateTest, FormatsBytesPerSecond) {
     EXPECT_EQ(lan::format_rate(2048, 0.0), "n/a");
 }
 
+TEST(ErrorTest, ExposesStableNamesAndCategories) {
+    EXPECT_EQ(lan::error_code_name(lan::ErrorCode::network_error), "network_error");
+    EXPECT_EQ(lan::error_category(lan::ErrorCode::network_error), lan::ErrorCategory::network);
+    EXPECT_EQ(lan::error_category_name(lan::ErrorCategory::network), "network");
+    EXPECT_EQ(lan::error_category(lan::ErrorCode::checksum_mismatch),
+              lan::ErrorCategory::integrity);
+}
+
+TEST(ErrorTest, ClassifiesRetryAndUserAction) {
+    EXPECT_TRUE(lan::is_retryable(lan::ErrorCode::network_error));
+    EXPECT_TRUE(lan::is_retryable(lan::ErrorCode::io_error));
+    EXPECT_FALSE(lan::is_retryable(lan::ErrorCode::invalid_argument));
+    EXPECT_FALSE(lan::is_retryable(lan::ErrorCode::checksum_mismatch));
+
+    EXPECT_TRUE(lan::needs_user_action(lan::ErrorCode::invalid_argument));
+    EXPECT_TRUE(lan::needs_user_action(lan::ErrorCode::checksum_mismatch));
+    EXPECT_FALSE(lan::needs_user_action(lan::ErrorCode::network_error));
+    EXPECT_FALSE(lan::needs_user_action(lan::ErrorCode::cancelled));
+}
+
+TEST(ErrorTest, FormatsErrorsWithCode) {
+    lan::Error error{lan::ErrorCode::protocol_error, "expected hello frame"};
+
+    EXPECT_EQ(lan::format_error(error), "[protocol_error] expected hello frame");
+}
+
 TEST(ReceiverConfigTest, ParsesOnceMode) {
     const char* args[] = {"receiver", "--port", "9000", "--dir", "/tmp", "--once"};
     auto config = lan::parse_receiver_args(6, const_cast<char**>(args));

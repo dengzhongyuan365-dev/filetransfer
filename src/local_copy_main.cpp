@@ -3,6 +3,7 @@
 #include <string_view>
 #include <utility>
 
+#include "lan/common/error.h"
 #include "lan/common/parse.h"
 #include "lan/common/size.h"
 #include "lan/fs/local_copy.h"
@@ -105,7 +106,7 @@ int main(int argc, char* argv[]) {
 
     auto parsed = parse_args(argc, argv);
     if (!parsed) {
-        std::cerr << parsed.error().message << '\n';
+        std::cerr << lan::format_error(parsed.error()) << '\n';
         std::cerr << usage();
         return 1;
     }
@@ -125,7 +126,7 @@ int main(int argc, char* argv[]) {
     std::cerr << '\n';
 
     if (!result) {
-        std::cerr << result.error().message << '\n';
+        std::cerr << lan::format_error(result.error()) << '\n';
         return 1;
     }
 

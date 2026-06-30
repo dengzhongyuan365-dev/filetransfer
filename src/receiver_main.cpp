@@ -7,6 +7,7 @@
 
 #include "lan/app/receiver_config.h"
 #include "lan/app/receiver_server.h"
+#include "lan/common/error.h"
 #include "lan/common/size.h"
 
 namespace {
@@ -83,7 +84,7 @@ public:
     void on_client_error(const lan::Error& error) override {
         finish_file_progress_line();
         finish_directory_progress_line();
-        std::cerr << error.message << '\n';
+        std::cerr << lan::format_error(error) << '\n';
     }
 
 private:
@@ -168,7 +169,7 @@ private:
 int main(int argc, char* argv[]) {
     auto result = lan::parse_receiver_args(argc, argv);
     if (!result) {
-        std::cerr << result.error().message << '\n';
+        std::cerr << lan::format_error(result.error()) << '\n';
         std::cerr << lan::receiver_usage();
         return 1;
     }
@@ -181,7 +182,7 @@ int main(int argc, char* argv[]) {
 
     auto validated = lan::validate_receiver_config(std::move(config));
     if (!validated) {
-        std::cerr << validated.error().message << '\n';
+        std::cerr << lan::format_error(validated.error()) << '\n';
         return 1;
     }
 

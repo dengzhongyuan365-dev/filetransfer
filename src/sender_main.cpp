@@ -3,6 +3,7 @@
 
 #include "lan/app/sender_config.h"
 #include "lan/app/sender_transfer.h"
+#include "lan/common/error.h"
 #include "lan/common/size.h"
 
 namespace {
@@ -60,7 +61,7 @@ private:
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
     if (!result) {
-        std::cerr << result.error().message << '\n';
+        std::cerr << lan::format_error(result.error()) << '\n';
         std::cerr << lan::sender_usage();
         return 1;
     }
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]) {
 
     auto validated = lan::validate_sender_config(std::move(config));
     if (!validated) {
-        std::cerr << validated.error().message << '\n';
+        std::cerr << lan::format_error(validated.error()) << '\n';
         return 1;
     }
 
@@ -92,7 +93,7 @@ int main(int argc, char* argv[]) {
     auto transferred = runner.run(final_config, events);
     events.finish_progress_line();
     if (!transferred) {
-        std::cerr << transferred.error().message << '\n';
+        std::cerr << lan::format_error(transferred.error()) << '\n';
         return 1;
     }
 
