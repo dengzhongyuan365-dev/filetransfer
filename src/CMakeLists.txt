@@ -1,4 +1,5 @@
 find_package(OpenSSL REQUIRED)
+find_package(Qt6 COMPONENTS Widgets Network)
 
 add_library(lan_core
     common/error.cpp
@@ -51,3 +52,8 @@ target_link_libraries(local-copy PRIVATE lan_core)
 target_link_libraries(lan_tests PRIVATE lan_core)
 
 add_test(NAME lan_tests COMMAND lan_tests)
+
+if(Qt6_FOUND)
+    add_executable(lan-gui gui_main.cpp)
+    target_link_libraries(lan-gui PRIVATE lan_core Qt6::Widgets Qt6::Network)
+endif()
