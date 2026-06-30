@@ -12,7 +12,7 @@
 #include "lan/common/stopwatch.h"
 #include "lan/fs/file_descriptor.h"
 #include "lan/fs/file_hash.h"
-#include "lan/net/tcp.h"
+#include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
 #include "lan/transfer/chunk_codec.h"
 #include "lan/transfer/file_metadata.h"
@@ -108,23 +108,23 @@ Result<bool> require_regular_file(const std::filesystem::path& path) {
     return Result<bool>::success(true);
 }
 
-Result<bool> send_text_frame(const FileDescriptor& socket, MessageType type, std::string_view message) {
+Result<bool> send_text_frame(Connection& connection, MessageType type, std::string_view message) {
     Frame frame;
     frame.type = type;
     frame.body = bytes_from_string(message);
-    return write_frame(socket, frame);
+    return write_frame(connection, frame);
 }
 
-Result<bool> send_ack_frame(const FileDescriptor& socket, std::string_view message) {
-    return send_text_frame(socket, MessageType::ack, message);
+Result<bool> send_ack_frame(Connection& connection, std::string_view message) {
+    return send_text_frame(connection, MessageType::ack, message);
 }
 
-Result<bool> send_error_frame(const FileDescriptor& socket, std::string_view message) {
-    return send_text_frame(socket, MessageType::error, message);
+Result<bool> send_error_frame(Connection& connection, std::string_view message) {
+    return send_text_frame(connection, MessageType::error, message);
 }
 
-Result<bool> wait_for_ack(const FileDescriptor& socket, std::string_view context) {
-    auto frame = read_frame(socket);
+Result<bool> wait_for_ack(Connection& connection, std::string_view context) {
+    auto frame = read_frame(connection);
     if (!frame) {
         return Result<bool>::failure(frame.error());
     }
@@ -145,8 +145,8 @@ Result<bool> wait_for_ack(const FileDescriptor& socket, std::string_view context
                        message_type_name(frame.value().type)));
 }
 
-Result<ReceiveFileReport> fail_receive_with_error(const FileDescriptor& socket, Error error) {
-    (void)send_error_frame(socket, error.message);
+Result<ReceiveFileReport> fail_receive_with_error(Connection& connection, Error error) {
+    (void)send_error_frame(connection, error.message);
     return Result<ReceiveFileReport>::failure(std::move(error));
 }
 
@@ -202,9 +202,9 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         return Result<SendFileReport>::failure(hash.error());
     }
 
-    auto socket = connect_tcp(config.target.host, config.target.port);
-    if (!socket) {
-        return Result<SendFileReport>::failure(socket.error());
+    auto connection = default_network_backend().connect(config.target.host, config.target.port);
+    if (!connection) {
+        return Result<SendFileReport>::failure(connection.error());
     }
 
     const auto file_name = config.source_path.filename().string();
@@ -212,7 +212,7 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
     Frame hello;
     hello.type = MessageType::hello;
     hello.body = bytes_from_string(file_name);
-    auto hello_result = write_frame(socket.value(), hello);
+    auto hello_result = write_frame(*connection.value(), hello);
     if (!hello_result) {
         return Result<SendFileReport>::failure(hello_result.error());
     }
@@ -224,12 +224,12 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         .size = size.value(),
         .sha256 = hash.value().hex_digest,
     }));
-    auto begin_result = write_frame(socket.value(), begin);
+    auto begin_result = write_frame(*connection.value(), begin);
     if (!begin_result) {
         return Result<SendFileReport>::failure(begin_result.error());
     }
 
-    auto begin_ack = wait_for_ack(socket.value(), "file_begin");
+    auto begin_ack = wait_for_ack(*connection.value(), "file_begin");
     if (!begin_ack) {
         return Result<SendFileReport>::failure(begin_ack.error());
     }
@@ -263,7 +263,7 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         chunk.body = encode_chunk_body(
             bytes_sent, buffer.data(), static_cast<std::size_t>(bytes_read));
 
-        auto chunk_result = write_frame(socket.value(), chunk);
+        auto chunk_result = write_frame(*connection.value(), chunk);
         if (!chunk_result) {
             return Result<SendFileReport>::failure(chunk_result.error());
         }
@@ -273,12 +273,12 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
 
     Frame end;
     end.type = MessageType::file_end;
-    auto end_result = write_frame(socket.value(), end);
+    auto end_result = write_frame(*connection.value(), end);
     if (!end_result) {
         return Result<SendFileReport>::failure(end_result.error());
     }
 
-    auto end_ack = wait_for_ack(socket.value(), "file_end");
+    auto end_ack = wait_for_ack(*connection.value(), "file_end");
     if (!end_ack) {
         return Result<SendFileReport>::failure(end_ack.error());
     }
@@ -292,17 +292,17 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
 }
 
 Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
-    auto listener = listen_tcp(config.bind_address, config.port);
+    auto listener = default_network_backend().listen(config.bind_address, config.port);
     if (!listener) {
         return Result<ReceiveFileReport>::failure(listener.error());
     }
 
-    auto client = accept_tcp(listener.value());
+    auto client = listener.value()->accept();
     if (!client) {
         return Result<ReceiveFileReport>::failure(client.error());
     }
 
-    auto hello = read_frame(client.value());
+    auto hello = read_frame(*client.value());
     if (!hello) {
         return Result<ReceiveFileReport>::failure(hello.error());
     }
@@ -311,7 +311,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
             make_error(ErrorCode::protocol_error, "expected hello frame"));
     }
 
-    auto begin = read_frame(client.value());
+    auto begin = read_frame(*client.value());
     if (!begin) {
         return Result<ReceiveFileReport>::failure(begin.error());
     }
@@ -322,22 +322,22 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
 
     auto metadata = decode_file_begin(body_as_string(begin.value()));
     if (!metadata) {
-        return fail_receive_with_error(client.value(), metadata.error());
+        return fail_receive_with_error(*client.value(), metadata.error());
     }
 
     auto target = safe_target_path(config, metadata.value().name);
     if (!target) {
-        return fail_receive_with_error(client.value(), target.error());
+        return fail_receive_with_error(*client.value(), target.error());
     }
 
     const auto part_path = part_path_for(target.value());
     auto output = open_for_write(part_path);
     if (!output) {
-        return fail_receive_with_error(client.value(), output.error());
+        return fail_receive_with_error(*client.value(), output.error());
     }
     PartFileGuard part_file(part_path);
 
-    auto begin_ack = send_ack_frame(client.value(), "ready");
+    auto begin_ack = send_ack_frame(*client.value(), "ready");
     if (!begin_ack) {
         return Result<ReceiveFileReport>::failure(begin_ack.error());
     }
@@ -346,7 +346,7 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
     std::uint64_t bytes_received = 0;
 
     while (true) {
-        auto frame = read_frame(client.value());
+        auto frame = read_frame(*client.value());
         if (!frame) {
             return Result<ReceiveFileReport>::failure(frame.error());
         }
@@ -357,32 +357,32 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
 
         if (frame.value().type != MessageType::chunk) {
             return fail_receive_with_error(
-                client.value(),
+                *client.value(),
                 make_error(ErrorCode::protocol_error, "expected chunk or file_end frame"));
         }
 
         auto chunk = decode_chunk_body(frame.value());
         if (!chunk) {
-            return fail_receive_with_error(client.value(), chunk.error());
+            return fail_receive_with_error(*client.value(), chunk.error());
         }
 
         if (chunk.value().offset != bytes_received) {
             return fail_receive_with_error(
-                client.value(),
+                *client.value(),
                 make_error(ErrorCode::protocol_error,
                            "chunk offset does not match received byte count"));
         }
 
         if (chunk.value().size > metadata.value().size - bytes_received) {
             return fail_receive_with_error(
-                client.value(),
+                *client.value(),
                 make_error(ErrorCode::protocol_error,
                            "chunk exceeds declared file size"));
         }
 
         auto write_result = write_all_file(output.value(), chunk.value().data, chunk.value().size);
         if (!write_result) {
-            return fail_receive_with_error(client.value(), write_result.error());
+            return fail_receive_with_error(*client.value(), write_result.error());
         }
 
         bytes_received += static_cast<std::uint64_t>(chunk.value().size);
@@ -390,14 +390,14 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
 
     if (bytes_received != metadata.value().size) {
         return fail_receive_with_error(
-            client.value(),
+            *client.value(),
             make_error(ErrorCode::protocol_error,
                        "received byte count does not match file_begin size"));
     }
 
     if (::fsync(output.value().get()) != 0) {
         return fail_receive_with_error(
-            client.value(),
+            *client.value(),
             make_error(ErrorCode::io_error, errno_message("failed to fsync", part_path, errno)));
     }
 
@@ -405,12 +405,12 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
 
     auto received_hash = hash_file(part_path);
     if (!received_hash) {
-        return fail_receive_with_error(client.value(), received_hash.error());
+        return fail_receive_with_error(*client.value(), received_hash.error());
     }
 
     if (received_hash.value().hex_digest != metadata.value().sha256) {
         return fail_receive_with_error(
-            client.value(),
+            *client.value(),
             make_error(ErrorCode::checksum_mismatch,
                        "received file sha256 does not match sender metadata"));
     }
@@ -419,14 +419,14 @@ Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config) {
     std::filesystem::rename(part_path, target.value(), ec);
     if (ec) {
         return fail_receive_with_error(
-            client.value(),
+            *client.value(),
             make_error(ErrorCode::io_error,
                        "failed to rename " + quote_path(part_path) + " to " +
                            quote_path(target.value()) + ": " + ec.message()));
     }
     part_file.commit();
 
-    auto end_ack = send_ack_frame(client.value(), "stored");
+    auto end_ack = send_ack_frame(*client.value(), "stored");
     if (!end_ack) {
         return Result<ReceiveFileReport>::failure(end_ack.error());
     }

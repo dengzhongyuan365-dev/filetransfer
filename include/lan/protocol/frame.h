@@ -8,6 +8,7 @@
 
 #include "lan/common/result.h"
 #include "lan/fs/file_descriptor.h"
+#include "lan/net/connection.h"
 
 namespace lan {
 
@@ -35,5 +36,7 @@ std::string body_as_string(const Frame& frame);
 
 Result<bool> write_frame(const FileDescriptor& socket, const Frame& frame);
 Result<Frame> read_frame(const FileDescriptor& socket);
+Result<bool> write_frame(Connection& connection, const Frame& frame);
+Result<Frame> read_frame(Connection& connection);
 
 }  // namespace lan

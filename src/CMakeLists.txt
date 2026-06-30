@@ -8,6 +8,7 @@ add_library(lan_core
     fs/file_descriptor.cpp
     fs/file_hash.cpp
     fs/local_copy.cpp
+    net/posix_backend.cpp
     net/tcp.cpp
     transfer/block_signature.cpp
     transfer/chunk_codec.cpp
