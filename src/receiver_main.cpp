@@ -19,7 +19,17 @@ public:
         std::cout.flush();
     }
 
+    void on_file_progress(const lan::ReceiveFileProgress& progress) override {
+        file_progress_seen_ = true;
+        std::cerr << '\r' << "receiving " << progress.file_name << "  "
+                  << lan::format_size(progress.bytes_received) << " / "
+                  << lan::format_size(progress.total_bytes) << "  "
+                  << lan::format_rate(progress.bytes_received, progress.elapsed_seconds);
+        std::cerr.flush();
+    }
+
     void on_file_received(const lan::ReceiveFileReport& report) override {
+        finish_file_progress_line();
         std::cout << "received file\n";
         std::cout << "  path: " << report.target_path.string() << '\n';
         std::cout << "  size: " << lan::format_size(report.bytes_received) << '\n';
@@ -29,7 +39,17 @@ public:
         std::cout << "  sha256: " << report.sha256 << '\n';
     }
 
+    void on_directory_progress(const lan::ReceiveSyncProgress& progress) override {
+        directory_progress_seen_ = true;
+        std::cerr << '\r' << "syncing files " << progress.processed_files << " / "
+                  << progress.manifest_files << "  skipped " << progress.skipped_files
+                  << "  full " << progress.full_files << "  delta " << progress.delta_files
+                  << "  written " << progress.files_written;
+        std::cerr.flush();
+    }
+
     void on_directory_synced(const lan::ReceiveSyncReport& synced) override {
+        finish_directory_progress_line();
         std::cout << "synced directory\n";
         std::cout << "  files: " << synced.manifest_files << '\n';
         std::cout << "  skipped: " << synced.skipped_files << '\n';
@@ -40,8 +60,28 @@ public:
     }
 
     void on_client_error(const lan::Error& error) override {
+        finish_file_progress_line();
+        finish_directory_progress_line();
         std::cerr << error.message << '\n';
     }
+
+private:
+    void finish_file_progress_line() {
+        if (file_progress_seen_) {
+            std::cerr << '\n';
+            file_progress_seen_ = false;
+        }
+    }
+
+    void finish_directory_progress_line() {
+        if (directory_progress_seen_) {
+            std::cerr << '\n';
+            directory_progress_seen_ = false;
+        }
+    }
+
+    bool file_progress_seen_ = false;
+    bool directory_progress_seen_ = false;
 };
 
 class SignalStopper {
