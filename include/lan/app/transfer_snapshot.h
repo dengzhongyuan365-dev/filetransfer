@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "lan/app/transfer_event.h"
 
@@ -49,6 +51,22 @@ private:
     bool can_start(std::uint64_t transfer_id, TransferState next_state) const;
 
     std::optional<TransferSnapshot> snapshot_;
+};
+
+class TransferSnapshotStore {
+public:
+    bool apply(const TransferStarted& event);
+    bool apply(const TransferProgress& event);
+    bool apply(const TransferCompleted& event);
+    bool apply(const TransferFailed& event);
+    bool apply(const TransferCancelled& event);
+
+    const TransferSnapshot* find(std::uint64_t transfer_id) const;
+    std::vector<TransferSnapshot> snapshots() const;
+    void clear();
+
+private:
+    std::map<std::uint64_t, TransferSnapshotTracker> trackers_;
 };
 
 }  // namespace lan

@@ -207,6 +207,93 @@ TEST(TransferSnapshotTrackerTest, RejectsInvalidTransitionsAndWrongIds) {
     }));
 }
 
+TEST(TransferSnapshotStoreTest, TracksMultipleTransfersById) {
+    lan::TransferSnapshotStore store;
+
+    ASSERT_TRUE(store.apply(lan::TransferStarted{
+        .transfer_id = 2,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/two.txt",
+        .name = "two.txt",
+    }));
+    ASSERT_TRUE(store.apply(lan::TransferStarted{
+        .transfer_id = 1,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::receive,
+        .kind = lan::TransferKind::directory,
+        .path = "/tmp/one",
+        .name = "one",
+    }));
+
+    ASSERT_TRUE(store.apply(lan::TransferProgress{
+        .transfer_id = 2,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/two.txt",
+        .name = "two.txt",
+        .current_bytes = 4,
+        .total_bytes = 8,
+    }));
+    ASSERT_TRUE(store.apply(lan::TransferCompleted{
+        .transfer_id = 1,
+        .state = lan::TransferState::completed,
+        .direction = lan::TransferDirection::receive,
+        .kind = lan::TransferKind::directory,
+        .path = "/tmp/one",
+        .name = "one",
+        .total_files = 3,
+        .skipped_files = 1,
+    }));
+
+    const auto* first = store.find(1);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->state, lan::TransferState::completed);
+    EXPECT_EQ(first->total_files, 3);
+    EXPECT_EQ(first->skipped_files, 1);
+
+    const auto* second = store.find(2);
+    ASSERT_NE(second, nullptr);
+    EXPECT_EQ(second->state, lan::TransferState::running);
+    EXPECT_EQ(second->current_bytes, 4);
+    EXPECT_EQ(second->total_bytes, 8);
+
+    const auto snapshots = store.snapshots();
+    ASSERT_EQ(snapshots.size(), 2);
+    EXPECT_EQ(snapshots[0].transfer_id, 1);
+    EXPECT_EQ(snapshots[1].transfer_id, 2);
+}
+
+TEST(TransferSnapshotStoreTest, RejectsDuplicateStartsAndUnknownUpdates) {
+    lan::TransferSnapshotStore store;
+
+    EXPECT_FALSE(store.apply(lan::TransferProgress{
+        .transfer_id = 9,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+
+    ASSERT_TRUE(store.apply(lan::TransferStarted{
+        .transfer_id = 9,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+    EXPECT_FALSE(store.apply(lan::TransferStarted{
+        .transfer_id = 9,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+
+    store.clear();
+    EXPECT_EQ(store.find(9), nullptr);
+    EXPECT_TRUE(store.snapshots().empty());
+}
+
 struct MemoryPipe {
     std::mutex mutex;
     std::condition_variable data_available;

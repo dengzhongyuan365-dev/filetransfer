@@ -123,4 +123,78 @@ bool TransferSnapshotTracker::apply(const TransferCancelled& event) {
     return true;
 }
 
+bool TransferSnapshotStore::apply(const TransferStarted& event) {
+    if (trackers_.contains(event.transfer_id)) {
+        return false;
+    }
+
+    TransferSnapshotTracker tracker;
+    if (!tracker.apply(event)) {
+        return false;
+    }
+
+    trackers_.emplace(event.transfer_id, std::move(tracker));
+    return true;
+}
+
+bool TransferSnapshotStore::apply(const TransferProgress& event) {
+    auto it = trackers_.find(event.transfer_id);
+    if (it == trackers_.end()) {
+        return false;
+    }
+
+    return it->second.apply(event);
+}
+
+bool TransferSnapshotStore::apply(const TransferCompleted& event) {
+    auto it = trackers_.find(event.transfer_id);
+    if (it == trackers_.end()) {
+        return false;
+    }
+
+    return it->second.apply(event);
+}
+
+bool TransferSnapshotStore::apply(const TransferFailed& event) {
+    auto it = trackers_.find(event.transfer_id);
+    if (it == trackers_.end()) {
+        return false;
+    }
+
+    return it->second.apply(event);
+}
+
+bool TransferSnapshotStore::apply(const TransferCancelled& event) {
+    auto it = trackers_.find(event.transfer_id);
+    if (it == trackers_.end()) {
+        return false;
+    }
+
+    return it->second.apply(event);
+}
+
+const TransferSnapshot* TransferSnapshotStore::find(std::uint64_t transfer_id) const {
+    const auto it = trackers_.find(transfer_id);
+    if (it == trackers_.end() || !it->second.snapshot()) {
+        return nullptr;
+    }
+
+    return &it->second.snapshot().value();
+}
+
+std::vector<TransferSnapshot> TransferSnapshotStore::snapshots() const {
+    std::vector<TransferSnapshot> result;
+    result.reserve(trackers_.size());
+    for (const auto& [_, tracker] : trackers_) {
+        if (tracker.snapshot()) {
+            result.push_back(tracker.snapshot().value());
+        }
+    }
+    return result;
+}
+
+void TransferSnapshotStore::clear() {
+    trackers_.clear();
+}
+
 }  // namespace lan
