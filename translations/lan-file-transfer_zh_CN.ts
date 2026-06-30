@@ -290,6 +290,11 @@ Send to the linked machine</source>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="930"/>
+        <source>Open containing folder</source>
+        <translation>打开所在目录</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="930"/>
         <source>Clear from list</source>
         <translation>清除列表记录</translation>
     </message>
@@ -312,6 +317,21 @@ Send to the linked machine</source>
         <location filename="../src/gui/main_window.cpp" line="1011"/>
         <source>Stopping transfer...</source>
         <translation>正在停止传输...</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1017"/>
+        <source>No local receive folder for this transfer.</source>
+        <translation>这个传输任务没有本机接收目录。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1017"/>
+        <source>Failed to open folder: %1</source>
+        <translation>打开目录失败：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1017"/>
+        <source>Opened folder: %1</source>
+        <translation>已打开目录：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1017"/>

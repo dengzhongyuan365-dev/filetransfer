@@ -5,6 +5,7 @@
 #include <QBoxLayout>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QFileDialog>
 #include <QFrame>
 #include <QHostAddress>
@@ -32,6 +33,7 @@
 #include <QTime>
 #include <QToolButton>
 #include <QUdpSocket>
+#include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -501,7 +503,7 @@ void MainWindow::apply_style() {
             border-color: #e2e7ef;
             color: #9aa3b2;
         }
-        #taskStopButton {
+        #taskOpenButton, #taskStopButton, #taskRemoveButton {
             min-width: 24px;
             max-width: 24px;
             min-height: 24px;
@@ -510,6 +512,23 @@ void MainWindow::apply_style() {
             border-radius: 12px;
             border-color: transparent;
             background: #f3f4f6;
+        }
+        #taskOpenButton {
+            color: #2563eb;
+        }
+        #taskOpenButton:hover {
+            background: #eef4ff;
+            color: #1d4ed8;
+        }
+        #taskOpenButton:pressed {
+            background: #dbe8ff;
+            color: #1e40af;
+        }
+        #taskOpenButton:disabled {
+            color: #a6adb8;
+            background: #f3f4f6;
+        }
+        #taskStopButton {
             color: #9f2f2f;
         }
         #taskStopButton:hover {
@@ -525,14 +544,6 @@ void MainWindow::apply_style() {
             background: #f3f4f6;
         }
         #taskRemoveButton {
-            min-height: 24px;
-            max-height: 24px;
-            min-width: 24px;
-            max-width: 24px;
-            padding: 0;
-            border-radius: 12px;
-            border-color: transparent;
-            background: #f3f4f6;
             color: #687386;
         }
         #taskRemoveButton:hover {
@@ -913,12 +924,19 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     auto* state = new QLabel(state_text(snapshot.state), card);
     state->setObjectName("stateBadge");
     state->setAlignment(Qt::AlignCenter);
-    state->setFixedWidth(84);
+    state->setFixedWidth(76);
     state->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     auto* actions = new QHBoxLayout();
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(4);
+    auto* open = make_task_tool_button(
+        QApplication::style()->standardIcon(QStyle::SP_DirOpenIcon), QCoreApplication::translate("MainWindow", "Open containing folder"), card);
+    open->setObjectName("taskOpenButton");
+    open->setEnabled(can_open_transfer_dir(snapshot));
+    connect(open, &QToolButton::clicked, this, [this, key] {
+        open_transfer_dir(key);
+    });
     auto* stop = make_task_tool_button(
         QApplication::style()->standardIcon(QStyle::SP_MediaStop), QCoreApplication::translate("MainWindow", "Stop transfer"), card);
     stop->setObjectName("taskStopButton");
@@ -933,6 +951,7 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     connect(remove, &QToolButton::clicked, this, [this, key] {
         remove_transfer_card(key);
     });
+    actions->addWidget(open);
     actions->addWidget(stop);
     actions->addWidget(remove);
     actions->setSizeConstraint(QLayout::SetFixedSize);
@@ -992,6 +1011,38 @@ bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
     return snapshot.state == TransferState::completed ||
            snapshot.state == TransferState::failed ||
            snapshot.state == TransferState::cancelled;
+}
+
+bool MainWindow::can_open_transfer_dir(const TransferSnapshot& snapshot) const {
+    return snapshot.direction == TransferDirection::receive &&
+           !transfer_open_dir(snapshot).isEmpty();
+}
+
+QString MainWindow::transfer_open_dir(const TransferSnapshot& snapshot) const {
+    if (snapshot.path.empty()) {
+        return {};
+    }
+
+    std::filesystem::path dir = snapshot.path;
+    if (snapshot.kind == TransferKind::file && dir.has_parent_path()) {
+        dir = dir.parent_path();
+    }
+    return to_qstring(dir);
+}
+
+void MainWindow::open_transfer_dir(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end() || !can_open_transfer_dir(it.value())) {
+        show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this transfer."));
+        return;
+    }
+
+    const auto dir = transfer_open_dir(it.value());
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
+        show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
+        return;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Opened folder: %1").arg(dir));
 }
 
 void MainWindow::stop_transfer(const QString& key) {

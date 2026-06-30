@@ -68,6 +68,9 @@ private:
     QString transfer_size_text(const TransferSnapshot& snapshot) const;
     bool can_stop_transfer(const TransferSnapshot& snapshot) const;
     bool can_clear_transfer(const TransferSnapshot& snapshot) const;
+    bool can_open_transfer_dir(const TransferSnapshot& snapshot) const;
+    QString transfer_open_dir(const TransferSnapshot& snapshot) const;
+    void open_transfer_dir(const QString& key);
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
 
