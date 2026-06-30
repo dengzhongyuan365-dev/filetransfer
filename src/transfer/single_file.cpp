@@ -400,6 +400,10 @@ Result<SendFileReport> send_single_file_to_connection(
         return Result<SendFileReport>::failure(
             make_error(ErrorCode::protocol_error, "receiver marked file complete at wrong offset"));
     }
+    const auto status = begin_ack.value().complete
+                            ? FileTransferStatus::skipped
+                            : (begin_ack.value().offset > 0 ? FileTransferStatus::resumed
+                                                            : FileTransferStatus::transferred);
 
     auto source = open_for_read(config.source_path);
     if (!source) {
@@ -481,6 +485,8 @@ Result<SendFileReport> send_single_file_to_connection(
         .bytes_sent = bytes_sent,
         .sha256 = hash.value().hex_digest,
         .elapsed_seconds = transfer_timer.elapsed_seconds(),
+        .status = status,
+        .resumed_from = begin_ack.value().offset,
     });
 }
 
@@ -585,6 +591,7 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
             .bytes_received = metadata.value().size,
             .sha256 = metadata.value().sha256,
             .elapsed_seconds = 0.0,
+            .status = FileTransferStatus::skipped,
         });
     }
 
@@ -614,6 +621,8 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
 
     Stopwatch transfer_timer;
     std::uint64_t bytes_received = resume_offset.value();
+    const auto status = resume_offset.value() > 0 ? FileTransferStatus::resumed
+                                                  : FileTransferStatus::transferred;
     auto publish_progress = [&] {
         if (on_progress) {
             on_progress(ReceiveFileProgress{
@@ -719,6 +728,8 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
         .bytes_received = bytes_received,
         .sha256 = received_hash.value().hex_digest,
         .elapsed_seconds = transfer_timer.elapsed_seconds(),
+        .status = status,
+        .resumed_from = resume_offset.value(),
     });
 }
 

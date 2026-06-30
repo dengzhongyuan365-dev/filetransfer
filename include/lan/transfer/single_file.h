@@ -14,11 +14,19 @@
 
 namespace lan {
 
+enum class FileTransferStatus {
+    transferred,
+    resumed,
+    skipped,
+};
+
 struct SendFileReport {
     std::string file_name;
     std::uint64_t bytes_sent = 0;
     std::string sha256;
     double elapsed_seconds = 0.0;
+    FileTransferStatus status = FileTransferStatus::transferred;
+    std::uint64_t resumed_from = 0;
 };
 
 struct SendFileProgress {
@@ -36,6 +44,8 @@ struct ReceiveFileReport {
     std::uint64_t bytes_received = 0;
     std::string sha256;
     double elapsed_seconds = 0.0;
+    FileTransferStatus status = FileTransferStatus::transferred;
+    std::uint64_t resumed_from = 0;
 };
 
 struct ReceiveFileProgress {

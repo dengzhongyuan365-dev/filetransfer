@@ -7,6 +7,19 @@
 
 namespace {
 
+std::string_view file_status_label(lan::FileTransferStatus status) {
+    switch (status) {
+        case lan::FileTransferStatus::transferred:
+            return "sent file";
+        case lan::FileTransferStatus::resumed:
+            return "resumed file";
+        case lan::FileTransferStatus::skipped:
+            return "skipped identical file";
+    }
+
+    return "sent file";
+}
+
 class ConsoleSenderEvents final : public lan::SenderTransferEvents {
 public:
     void on_file_progress(const lan::SendFileProgress& progress) override {
@@ -99,9 +112,12 @@ int main(int argc, char* argv[]) {
     }
 
     const auto& sent = transferred.value().file;
-    std::cout << "sent file\n";
+    std::cout << file_status_label(sent.status) << '\n';
     std::cout << "  name: " << sent.file_name << '\n';
     std::cout << "  size: " << lan::format_size(sent.bytes_sent) << '\n';
+    if (sent.status == lan::FileTransferStatus::resumed) {
+        std::cout << "  resumed from: " << lan::format_size(sent.resumed_from) << '\n';
+    }
     std::cout << "  elapsed: " << sent.elapsed_seconds << " s\n";
     std::cout << "  average speed: "
               << lan::format_rate(sent.bytes_sent, sent.elapsed_seconds) << '\n';

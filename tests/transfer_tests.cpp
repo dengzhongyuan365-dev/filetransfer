@@ -602,6 +602,8 @@ TEST(SendSingleFileTest, ReportsProgressForChunks) {
     ASSERT_TRUE(received) << received.error().message;
     EXPECT_EQ(sent.value().bytes_sent, 6);
     EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(sent.value().status, lan::FileTransferStatus::transferred);
+    EXPECT_EQ(received.value().status, lan::FileTransferStatus::transferred);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
@@ -652,6 +654,10 @@ TEST(SendSingleFileTest, ResumesFromExistingPartFile) {
     ASSERT_TRUE(received) << received.error().message;
     EXPECT_EQ(sent.value().bytes_sent, 6);
     EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(sent.value().status, lan::FileTransferStatus::resumed);
+    EXPECT_EQ(received.value().status, lan::FileTransferStatus::resumed);
+    EXPECT_EQ(sent.value().resumed_from, 3);
+    EXPECT_EQ(received.value().resumed_from, 3);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
     EXPECT_FALSE(std::filesystem::exists(receive_dir / "source.txt.part"));
 
@@ -699,6 +705,8 @@ TEST(SendSingleFileTest, NoResumeIgnoresExistingPartFile) {
 
     ASSERT_TRUE(sent) << sent.error().message;
     ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(sent.value().status, lan::FileTransferStatus::transferred);
+    EXPECT_EQ(received.value().status, lan::FileTransferStatus::transferred);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
@@ -745,6 +753,8 @@ TEST(SendSingleFileTest, RestartsWhenPartFileIsTooLarge) {
 
     ASSERT_TRUE(sent) << sent.error().message;
     ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(sent.value().status, lan::FileTransferStatus::transferred);
+    EXPECT_EQ(received.value().status, lan::FileTransferStatus::transferred);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
@@ -792,6 +802,8 @@ TEST(SendSingleFileTest, SkipsWhenTargetAlreadyMatches) {
     ASSERT_TRUE(received) << received.error().message;
     EXPECT_EQ(sent.value().bytes_sent, 6);
     EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(sent.value().status, lan::FileTransferStatus::skipped);
+    EXPECT_EQ(received.value().status, lan::FileTransferStatus::skipped);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_progress = {6};

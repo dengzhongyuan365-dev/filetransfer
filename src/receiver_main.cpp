@@ -11,6 +11,19 @@
 
 namespace {
 
+std::string_view file_status_label(lan::FileTransferStatus status) {
+    switch (status) {
+        case lan::FileTransferStatus::transferred:
+            return "received file";
+        case lan::FileTransferStatus::resumed:
+            return "resumed file";
+        case lan::FileTransferStatus::skipped:
+            return "skipped identical file";
+    }
+
+    return "received file";
+}
+
 class ConsoleReceiverEvents final : public lan::ReceiverServerEvents {
 public:
     void on_listening(const lan::ReceiverConfig& config) override {
@@ -30,9 +43,12 @@ public:
 
     void on_file_received(const lan::ReceiveFileReport& report) override {
         finish_file_progress_line();
-        std::cout << "received file\n";
+        std::cout << file_status_label(report.status) << '\n';
         std::cout << "  path: " << report.target_path.string() << '\n';
         std::cout << "  size: " << lan::format_size(report.bytes_received) << '\n';
+        if (report.status == lan::FileTransferStatus::resumed) {
+            std::cout << "  resumed from: " << lan::format_size(report.resumed_from) << '\n';
+        }
         std::cout << "  elapsed: " << report.elapsed_seconds << " s\n";
         std::cout << "  average speed: "
                   << lan::format_rate(report.bytes_received, report.elapsed_seconds) << '\n';
