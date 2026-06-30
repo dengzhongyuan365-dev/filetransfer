@@ -55,6 +55,16 @@ Result<FileDescriptor> open_for_write(const std::filesystem::path& path) {
     return Result<FileDescriptor>::success(FileDescriptor(fd));
 }
 
+Result<FileDescriptor> open_for_append(const std::filesystem::path& path) {
+    const int fd = ::open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (fd < 0) {
+        return Result<FileDescriptor>::failure(
+            make_error(ErrorCode::io_error, errno_message("failed to open", path, errno)));
+    }
+
+    return Result<FileDescriptor>::success(FileDescriptor(fd));
+}
+
 Result<bool> write_all_file(const FileDescriptor& file, const std::byte* data, std::size_t size) {
     std::size_t written = 0;
     const auto* bytes = reinterpret_cast<const char*>(data);
@@ -146,6 +156,28 @@ Result<bool> wait_for_ack(Connection& connection, std::string_view context) {
                        message_type_name(frame.value().type)));
 }
 
+Result<FileBeginAckMetadata> wait_for_file_begin_ack(Connection& connection) {
+    auto frame = read_frame(connection);
+    if (!frame) {
+        return Result<FileBeginAckMetadata>::failure(frame.error());
+    }
+
+    if (frame.value().type == MessageType::error) {
+        return Result<FileBeginAckMetadata>::failure(
+            make_error(ErrorCode::protocol_error,
+                       "file_begin: receiver error: " + body_as_string(frame.value())));
+    }
+
+    if (frame.value().type != MessageType::ack) {
+        return Result<FileBeginAckMetadata>::failure(
+            make_error(ErrorCode::protocol_error,
+                       "file_begin: expected ack or error frame, got " +
+                           message_type_name(frame.value().type)));
+    }
+
+    return decode_file_begin_ack(body_as_string(frame.value()));
+}
+
 Result<ReceiveFileReport> fail_receive_with_error(Connection& connection, Error error) {
     (void)send_error_frame(connection, error.message);
     return Result<ReceiveFileReport>::failure(std::move(error));
@@ -183,6 +215,36 @@ Result<std::filesystem::path> safe_target_path(const ReceiverConfig& config, std
     }
 
     return Result<std::filesystem::path>::success(std::move(target));
+}
+
+Result<std::uint64_t> choose_resume_offset(const std::filesystem::path& part_path,
+                                           const FileBeginMetadata& metadata) {
+    if (!metadata.resume) {
+        return Result<std::uint64_t>::success(0);
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(part_path, ec)) {
+        if (ec) {
+            return Result<std::uint64_t>::failure(
+                make_error(ErrorCode::io_error,
+                           "failed to inspect part file " + quote_path(part_path) + ": " + ec.message()));
+        }
+        return Result<std::uint64_t>::success(0);
+    }
+
+    const auto size = std::filesystem::file_size(part_path, ec);
+    if (ec) {
+        return Result<std::uint64_t>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to read part file size " + quote_path(part_path) + ": " + ec.message()));
+    }
+
+    if (size >= metadata.size) {
+        return Result<std::uint64_t>::success(0);
+    }
+
+    return Result<std::uint64_t>::success(size);
 }
 
 }  // namespace
@@ -270,25 +332,38 @@ Result<SendFileReport> send_single_file_to_connection(
         .name = file_name,
         .size = size.value(),
         .sha256 = hash.value().hex_digest,
+        .resume = config.resume,
     }));
     auto begin_result = write_frame(connection, begin);
     if (!begin_result) {
         return Result<SendFileReport>::failure(begin_result.error());
     }
 
-    auto begin_ack = wait_for_ack(connection, "file_begin");
+    auto begin_ack = wait_for_file_begin_ack(connection);
     if (!begin_ack) {
         return Result<SendFileReport>::failure(begin_ack.error());
+    }
+    if (begin_ack.value().offset > size.value()) {
+        return Result<SendFileReport>::failure(
+            make_error(ErrorCode::protocol_error, "receiver requested offset beyond source file size"));
     }
 
     auto source = open_for_read(config.source_path);
     if (!source) {
         return Result<SendFileReport>::failure(source.error());
     }
+    if (begin_ack.value().offset > 0) {
+        const auto seek_result = ::lseek(
+            source.value().get(), static_cast<off_t>(begin_ack.value().offset), SEEK_SET);
+        if (seek_result < 0) {
+            return Result<SendFileReport>::failure(
+                make_error(ErrorCode::io_error, errno_message("failed to seek", config.source_path, errno)));
+        }
+    }
 
     Stopwatch transfer_timer;
     std::vector<std::byte> buffer(static_cast<std::size_t>(config.chunk_size));
-    std::uint64_t bytes_sent = 0;
+    std::uint64_t bytes_sent = begin_ack.value().offset;
     auto publish_progress = [&] {
         if (on_progress) {
             on_progress(SendFileProgress{
@@ -423,19 +498,26 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
     }
 
     const auto part_path = part_path_for(target.value());
-    auto output = open_for_write(part_path);
+    auto resume_offset = choose_resume_offset(part_path, metadata.value());
+    if (!resume_offset) {
+        return fail_receive_with_error(connection, resume_offset.error());
+    }
+
+    auto output = resume_offset.value() == 0 ? open_for_write(part_path)
+                                             : open_for_append(part_path);
     if (!output) {
         return fail_receive_with_error(connection, output.error());
     }
     PartFileGuard part_file(part_path);
 
-    auto begin_ack = send_ack_frame(connection, "ready");
+    auto begin_ack = send_ack_frame(
+        connection, encode_file_begin_ack(FileBeginAckMetadata{.offset = resume_offset.value()}));
     if (!begin_ack) {
         return Result<ReceiveFileReport>::failure(begin_ack.error());
     }
 
     Stopwatch transfer_timer;
-    std::uint64_t bytes_received = 0;
+    std::uint64_t bytes_received = resume_offset.value();
     auto publish_progress = [&] {
         if (on_progress) {
             on_progress(ReceiveFileProgress{

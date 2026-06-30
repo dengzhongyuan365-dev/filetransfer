@@ -415,6 +415,7 @@ TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
         .name = "demo.txt",
         .size = 42,
         .sha256 = "abcdef",
+        .resume = false,
     };
 
     auto decoded = lan::decode_file_begin(lan::encode_file_begin(metadata));
@@ -422,6 +423,21 @@ TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
     EXPECT_EQ(decoded.value().name, metadata.name);
     EXPECT_EQ(decoded.value().size, metadata.size);
     EXPECT_EQ(decoded.value().sha256, metadata.sha256);
+    EXPECT_EQ(decoded.value().resume, metadata.resume);
+}
+
+TEST(FileMetadataTest, RoundTripsFileBeginAckMetadata) {
+    lan::FileBeginAckMetadata metadata{
+        .offset = 17,
+    };
+
+    auto decoded = lan::decode_file_begin_ack(lan::encode_file_begin_ack(metadata));
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded.value().offset, metadata.offset);
+
+    auto legacy = lan::decode_file_begin_ack("ready");
+    ASSERT_TRUE(legacy);
+    EXPECT_EQ(legacy.value().offset, 0);
 }
 
 TEST(ChunkCodecTest, RoundTripsOffsetAndPayload) {
@@ -592,6 +608,147 @@ TEST(SendSingleFileTest, ReportsProgressForChunks) {
     const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
     EXPECT_EQ(progress_bytes, expected_bytes);
     EXPECT_EQ(progress_totals, expected_totals);
+}
+
+TEST(SendSingleFileTest, ResumesFromExistingPartFile) {
+    TempDir temp("send-resume-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+    write_text(receive_dir / "source.txt.part", "abc");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+    sender_config.resume = true;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    std::vector<std::uint64_t> progress_bytes;
+    auto sent = lan::send_single_file_to_connection(
+        sender_config, pair.client, [&](const lan::SendFileProgress& progress) {
+            progress_bytes.push_back(progress.bytes_sent);
+        });
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(sent.value().bytes_sent, 6);
+    EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+    EXPECT_FALSE(std::filesystem::exists(receive_dir / "source.txt.part"));
+
+    const std::vector<std::uint64_t> expected_progress = {3, 6};
+    EXPECT_EQ(progress_bytes, expected_progress);
+}
+
+TEST(SendSingleFileTest, NoResumeIgnoresExistingPartFile) {
+    TempDir temp("send-no-resume-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+    write_text(receive_dir / "source.txt.part", "abc");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+    sender_config.resume = false;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    std::vector<std::uint64_t> progress_bytes;
+    auto sent = lan::send_single_file_to_connection(
+        sender_config, pair.client, [&](const lan::SendFileProgress& progress) {
+            progress_bytes.push_back(progress.bytes_sent);
+        });
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
+    EXPECT_EQ(progress_bytes, expected_progress);
+}
+
+TEST(SendSingleFileTest, RestartsWhenPartFileIsTooLarge) {
+    TempDir temp("send-large-part-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+    write_text(receive_dir / "source.txt.part", "abcdef-extra");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+    sender_config.resume = true;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    std::vector<std::uint64_t> progress_bytes;
+    auto sent = lan::send_single_file_to_connection(
+        sender_config, pair.client, [&](const lan::SendFileProgress& progress) {
+            progress_bytes.push_back(progress.bytes_sent);
+        });
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
+    EXPECT_EQ(progress_bytes, expected_progress);
 }
 
 TEST(ManifestTest, RecursivelyScansRegularFiles) {
