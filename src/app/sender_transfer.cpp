@@ -6,9 +6,33 @@
 
 namespace lan {
 
-void SenderTransferEvents::on_file_progress(const SendFileProgress&) {}
+void SenderTransferEvents::on_file_progress(const SendFileProgress& progress) {
+    on_transfer_progress(TransferProgress{
+        .direction = TransferDirection::send,
+        .kind = TransferKind::file,
+        .path = progress.source_path,
+        .name = progress.file_name,
+        .current_bytes = progress.bytes_sent,
+        .total_bytes = progress.total_bytes,
+        .elapsed_seconds = progress.elapsed_seconds,
+    });
+}
 
-void SenderTransferEvents::on_directory_progress(const SendSyncProgress&) {}
+void SenderTransferEvents::on_directory_progress(const SendSyncProgress& progress) {
+    on_transfer_progress(TransferProgress{
+        .direction = TransferDirection::send,
+        .kind = TransferKind::directory,
+        .path = {},
+        .name = {},
+        .processed_files = progress.processed_files,
+        .total_files = progress.manifest_files,
+        .skipped_files = progress.skipped_files,
+        .full_files = progress.full_files,
+        .delta_files = progress.delta_files,
+        .payload_bytes = progress.delta_payload_bytes_sent,
+        .elapsed_seconds = progress.elapsed_seconds,
+    });
+}
 
 SenderTransferRunner::SenderTransferRunner(NetworkBackend& backend) : backend_(backend) {}
 
@@ -32,7 +56,7 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
             return Result<SenderTransferReport>::failure(synced.error());
         }
 
-        report.kind = SenderTransferKind::directory;
+        report.kind = TransferKind::directory;
         report.directory = std::move(synced).value();
         return Result<SenderTransferReport>::success(std::move(report));
     }
@@ -45,7 +69,7 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
         return Result<SenderTransferReport>::failure(sent.error());
     }
 
-    report.kind = SenderTransferKind::file;
+    report.kind = TransferKind::file;
     report.file = std::move(sent).value();
     return Result<SenderTransferReport>::success(std::move(report));
 }

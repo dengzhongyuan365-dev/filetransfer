@@ -16,9 +16,33 @@ Error make_error(ErrorCode code, std::string message) {
 
 ReceiverServer::ReceiverServer(NetworkBackend& backend) : backend_(backend) {}
 
-void ReceiverServerEvents::on_file_progress(const ReceiveFileProgress&) {}
+void ReceiverServerEvents::on_file_progress(const ReceiveFileProgress& progress) {
+    on_transfer_progress(TransferProgress{
+        .direction = TransferDirection::receive,
+        .kind = TransferKind::file,
+        .path = progress.target_path,
+        .name = progress.file_name,
+        .current_bytes = progress.bytes_received,
+        .total_bytes = progress.total_bytes,
+        .elapsed_seconds = progress.elapsed_seconds,
+    });
+}
 
-void ReceiverServerEvents::on_directory_progress(const ReceiveSyncProgress&) {}
+void ReceiverServerEvents::on_directory_progress(const ReceiveSyncProgress& progress) {
+    on_transfer_progress(TransferProgress{
+        .direction = TransferDirection::receive,
+        .kind = TransferKind::directory,
+        .path = {},
+        .name = {},
+        .processed_files = progress.processed_files,
+        .total_files = progress.manifest_files,
+        .skipped_files = progress.skipped_files,
+        .full_files = progress.full_files,
+        .delta_files = progress.delta_files,
+        .payload_bytes = progress.delta_payload_bytes_received,
+        .elapsed_seconds = progress.elapsed_seconds,
+    });
+}
 
 Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
                                                  ReceiverServerEvents& events) {

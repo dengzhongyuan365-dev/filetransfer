@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (transferred.value().kind == lan::SenderTransferKind::directory) {
+    if (transferred.value().kind == lan::TransferKind::directory) {
         const auto& synced = transferred.value().directory;
         std::cout << "synced directory\n";
         std::cout << "  files: " << synced.manifest_files << '\n';

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lan/app/sender_config.h"
+#include "lan/app/transfer_event.h"
 #include "lan/common/result.h"
 #include "lan/net/connection.h"
 #include "lan/transfer/single_file.h"
@@ -8,18 +9,13 @@
 
 namespace lan {
 
-enum class SenderTransferKind {
-    file,
-    directory,
-};
-
 struct SenderTransferReport {
-    SenderTransferKind kind = SenderTransferKind::file;
+    TransferKind kind = TransferKind::file;
     SendFileReport file;
     SendSyncReport directory;
 };
 
-class SenderTransferEvents {
+class SenderTransferEvents : public TransferEvents {
 public:
     virtual ~SenderTransferEvents() = default;
 

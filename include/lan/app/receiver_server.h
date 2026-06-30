@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "lan/app/receiver_config.h"
+#include "lan/app/transfer_event.h"
 #include "lan/common/result.h"
 #include "lan/net/connection.h"
 #include "lan/transfer/single_file.h"
@@ -20,7 +21,7 @@ struct ReceiverServerReport {
     bool stopped = false;
 };
 
-class ReceiverServerEvents {
+class ReceiverServerEvents : public TransferEvents {
 public:
     virtual ~ReceiverServerEvents() = default;
 

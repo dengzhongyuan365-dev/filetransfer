@@ -26,6 +26,7 @@ add_library(lan_core
     app/sender_transfer.cpp
     app/receiver_config.cpp
     app/receiver_server.cpp
+    app/transfer_event.cpp
 )
 
 target_include_directories(lan_core PUBLIC
