@@ -14,6 +14,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRandomGenerator>
 #include <QScrollArea>
@@ -22,7 +23,9 @@
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QThread>
 #include <QTimer>
+#include <QTime>
 #include <QToolButton>
 #include <QUdpSocket>
 #include <QUuid>
@@ -264,8 +267,12 @@ QWidget* MainWindow::build_transfer_page() {
     scroll->setWidget(transfer_list);
     drop_layout->addWidget(scroll);
 
-    log_ = new QLabel("", transfer_page_);
-    log_->setObjectName("mutedText");
+    log_ = new QPlainTextEdit(transfer_page_);
+    log_->setObjectName("logView");
+    log_->setReadOnly(true);
+    log_->setMaximumBlockCount(120);
+    log_->setFixedHeight(96);
+    log_->setPlaceholderText("Logs");
 
     layout->addLayout(header);
     layout->addWidget(drop_panel_, 1);
@@ -364,6 +371,15 @@ void MainWindow::apply_style() {
             background: transparent;
             border: none;
         }
+        #logView {
+            background: #ffffff;
+            border: 1px solid #e2e7ef;
+            border-radius: 8px;
+            color: #5f6978;
+            font-family: "Noto Sans Mono", "JetBrains Mono", monospace;
+            font-size: 11px;
+            padding: 6px;
+        }
         QPushButton {
             min-height: 34px;
             padding: 0 14px;
@@ -447,14 +463,22 @@ void MainWindow::apply_style() {
 
 void MainWindow::setup_discovery() {
     discovery_ = std::make_unique<QUdpSocket>();
-    discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
-                     QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+    const auto bound = discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
+                                        QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+    if (bound) {
+        log_event(QString("UDP discovery listening on %1").arg(kDiscoveryPort));
+    } else {
+        log_event(QString("UDP discovery bind failed on %1: %2")
+                      .arg(kDiscoveryPort)
+                      .arg(discovery_->errorString()));
+    }
     connect(discovery_.get(), &QUdpSocket::readyRead, this, [this] {
         read_discovery();
     });
 }
 
 bool MainWindow::start_receiver() {
+    log_event(QString("Starting receiver in %1").arg(receive_dir_->text()));
     ReceiverConfig config;
     config.bind_address = "0.0.0.0";
     config.port = kTransferPort;
@@ -464,7 +488,9 @@ bool MainWindow::start_receiver() {
 
     auto validated = validate_receiver_config(std::move(config));
     if (!validated) {
-        status_->setText(to_qstring(format_error(validated.error())));
+        const auto message = to_qstring(format_error(validated.error()));
+        status_->setText(message);
+        log_event(QString("Receiver config invalid: %1").arg(message));
         return false;
     }
 
@@ -489,7 +515,9 @@ bool MainWindow::start_receiver() {
     if (!started) {
         receiver_runner_.reset();
         receiver_events_.reset();
-        status_->setText(to_qstring(format_error(started.error())));
+        const auto message = to_qstring(format_error(started.error()));
+        status_->setText(message);
+        log_event(QString("Receiver thread failed to start: %1").arg(message));
         return false;
     }
     if (listening.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
@@ -498,13 +526,17 @@ bool MainWindow::start_receiver() {
         receiver_runner_.reset();
         receiver_events_.reset();
         if (!result) {
-            status_->setText(to_qstring(format_error(result.error())));
+            const auto message = to_qstring(format_error(result.error()));
+            status_->setText(message);
+            log_event(QString("Receiver listen failed: %1").arg(message));
             return false;
         }
         status_->setText("Receiver failed to start listening.");
+        log_event("Receiver failed to start listening within 2s.");
         return false;
     }
     status_->setText(QString("Receiver listening on TCP %1.").arg(kTransferPort));
+    log_event(QString("Receiver listening on 0.0.0.0:%1").arg(kTransferPort));
     return true;
 }
 
@@ -516,12 +548,14 @@ void MainWindow::stop_receiver() {
     receiver_runner_->join();
     receiver_runner_.reset();
     receiver_events_.reset();
+    log_event("Receiver stopped.");
 }
 
 void MainWindow::search_peers() {
     peers_.clear();
     refresh_peer_list();
     status_->setText("Searching...");
+    log_event(QString("Broadcast discover on UDP %1").arg(kDiscoveryPort));
     const auto message = QJsonDocument(QJsonObject{
         {"protocol", kProtocol},
         {"type", "discover"},
@@ -533,8 +567,10 @@ void MainWindow::search_peers() {
     QTimer::singleShot(1200, this, [this] {
         if (peers_.isEmpty()) {
             status_->setText("No machines found.");
+            log_event("Discovery finished: no machines found.");
         } else {
             status_->setText(QString("%1 machine(s) found.").arg(peers_.size()));
+            log_event(QString("Discovery finished: %1 machine(s) found.").arg(peers_.size()));
         }
     });
 }
@@ -558,15 +594,20 @@ void MainWindow::read_discovery() {
         const auto type = obj.value("type").toString();
         if (type == "discover") {
             if (obj.value("id").toString() != node_id_) {
+                log_event(QString("Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
                 reply_to_discovery(sender, sender_port);
             }
         } else if (type == "announce") {
+            log_event(QString("Received announce from %1").arg(sender.toString()));
             add_peer(sender, obj);
         } else if (type == "link_request") {
+            log_event(QString("Received link request from %1").arg(sender.toString()));
             receive_link_request(sender, obj);
         } else if (type == "link_accept") {
+            log_event(QString("Received link accept from %1").arg(sender.toString()));
             receive_link_response(sender, obj, true);
         } else if (type == "link_reject") {
+            log_event(QString("Received link reject from %1").arg(sender.toString()));
             receive_link_response(sender, obj, false);
         }
     }
@@ -581,6 +622,7 @@ void MainWindow::reply_to_discovery(const QHostAddress& target, quint16 port) {
         {"port", static_cast<int>(kTransferPort)},
     }).toJson(QJsonDocument::Compact);
     discovery_->writeDatagram(message, target, port);
+    log_event(QString("Sent announce to %1:%2").arg(target.toString()).arg(port));
 }
 
 void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
@@ -601,6 +643,7 @@ void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
         .port = port,
     };
     peers_.insert(id, peer);
+    log_event(QString("Peer added: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     refresh_peer_list();
 }
 
@@ -826,6 +869,10 @@ void MainWindow::request_link(const QString& id) {
     pending_link_code_ = make_link_code();
     const auto peer = peers_.value(id);
     status_->setText(QString("Waiting for %1 to accept code %2...").arg(peer.name, pending_link_code_));
+    log_event(QString("Sending link request to %1 %2:%3 code=%4")
+                  .arg(peer.name, peer.host)
+                  .arg(peer.port)
+                  .arg(pending_link_code_));
     send_control(peer, "link_request", QJsonObject{{"code", pending_link_code_}});
 }
 
@@ -840,6 +887,10 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     }
     const auto peer = peers_.value(id);
     const auto code = obj.value("code").toString();
+    log_event(QString("Link request from %1 %2:%3 code=%4")
+                  .arg(peer.name, peer.host)
+                  .arg(peer.port)
+                  .arg(code));
     const auto answer = QMessageBox::question(
         this,
         "Link request",
@@ -847,9 +898,11 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::Yes);
     if (answer == QMessageBox::Yes) {
+        log_event(QString("Accepted link request from %1").arg(peer.name));
         send_control(peer, "link_accept", QJsonObject{{"code", code}});
         set_linked_peer(peer);
     } else {
+        log_event(QString("Rejected link request from %1").arg(peer.name));
         send_control(peer, "link_reject", QJsonObject{{"code", code}});
     }
 }
@@ -868,8 +921,10 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
     pending_link_code_.clear();
     if (!accepted) {
         status_->setText("Link request rejected.");
+        log_event("Link request rejected by peer.");
         return;
     }
+    log_event(QString("Link accepted by %1").arg(peers_.value(id).name));
     set_linked_peer(peers_.value(id));
 }
 
@@ -886,6 +941,7 @@ void MainWindow::send_control(const Peer& peer, const QString& type, const QJson
     }
     const auto payload = QJsonDocument(message).toJson(QJsonDocument::Compact);
     discovery_->writeDatagram(payload, QHostAddress(peer.host), kDiscoveryPort);
+    log_event(QString("Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
 }
 
 void MainWindow::link_peer(QListWidgetItem* item) {
@@ -898,8 +954,8 @@ void MainWindow::link_peer(QListWidgetItem* item) {
 void MainWindow::set_linked_peer(const Peer& peer) {
     linked_peer_ = peer;
     linked_label_->setText(QString("Linked to %1").arg(linked_peer_.name));
-    log_->clear();
     status_->setText(QString("Linked to %1.").arg(linked_peer_.name));
+    log_event(QString("Linked peer: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     stack_->setCurrentWidget(transfer_page_);
 }
 
@@ -908,6 +964,7 @@ void MainWindow::send_paths(const QStringList& paths) {
         show_log("No linked machine.");
         return;
     }
+    log_event(QString("Dropped %1 path(s) for sending.").arg(paths.size()));
     for (const auto& path : paths) {
         start_sender(path);
     }
@@ -916,6 +973,7 @@ void MainWindow::send_paths(const QStringList& paths) {
 void MainWindow::start_sender(const QString& path) {
     if (sender_thread_.joinable()) {
         show_log("A send is already running.");
+        log_event(QString("Send ignored while another send is running: %1").arg(path));
         return;
     }
 
@@ -927,9 +985,14 @@ void MainWindow::start_sender(const QString& path) {
 
     auto validated = validate_sender_config(std::move(config));
     if (!validated) {
-        show_log(to_qstring(format_error(validated.error())));
+        const auto message = to_qstring(format_error(validated.error()));
+        show_log(message);
+        log_event(QString("Sender config invalid for %1: %2").arg(path, message));
         return;
     }
+    log_event(QString("Starting send %1 -> %2:%3")
+                  .arg(path, linked_peer_.host)
+                  .arg(linked_peer_.port));
 
     sender_runner_ = std::make_unique<SenderTransferRunner>();
     auto events = std::make_shared<GuiSenderEvents>([this](TransferSnapshotStore store) {
@@ -941,10 +1004,14 @@ void MainWindow::start_sender(const QString& path) {
         auto result = sender_runner_->run(config, *events);
         QMetaObject::invokeMethod(this, [this, result = std::move(result), target = config.target] {
             if (!result) {
-                show_log(QString("Connect or send to %1:%2 failed: %3")
-                             .arg(to_qstring(target.host))
-                             .arg(target.port)
-                             .arg(to_qstring(format_error(result.error()))));
+                const auto message = QString("Connect or send to %1:%2 failed: %3")
+                                         .arg(to_qstring(target.host))
+                                         .arg(target.port)
+                                         .arg(to_qstring(format_error(result.error())));
+                show_log(message);
+                log_event(message);
+            } else {
+                log_event(QString("Send to %1:%2 completed.").arg(to_qstring(target.host)).arg(target.port));
             }
             stop_sender();
         }, Qt::QueuedConnection);
@@ -960,6 +1027,7 @@ void MainWindow::stop_sender() {
     }
     sender_runner_.reset();
     sender_events_.reset();
+    log_event("Sender stopped.");
 }
 
 void MainWindow::merge_snapshots(TransferSnapshotStore store) {
@@ -988,7 +1056,25 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot) {
 
 void MainWindow::show_log(QString text) {
     QMetaObject::invokeMethod(this, [this, text = std::move(text)] {
-        log_->setText(text);
+        log_event(text);
+    }, Qt::QueuedConnection);
+}
+
+void MainWindow::log_event(QString text) {
+    if (log_ == nullptr) {
+        return;
+    }
+    const auto line = QString("[%1] %2").arg(QTime::currentTime().toString("HH:mm:ss"), text);
+    if (QThread::currentThread() == thread()) {
+        log_->appendPlainText(line);
+        auto* bar = log_->verticalScrollBar();
+        bar->setValue(bar->maximum());
+        return;
+    }
+    QMetaObject::invokeMethod(this, [this, line] {
+        log_->appendPlainText(line);
+        auto* bar = log_->verticalScrollBar();
+        bar->setValue(bar->maximum());
     }, Qt::QueuedConnection);
 }
 

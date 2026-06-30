@@ -18,6 +18,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
+class QPlainTextEdit;
 class QStackedWidget;
 class QToolButton;
 class QVBoxLayout;
@@ -79,6 +80,7 @@ private:
     void merge_snapshots(TransferSnapshotStore store);
     void upsert_snapshot(const TransferSnapshot& snapshot);
     void show_log(QString text);
+    void log_event(QString text);
 
     QStackedWidget* stack_ = nullptr;
     QWidget* peer_page_ = nullptr;
@@ -91,7 +93,7 @@ private:
     DropPanel* drop_panel_ = nullptr;
     QVBoxLayout* transfers_layout_ = nullptr;
     QLabel* empty_transfer_label_ = nullptr;
-    QLabel* log_ = nullptr;
+    QPlainTextEdit* log_ = nullptr;
 
     std::unique_ptr<QUdpSocket> discovery_;
     QMap<QString, Peer> peers_;
