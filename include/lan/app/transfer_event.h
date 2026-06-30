@@ -24,8 +24,17 @@ enum class TransferCompletionStatus {
     skipped,
 };
 
+enum class TransferState {
+    pending,
+    running,
+    completed,
+    failed,
+    cancelled,
+};
+
 struct TransferProgress {
     std::uint64_t transfer_id = 0;
+    TransferState state = TransferState::running;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -43,6 +52,7 @@ struct TransferProgress {
 
 struct TransferStarted {
     std::uint64_t transfer_id = 0;
+    TransferState state = TransferState::running;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -51,6 +61,7 @@ struct TransferStarted {
 
 struct TransferCompleted {
     std::uint64_t transfer_id = 0;
+    TransferState state = TransferState::completed;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -68,6 +79,7 @@ struct TransferCompleted {
 
 struct TransferFailed {
     std::uint64_t transfer_id = 0;
+    TransferState state = TransferState::failed;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
@@ -80,11 +92,15 @@ struct TransferFailed {
 
 struct TransferCancelled {
     std::uint64_t transfer_id = 0;
+    TransferState state = TransferState::cancelled;
     TransferDirection direction = TransferDirection::send;
     TransferKind kind = TransferKind::file;
     std::filesystem::path path;
     std::string name;
 };
+
+std::string_view transfer_state_name(TransferState state);
+bool can_transition(TransferState from, TransferState to);
 
 class TransferEvents {
 public:
