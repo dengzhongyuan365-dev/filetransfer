@@ -136,6 +136,95 @@ Result<bool> apply_delta_to_target(const std::filesystem::path& receive_root,
     return Result<bool>::success(true);
 }
 
+Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
+    Frame hello;
+    hello.type = MessageType::hello;
+    hello.body = bytes_from_string("sync");
+    auto hello_written = write_frame(connection, hello);
+    if (!hello_written) {
+        return Result<SyncPlan>::failure(hello_written.error());
+    }
+
+    Frame manifest_frame;
+    manifest_frame.type = MessageType::manifest;
+    manifest_frame.body = encode_manifest(manifest);
+    auto manifest_written = write_frame(connection, manifest_frame);
+    if (!manifest_written) {
+        return Result<SyncPlan>::failure(manifest_written.error());
+    }
+
+    auto manifest_ack = wait_for_ack(connection, "manifest");
+    if (!manifest_ack) {
+        return Result<SyncPlan>::failure(manifest_ack.error());
+    }
+
+    auto plan_frame = read_frame(connection);
+    if (!plan_frame) {
+        return Result<SyncPlan>::failure(plan_frame.error());
+    }
+    if (plan_frame.value().type != MessageType::sync_plan) {
+        return Result<SyncPlan>::failure(
+            make_error(ErrorCode::protocol_error, "expected sync_plan frame"));
+    }
+
+    auto plan = decode_sync_plan(plan_frame.value().body);
+    if (!plan) {
+        return Result<SyncPlan>::failure(plan.error());
+    }
+
+    auto plan_ack = send_ack_frame(connection, "sync_plan received");
+    if (!plan_ack) {
+        return Result<SyncPlan>::failure(plan_ack.error());
+    }
+
+    return Result<SyncPlan>::success(std::move(plan).value());
+}
+
+Result<SyncPlan> receive_manifest_and_send_plan(Connection& connection,
+                                                const ReceiverConfig& config,
+                                                std::uint32_t block_size,
+                                                std::uint64_t& manifest_files) {
+    auto manifest_frame = read_frame(connection);
+    if (!manifest_frame) {
+        return Result<SyncPlan>::failure(manifest_frame.error());
+    }
+    if (manifest_frame.value().type != MessageType::manifest) {
+        return Result<SyncPlan>::failure(
+            make_error(ErrorCode::protocol_error, "expected manifest frame"));
+    }
+
+    auto manifest = decode_manifest(manifest_frame.value().body);
+    if (!manifest) {
+        return Result<SyncPlan>::failure(manifest.error());
+    }
+    manifest_files = manifest.value().files.size();
+
+    auto manifest_ack = send_ack_frame(connection, "manifest received");
+    if (!manifest_ack) {
+        return Result<SyncPlan>::failure(manifest_ack.error());
+    }
+
+    auto plan = build_sync_plan(manifest.value(), config.receive_dir, block_size);
+    if (!plan) {
+        return Result<SyncPlan>::failure(plan.error());
+    }
+
+    Frame plan_frame;
+    plan_frame.type = MessageType::sync_plan;
+    plan_frame.body = encode_sync_plan(plan.value());
+    auto plan_written = write_frame(connection, plan_frame);
+    if (!plan_written) {
+        return Result<SyncPlan>::failure(plan_written.error());
+    }
+
+    auto plan_ack = wait_for_ack(connection, "sync_plan");
+    if (!plan_ack) {
+        return Result<SyncPlan>::failure(plan_ack.error());
+    }
+
+    return Result<SyncPlan>::success(std::move(plan).value());
+}
+
 }  // namespace
 
 Result<SendSyncNegotiationReport> negotiate_sync_sender(const SenderConfig& config,
@@ -152,44 +241,9 @@ Result<SendSyncNegotiationReport> negotiate_sync_sender(const SenderConfig& conf
         return Result<SendSyncNegotiationReport>::failure(connection.error());
     }
 
-    Frame hello;
-    hello.type = MessageType::hello;
-    hello.body = bytes_from_string("sync");
-    auto hello_written = write_frame(*connection.value(), hello);
-    if (!hello_written) {
-        return Result<SendSyncNegotiationReport>::failure(hello_written.error());
-    }
-
-    Frame manifest_frame;
-    manifest_frame.type = MessageType::manifest;
-    manifest_frame.body = encode_manifest(manifest.value());
-    auto manifest_written = write_frame(*connection.value(), manifest_frame);
-    if (!manifest_written) {
-        return Result<SendSyncNegotiationReport>::failure(manifest_written.error());
-    }
-
-    auto manifest_ack = wait_for_ack(*connection.value(), "manifest");
-    if (!manifest_ack) {
-        return Result<SendSyncNegotiationReport>::failure(manifest_ack.error());
-    }
-
-    auto plan_frame = read_frame(*connection.value());
-    if (!plan_frame) {
-        return Result<SendSyncNegotiationReport>::failure(plan_frame.error());
-    }
-    if (plan_frame.value().type != MessageType::sync_plan) {
-        return Result<SendSyncNegotiationReport>::failure(
-            make_error(ErrorCode::protocol_error, "expected sync_plan frame"));
-    }
-
-    auto plan = decode_sync_plan(plan_frame.value().body);
+    auto plan = send_manifest_and_receive_plan(*connection.value(), manifest.value());
     if (!plan) {
         return Result<SendSyncNegotiationReport>::failure(plan.error());
-    }
-
-    auto plan_ack = send_ack_frame(*connection.value(), "sync_plan received");
-    if (!plan_ack) {
-        return Result<SendSyncNegotiationReport>::failure(plan_ack.error());
     }
 
     SendSyncNegotiationReport report;
@@ -220,46 +274,14 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
     }
 
-    auto manifest_frame = read_frame(*client.value());
-    if (!manifest_frame) {
-        return Result<ReceiveSyncNegotiationReport>::failure(manifest_frame.error());
-    }
-    if (manifest_frame.value().type != MessageType::manifest) {
-        return fail_receiver(
-            *client.value(),
-            make_error(ErrorCode::protocol_error, "expected manifest frame"));
-    }
-
-    auto manifest = decode_manifest(manifest_frame.value().body);
-    if (!manifest) {
-        return fail_receiver(*client.value(), manifest.error());
-    }
-
-    auto manifest_ack = send_ack_frame(*client.value(), "manifest received");
-    if (!manifest_ack) {
-        return Result<ReceiveSyncNegotiationReport>::failure(manifest_ack.error());
-    }
-
-    auto plan = build_sync_plan(manifest.value(), config.receive_dir, block_size);
+    std::uint64_t manifest_files = 0;
+    auto plan = receive_manifest_and_send_plan(*client.value(), config, block_size, manifest_files);
     if (!plan) {
         return fail_receiver(*client.value(), plan.error());
     }
 
-    Frame plan_frame;
-    plan_frame.type = MessageType::sync_plan;
-    plan_frame.body = encode_sync_plan(plan.value());
-    auto plan_written = write_frame(*client.value(), plan_frame);
-    if (!plan_written) {
-        return Result<ReceiveSyncNegotiationReport>::failure(plan_written.error());
-    }
-
-    auto plan_ack = wait_for_ack(*client.value(), "sync_plan");
-    if (!plan_ack) {
-        return Result<ReceiveSyncNegotiationReport>::failure(plan_ack.error());
-    }
-
     ReceiveSyncNegotiationReport report;
-    report.manifest_files = manifest.value().files.size();
+    report.manifest_files = manifest_files;
     count_actions(report, plan.value());
     return Result<ReceiveSyncNegotiationReport>::success(report);
 }
@@ -275,44 +297,9 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         return Result<SendSyncReport>::failure(connection.error());
     }
 
-    Frame hello;
-    hello.type = MessageType::hello;
-    hello.body = bytes_from_string("sync");
-    auto hello_written = write_frame(*connection.value(), hello);
-    if (!hello_written) {
-        return Result<SendSyncReport>::failure(hello_written.error());
-    }
-
-    Frame manifest_frame;
-    manifest_frame.type = MessageType::manifest;
-    manifest_frame.body = encode_manifest(manifest.value());
-    auto manifest_written = write_frame(*connection.value(), manifest_frame);
-    if (!manifest_written) {
-        return Result<SendSyncReport>::failure(manifest_written.error());
-    }
-
-    auto manifest_ack = wait_for_ack(*connection.value(), "manifest");
-    if (!manifest_ack) {
-        return Result<SendSyncReport>::failure(manifest_ack.error());
-    }
-
-    auto plan_frame = read_frame(*connection.value());
-    if (!plan_frame) {
-        return Result<SendSyncReport>::failure(plan_frame.error());
-    }
-    if (plan_frame.value().type != MessageType::sync_plan) {
-        return Result<SendSyncReport>::failure(
-            make_error(ErrorCode::protocol_error, "expected sync_plan frame"));
-    }
-
-    auto plan = decode_sync_plan(plan_frame.value().body);
+    auto plan = send_manifest_and_receive_plan(*connection.value(), manifest.value());
     if (!plan) {
         return Result<SendSyncReport>::failure(plan.error());
-    }
-
-    auto plan_ack = send_ack_frame(*connection.value(), "sync_plan received");
-    if (!plan_ack) {
-        return Result<SendSyncReport>::failure(plan_ack.error());
     }
 
     SendSyncReport report;
@@ -393,46 +380,14 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
     }
 
-    auto manifest_frame = read_frame(connection);
-    if (!manifest_frame) {
-        return Result<ReceiveSyncReport>::failure(manifest_frame.error());
-    }
-    if (manifest_frame.value().type != MessageType::manifest) {
-        return fail_sync_receiver(
-            connection,
-            make_error(ErrorCode::protocol_error, "expected manifest frame"));
-    }
-
-    auto manifest = decode_manifest(manifest_frame.value().body);
-    if (!manifest) {
-        return fail_sync_receiver(connection, manifest.error());
-    }
-
-    auto manifest_ack = send_ack_frame(connection, "manifest received");
-    if (!manifest_ack) {
-        return Result<ReceiveSyncReport>::failure(manifest_ack.error());
-    }
-
-    auto plan = build_sync_plan(manifest.value(), config.receive_dir, block_size);
+    std::uint64_t manifest_files = 0;
+    auto plan = receive_manifest_and_send_plan(connection, config, block_size, manifest_files);
     if (!plan) {
         return fail_sync_receiver(connection, plan.error());
     }
 
-    Frame plan_frame;
-    plan_frame.type = MessageType::sync_plan;
-    plan_frame.body = encode_sync_plan(plan.value());
-    auto plan_written = write_frame(connection, plan_frame);
-    if (!plan_written) {
-        return Result<ReceiveSyncReport>::failure(plan_written.error());
-    }
-
-    auto plan_ack = wait_for_ack(connection, "sync_plan");
-    if (!plan_ack) {
-        return Result<ReceiveSyncReport>::failure(plan_ack.error());
-    }
-
     ReceiveSyncReport report;
-    report.manifest_files = manifest.value().files.size();
+    report.manifest_files = manifest_files;
 
     for (const auto& entry : plan.value().entries) {
         if (entry.action == SyncAction::skip) {
