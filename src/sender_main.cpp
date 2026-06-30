@@ -4,6 +4,7 @@
 #include "lan/app/sender_config.h"
 #include "lan/common/size.h"
 #include "lan/transfer/single_file.h"
+#include "lan/transfer/sync_session.h"
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
@@ -34,6 +35,22 @@ int main(int argc, char* argv[]) {
     std::cout << "  chunk size: " << lan::format_size(final_config.chunk_size) << " ("
               << final_config.chunk_size << " bytes)\n";
     std::cout << "  resume: " << (final_config.resume ? "true" : "false") << '\n';
+
+    if (std::filesystem::is_directory(final_config.source_path)) {
+        auto synced = lan::sync_sender(final_config, static_cast<std::uint32_t>(final_config.chunk_size));
+        if (!synced) {
+            std::cerr << synced.error().message << '\n';
+            return 1;
+        }
+
+        std::cout << "synced directory\n";
+        std::cout << "  files: " << synced.value().manifest_files << '\n';
+        std::cout << "  skipped: " << synced.value().skipped_files << '\n';
+        std::cout << "  full: " << synced.value().full_files << '\n';
+        std::cout << "  delta: " << synced.value().delta_files << '\n';
+        std::cout << "  delta frames sent: " << synced.value().delta_frames_sent << '\n';
+        return 0;
+    }
 
     auto sent = lan::send_single_file(final_config);
     if (!sent) {

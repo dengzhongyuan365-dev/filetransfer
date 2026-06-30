@@ -380,40 +380,53 @@ Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint3
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
     }
 
-    auto manifest_frame = read_frame(*client.value());
+    return sync_receiver_from_connection(config, block_size, *client.value(), hello.value());
+}
+
+Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& config,
+                                                        std::uint32_t block_size,
+                                                        Connection& connection,
+                                                        const Frame& hello) {
+    if (hello.type != MessageType::hello || body_as_string(hello) != "sync") {
+        return fail_sync_receiver(
+            connection,
+            make_error(ErrorCode::protocol_error, "expected sync hello frame"));
+    }
+
+    auto manifest_frame = read_frame(connection);
     if (!manifest_frame) {
         return Result<ReceiveSyncReport>::failure(manifest_frame.error());
     }
     if (manifest_frame.value().type != MessageType::manifest) {
         return fail_sync_receiver(
-            *client.value(),
+            connection,
             make_error(ErrorCode::protocol_error, "expected manifest frame"));
     }
 
     auto manifest = decode_manifest(manifest_frame.value().body);
     if (!manifest) {
-        return fail_sync_receiver(*client.value(), manifest.error());
+        return fail_sync_receiver(connection, manifest.error());
     }
 
-    auto manifest_ack = send_ack_frame(*client.value(), "manifest received");
+    auto manifest_ack = send_ack_frame(connection, "manifest received");
     if (!manifest_ack) {
         return Result<ReceiveSyncReport>::failure(manifest_ack.error());
     }
 
     auto plan = build_sync_plan(manifest.value(), config.receive_dir, block_size);
     if (!plan) {
-        return fail_sync_receiver(*client.value(), plan.error());
+        return fail_sync_receiver(connection, plan.error());
     }
 
     Frame plan_frame;
     plan_frame.type = MessageType::sync_plan;
     plan_frame.body = encode_sync_plan(plan.value());
-    auto plan_written = write_frame(*client.value(), plan_frame);
+    auto plan_written = write_frame(connection, plan_frame);
     if (!plan_written) {
         return Result<ReceiveSyncReport>::failure(plan_written.error());
     }
 
-    auto plan_ack = wait_for_ack(*client.value(), "sync_plan");
+    auto plan_ack = wait_for_ack(connection, "sync_plan");
     if (!plan_ack) {
         return Result<ReceiveSyncReport>::failure(plan_ack.error());
     }
@@ -427,27 +440,27 @@ Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint3
             continue;
         }
 
-        auto delta_frame = read_frame(*client.value());
+        auto delta_frame = read_frame(connection);
         if (!delta_frame) {
             return Result<ReceiveSyncReport>::failure(delta_frame.error());
         }
         if (delta_frame.value().type != MessageType::delta) {
             return fail_sync_receiver(
-                *client.value(),
+                connection,
                 make_error(ErrorCode::protocol_error, "expected delta frame"));
         }
 
         auto delta = decode_delta_plan(delta_frame.value().body);
         if (!delta) {
-            return fail_sync_receiver(*client.value(), delta.error());
+            return fail_sync_receiver(connection, delta.error());
         }
 
         auto applied = apply_delta_to_target(config.receive_dir, entry, delta.value());
         if (!applied) {
-            return fail_sync_receiver(*client.value(), applied.error());
+            return fail_sync_receiver(connection, applied.error());
         }
 
-        auto ack = send_ack_frame(*client.value(), "delta applied");
+        auto ack = send_ack_frame(connection, "delta applied");
         if (!ack) {
             return Result<ReceiveSyncReport>::failure(ack.error());
         }
@@ -460,13 +473,13 @@ Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint3
         }
     }
 
-    auto done = read_frame(*client.value());
+    auto done = read_frame(connection);
     if (!done) {
         return Result<ReceiveSyncReport>::failure(done.error());
     }
     if (done.value().type != MessageType::ack || body_as_string(done.value()) != "sync done") {
         return fail_sync_receiver(
-            *client.value(),
+            connection,
             make_error(ErrorCode::protocol_error, "expected sync done ack"));
     }
 

@@ -5,6 +5,8 @@
 #include "lan/app/receiver_config.h"
 #include "lan/app/sender_config.h"
 #include "lan/common/result.h"
+#include "lan/net/connection.h"
+#include "lan/protocol/frame.h"
 #include "lan/transfer/sync_plan.h"
 
 namespace lan {
@@ -45,5 +47,9 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
                                                              std::uint32_t block_size);
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size);
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size);
+Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& config,
+                                                        std::uint32_t block_size,
+                                                        Connection& connection,
+                                                        const Frame& hello);
 
 }  // namespace lan

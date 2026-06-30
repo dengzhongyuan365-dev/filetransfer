@@ -7,6 +7,8 @@
 #include "lan/app/receiver_config.h"
 #include "lan/app/sender_config.h"
 #include "lan/common/result.h"
+#include "lan/net/connection.h"
+#include "lan/protocol/frame.h"
 
 namespace lan {
 
@@ -26,5 +28,8 @@ struct ReceiveFileReport {
 
 Result<SendFileReport> send_single_file(const SenderConfig& config);
 Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config);
+Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConfig& config,
+                                                              Connection& connection,
+                                                              const Frame& hello);
 
 }  // namespace lan
