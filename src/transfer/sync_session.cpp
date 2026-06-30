@@ -371,7 +371,9 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
     return Result<ReceiveSyncNegotiationReport>::success(report);
 }
 
-Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size) {
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection) {
     (void)block_size;
 
     auto manifest = build_manifest(config.source_path);
@@ -379,12 +381,7 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         return Result<SendSyncReport>::failure(manifest.error());
     }
 
-    auto connection = default_network_backend().connect(config.target.host, config.target.port);
-    if (!connection) {
-        return Result<SendSyncReport>::failure(connection.error());
-    }
-
-    auto plan = send_manifest_and_receive_plan(*connection.value(), manifest.value());
+    auto plan = send_manifest_and_receive_plan(connection, manifest.value());
     if (!plan) {
         return Result<SendSyncReport>::failure(plan.error());
     }
@@ -404,12 +401,12 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         if (!delta) {
             return Result<SendSyncReport>::failure(delta.error());
         }
-        auto delta_written = send_delta_stream(*connection.value(), delta.value());
+        auto delta_written = send_delta_stream(connection, delta.value());
         if (!delta_written) {
             return Result<SendSyncReport>::failure(delta_written.error());
         }
 
-        auto delta_ack = wait_for_ack(*connection.value(), "delta");
+        auto delta_ack = wait_for_ack(connection, "delta");
         if (!delta_ack) {
             return Result<SendSyncReport>::failure(delta_ack.error());
         }
@@ -422,12 +419,21 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         }
     }
 
-    auto done = send_ack_frame(*connection.value(), "sync done");
+    auto done = send_ack_frame(connection, "sync done");
     if (!done) {
         return Result<SendSyncReport>::failure(done.error());
     }
 
     return Result<SendSyncReport>::success(report);
+}
+
+Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size) {
+    auto connection = default_network_backend().connect(config.target.host, config.target.port);
+    if (!connection) {
+        return Result<SendSyncReport>::failure(connection.error());
+    }
+
+    return sync_sender_to_connection(config, block_size, *connection.value());
 }
 
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size) {

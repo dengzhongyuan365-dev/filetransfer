@@ -1,13 +1,23 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <algorithm>
+#include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
+#include "lan/app/receiver_config.h"
+#include "lan/app/sender_config.h"
+#include "lan/common/error.h"
 #include "lan/fs/file_hash.h"
+#include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
 #include "lan/transfer/block_signature.h"
 #include "lan/transfer/chunk_codec.h"
@@ -17,6 +27,7 @@
 #include "lan/transfer/sync_codec.h"
 #include "lan/transfer/sync_executor.h"
 #include "lan/transfer/sync_plan.h"
+#include "lan/transfer/sync_session.h"
 
 namespace {
 
@@ -51,6 +62,86 @@ void write_text(const std::filesystem::path& path, const std::string& text) {
 std::string read_text(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
+struct MemoryPipe {
+    std::mutex mutex;
+    std::condition_variable data_available;
+    std::deque<char> bytes;
+    bool closed = false;
+};
+
+class MemoryConnection final : public lan::Connection {
+public:
+    MemoryConnection(std::shared_ptr<MemoryPipe> incoming, std::shared_ptr<MemoryPipe> outgoing)
+        : incoming_(std::move(incoming)), outgoing_(std::move(outgoing)) {}
+
+    ~MemoryConnection() override {
+        close_pipe(outgoing_);
+    }
+
+    lan::Result<bool> send_all(const char* data, std::size_t size) override {
+        {
+            std::lock_guard<std::mutex> lock(outgoing_->mutex);
+            if (outgoing_->closed) {
+                return lan::Result<bool>::failure(
+                    lan::Error{lan::ErrorCode::network_error, "memory connection is closed"});
+            }
+            outgoing_->bytes.insert(outgoing_->bytes.end(), data, data + size);
+        }
+        outgoing_->data_available.notify_one();
+        return lan::Result<bool>::success(true);
+    }
+
+    lan::Result<bool> recv_exact(char* data, std::size_t size) override {
+        std::size_t copied = 0;
+        while (copied < size) {
+            std::unique_lock<std::mutex> lock(incoming_->mutex);
+            incoming_->data_available.wait(lock, [this] {
+                return !incoming_->bytes.empty() || incoming_->closed;
+            });
+
+            if (incoming_->bytes.empty() && incoming_->closed) {
+                return lan::Result<bool>::failure(
+                    lan::Error{lan::ErrorCode::network_error, "memory connection reached eof"});
+            }
+
+            const auto count = std::min(size - copied, incoming_->bytes.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                data[copied + i] = incoming_->bytes.front();
+                incoming_->bytes.pop_front();
+            }
+            copied += count;
+        }
+
+        return lan::Result<bool>::success(true);
+    }
+
+private:
+    static void close_pipe(const std::shared_ptr<MemoryPipe>& pipe) {
+        {
+            std::lock_guard<std::mutex> lock(pipe->mutex);
+            pipe->closed = true;
+        }
+        pipe->data_available.notify_all();
+    }
+
+    std::shared_ptr<MemoryPipe> incoming_;
+    std::shared_ptr<MemoryPipe> outgoing_;
+};
+
+struct MemoryConnectionPair {
+    MemoryConnection client;
+    MemoryConnection server;
+};
+
+MemoryConnectionPair make_memory_connection_pair() {
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    return MemoryConnectionPair{
+        .client = MemoryConnection(server_to_client, client_to_server),
+        .server = MemoryConnection(client_to_server, server_to_client),
+    };
 }
 
 TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
@@ -203,6 +294,95 @@ TEST(SyncPlanAndExecutorTest, HandlesSkipFullAndDelta) {
         ASSERT_TRUE(dst_hash);
         EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
     }
+}
+
+TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
+    TempDir source("sync-session-source-test");
+    TempDir receive("sync-session-receive-test");
+
+    write_text(source.path() / "same.txt", "same\n");
+    write_text(receive.path() / "same.txt", "same\n");
+    write_text(source.path() / "sub" / "new.txt", "new nested\n");
+    write_text(source.path() / "changed.txt", "xxxx-bbbb-cccc-yyyy-eeee\n");
+    write_text(receive.path() / "changed.txt", "aaaa-bbbb-cccc-dddd-eeee\n");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source.path();
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive.path();
+
+    auto pair = make_memory_connection_pair();
+
+    auto sender_result = lan::Result<lan::SendSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "sender did not run"});
+    auto receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+
+    std::thread sender([&] {
+        sender_result = lan::sync_sender_to_connection(sender_config, 5, pair.client);
+    });
+    std::thread receiver([&] {
+        auto initial_hello = lan::read_frame(pair.server);
+        if (!initial_hello) {
+            receiver_result =
+                lan::Result<lan::ReceiveSyncReport>::failure(initial_hello.error());
+            return;
+        }
+        receiver_result = lan::sync_receiver_from_connection(
+            receiver_config, 5, pair.server, initial_hello.value());
+    });
+
+    sender.join();
+    receiver.join();
+
+    ASSERT_TRUE(sender_result) << sender_result.error().message;
+    ASSERT_TRUE(receiver_result) << receiver_result.error().message;
+
+    EXPECT_EQ(sender_result.value().manifest_files, 3);
+    EXPECT_EQ(sender_result.value().skipped_files, 1);
+    EXPECT_EQ(sender_result.value().full_files, 1);
+    EXPECT_EQ(sender_result.value().delta_files, 1);
+    EXPECT_EQ(sender_result.value().delta_frames_sent, 2);
+
+    EXPECT_EQ(receiver_result.value().manifest_files, 3);
+    EXPECT_EQ(receiver_result.value().skipped_files, 1);
+    EXPECT_EQ(receiver_result.value().full_files, 1);
+    EXPECT_EQ(receiver_result.value().delta_files, 1);
+    EXPECT_EQ(receiver_result.value().files_written, 2);
+
+    auto manifest = lan::build_manifest(source.path(), 4096);
+    ASSERT_TRUE(manifest);
+    for (const auto& entry : manifest.value().files) {
+        auto src_hash = lan::hash_file(source.path() / entry.relative_path);
+        auto dst_hash = lan::hash_file(receive.path() / entry.relative_path);
+        ASSERT_TRUE(src_hash);
+        ASSERT_TRUE(dst_hash);
+        EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
+    }
+}
+
+TEST(SyncSessionTest, RejectsUnexpectedHelloThroughConnectionInterface) {
+    TempDir receive("sync-session-bad-hello-test");
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive.path();
+
+    auto pair = make_memory_connection_pair();
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("file");
+
+    auto receiver_result = lan::sync_receiver_from_connection(receiver_config, 5, pair.server, hello);
+    ASSERT_FALSE(receiver_result);
+    EXPECT_EQ(receiver_result.error().code, lan::ErrorCode::protocol_error);
+
+    auto error_frame = lan::read_frame(pair.client);
+    ASSERT_TRUE(error_frame);
+    EXPECT_EQ(error_frame.value().type, lan::MessageType::error);
+    EXPECT_NE(lan::body_as_string(error_frame.value()).find("expected sync hello frame"),
+              std::string::npos);
 }
 
 }  // namespace

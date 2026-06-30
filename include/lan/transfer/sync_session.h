@@ -47,6 +47,9 @@ Result<SendSyncNegotiationReport> negotiate_sync_sender(const SenderConfig& conf
                                                         std::uint32_t block_size);
 Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfig& config,
                                                              std::uint32_t block_size);
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection);
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size);
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size);
 Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& config,
