@@ -19,6 +19,7 @@
 #include "lan/app/receiver_server.h"
 #include "lan/app/sender_config.h"
 #include "lan/app/sender_transfer.h"
+#include "lan/app/transfer_snapshot.h"
 #include "lan/common/error.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
@@ -83,6 +84,127 @@ TEST(TransferStateTest, NamesAndValidatesTransitions) {
     EXPECT_FALSE(lan::can_transition(lan::TransferState::completed, lan::TransferState::running));
     EXPECT_FALSE(lan::can_transition(lan::TransferState::failed, lan::TransferState::running));
     EXPECT_FALSE(lan::can_transition(lan::TransferState::cancelled, lan::TransferState::running));
+}
+
+TEST(TransferSnapshotTrackerTest, TracksSuccessfulFileTransfer) {
+    lan::TransferSnapshotTracker tracker;
+
+    EXPECT_FALSE(tracker.snapshot());
+    ASSERT_TRUE(tracker.apply(lan::TransferStarted{
+        .transfer_id = 7,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+    }));
+
+    ASSERT_TRUE(tracker.snapshot());
+    EXPECT_EQ(tracker.snapshot()->state, lan::TransferState::running);
+    EXPECT_EQ(tracker.snapshot()->transfer_id, 7);
+
+    ASSERT_TRUE(tracker.apply(lan::TransferProgress{
+        .transfer_id = 7,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+        .current_bytes = 3,
+        .total_bytes = 6,
+        .elapsed_seconds = 1.0,
+    }));
+    EXPECT_EQ(tracker.snapshot()->current_bytes, 3);
+    EXPECT_EQ(tracker.snapshot()->total_bytes, 6);
+
+    ASSERT_TRUE(tracker.apply(lan::TransferCompleted{
+        .transfer_id = 7,
+        .state = lan::TransferState::completed,
+        .direction = lan::TransferDirection::send,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/source.txt",
+        .name = "source.txt",
+        .bytes = 6,
+        .status = lan::TransferCompletionStatus::transferred,
+        .elapsed_seconds = 2.0,
+    }));
+    EXPECT_EQ(tracker.snapshot()->state, lan::TransferState::completed);
+    EXPECT_EQ(tracker.snapshot()->current_bytes, 6);
+    EXPECT_EQ(tracker.snapshot()->total_bytes, 6);
+    EXPECT_EQ(tracker.snapshot()->completion_status,
+              lan::TransferCompletionStatus::transferred);
+    EXPECT_FALSE(tracker.snapshot()->error);
+}
+
+TEST(TransferSnapshotTrackerTest, TracksFailureSemantics) {
+    lan::TransferSnapshotTracker tracker;
+
+    ASSERT_TRUE(tracker.apply(lan::TransferStarted{
+        .transfer_id = 3,
+        .state = lan::TransferState::running,
+        .direction = lan::TransferDirection::receive,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/receive",
+        .name = {},
+    }));
+
+    ASSERT_TRUE(tracker.apply(lan::TransferFailed{
+        .transfer_id = 3,
+        .state = lan::TransferState::failed,
+        .direction = lan::TransferDirection::receive,
+        .kind = lan::TransferKind::file,
+        .path = "/tmp/receive",
+        .name = {},
+        .error = lan::Error{lan::ErrorCode::protocol_error, "expected file_begin frame"},
+        .category = lan::ErrorCategory::protocol,
+        .retryable = false,
+        .user_action_required = true,
+    }));
+
+    ASSERT_TRUE(tracker.snapshot());
+    EXPECT_EQ(tracker.snapshot()->state, lan::TransferState::failed);
+    ASSERT_TRUE(tracker.snapshot()->error);
+    EXPECT_EQ(tracker.snapshot()->error->code, lan::ErrorCode::protocol_error);
+    EXPECT_EQ(tracker.snapshot()->error_category, lan::ErrorCategory::protocol);
+    EXPECT_FALSE(tracker.snapshot()->retryable);
+    EXPECT_TRUE(tracker.snapshot()->user_action_required);
+}
+
+TEST(TransferSnapshotTrackerTest, RejectsInvalidTransitionsAndWrongIds) {
+    lan::TransferSnapshotTracker tracker;
+
+    EXPECT_FALSE(tracker.apply(lan::TransferProgress{
+        .transfer_id = 1,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+
+    ASSERT_TRUE(tracker.apply(lan::TransferStarted{
+        .transfer_id = 1,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+    EXPECT_FALSE(tracker.apply(lan::TransferProgress{
+        .transfer_id = 2,
+        .state = lan::TransferState::running,
+        .path = {},
+        .name = {},
+    }));
+    ASSERT_TRUE(tracker.apply(lan::TransferCompleted{
+        .transfer_id = 1,
+        .state = lan::TransferState::completed,
+        .path = {},
+        .name = {},
+    }));
+    EXPECT_FALSE(tracker.apply(lan::TransferFailed{
+        .transfer_id = 1,
+        .state = lan::TransferState::failed,
+        .path = {},
+        .name = {},
+        .error = lan::Error{},
+    }));
 }
 
 struct MemoryPipe {
