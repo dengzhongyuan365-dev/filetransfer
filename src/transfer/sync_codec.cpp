@@ -422,7 +422,7 @@ std::vector<std::byte> encode_delta_header(const DeltaPlan& plan) {
     std::vector<std::byte> output;
     append_u64(output, plan.source_size);
     append_string(output, plan.source_sha256);
-    append_u32(output, static_cast<std::uint32_t>(plan.ops.size()));
+    append_u32(output, plan.op_count == 0 ? static_cast<std::uint32_t>(plan.ops.size()) : plan.op_count);
     return output;
 }
 

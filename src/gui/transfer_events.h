@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <mutex>
+#include <string>
 
 #include "lan/app/receiver_server.h"
 #include "lan/app/sender_transfer.h"
@@ -33,6 +34,7 @@ private:
     std::function<void(QString)> on_log_;
     bool directory_scan_logged_ = false;
     bool directory_transfer_logged_ = false;
+    std::string current_directory_file_;
 };
 
 class GuiReceiverEvents final : public ReceiverServerEvents {

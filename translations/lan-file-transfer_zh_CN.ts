@@ -446,22 +446,32 @@ Code: %2</source>
         <translation>目录传输完成：%1 个文件</translation>
     </message>
     <message>
-        <location filename="../src/gui/transfer_events.cpp" line="66"/>
-        <source>Scanning directory and hashing files...</source>
-        <translation>正在扫描目录并计算文件哈希...</translation>
+        <location filename="../src/gui/transfer_events.cpp" line="67"/>
+        <source>Scanning directory...</source>
+        <translation>正在扫描目录...</translation>
     </message>
     <message>
-        <location filename="../src/gui/transfer_events.cpp" line="73"/>
+        <location filename="../src/gui/transfer_events.cpp" line="76"/>
         <source>Directory scan complete: %1 files. Starting transfer...</source>
         <translation>目录扫描完成：%1 个文件。开始传输...</translation>
     </message>
     <message>
-        <location filename="../src/gui/transfer_events.cpp" line="131"/>
+        <location filename="../src/gui/transfer_events.cpp" line="83"/>
+        <source>Skipping unchanged file: %1</source>
+        <translation>跳过未变化文件：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_events.cpp" line="86"/>
+        <source>Sending file: %1</source>
+        <translation>正在发送文件：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_events.cpp" line="144"/>
         <source>received %1</source>
         <translation>已接收 %1</translation>
     </message>
     <message>
-        <location filename="../src/gui/transfer_events.cpp" line="138"/>
+        <location filename="../src/gui/transfer_events.cpp" line="151"/>
         <source>synced directory: %1 files</source>
         <translation>目录同步完成：%1 个文件</translation>
     </message>

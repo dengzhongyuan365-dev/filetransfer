@@ -18,6 +18,7 @@ void GuiSenderEvents::on_transfer_started(const TransferStarted& started) {
     if (started.kind == TransferKind::directory) {
         directory_scan_logged_ = false;
         directory_transfer_logged_ = false;
+        current_directory_file_.clear();
         if (on_log_) {
             on_log_(QCoreApplication::translate("MainWindow", "Preparing directory transfer: %1")
                         .arg(to_qstring(started.path)));
@@ -63,7 +64,7 @@ void GuiSenderEvents::on_directory_progress(const SendSyncProgress& progress) {
 
     if (progress.manifest_files == 0) {
         if (!directory_scan_logged_) {
-            on_log_(QCoreApplication::translate("MainWindow", "Scanning directory and hashing files..."));
+            on_log_(QCoreApplication::translate("MainWindow", "Scanning directory..."));
             directory_scan_logged_ = true;
         }
         return;
@@ -73,6 +74,18 @@ void GuiSenderEvents::on_directory_progress(const SendSyncProgress& progress) {
         on_log_(QCoreApplication::translate("MainWindow", "Directory scan complete: %1 files. Starting transfer...")
                     .arg(progress.manifest_files));
         directory_transfer_logged_ = true;
+    }
+
+    const auto current = progress.current_file.generic_string();
+    if (!current.empty() && current != current_directory_file_) {
+        current_directory_file_ = current;
+        if (progress.current_action == SyncAction::skip) {
+            on_log_(QCoreApplication::translate("MainWindow", "Skipping unchanged file: %1")
+                        .arg(to_qstring(current_directory_file_)));
+        } else {
+            on_log_(QCoreApplication::translate("MainWindow", "Sending file: %1")
+                        .arg(to_qstring(current_directory_file_)));
+        }
     }
 }
 

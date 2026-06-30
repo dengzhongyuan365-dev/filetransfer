@@ -1,12 +1,15 @@
 #include "lan/transfer/sync_session.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <sys/stat.h>
+#include <vector>
 #include <utility>
 
 #include "lan/common/stopwatch.h"
@@ -30,6 +33,9 @@ Error make_error(ErrorCode code, std::string message) {
 struct DeltaStreamSendReport {
     std::uint64_t payload_bytes_sent = 0;
 };
+
+using SendProgressPublisher = std::function<void(std::uint64_t current_file_bytes,
+                                                 std::uint64_t current_file_total_bytes)>;
 
 struct DeltaStreamReceiveReport {
     std::uint64_t payload_bytes_received = 0;
@@ -303,6 +309,99 @@ Result<DeltaStreamSendReport> send_delta_stream(Connection& connection, const De
     return Result<DeltaStreamSendReport>::success(report);
 }
 
+Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
+                                               const std::filesystem::path& source,
+                                               const ManifestEntry& entry,
+                                               std::uint32_t chunk_size,
+                                               const CancellationToken& cancellation,
+                                               const SendProgressPublisher& publish_progress) {
+    if (chunk_size == 0) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::invalid_argument, "block size must be greater than zero"));
+    }
+    if (chunk_size > max_frame_body_size) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::invalid_argument, "block size exceeds max frame body size"));
+    }
+
+    std::ifstream input(source, std::ios::binary);
+    if (!input) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::io_error, "failed to open " + quote_path(source)));
+    }
+
+    DeltaStreamSendReport report;
+    DeltaPlan header;
+    header.source_size = entry.size;
+    header.source_sha256 = entry.sha256;
+    const auto op_count = entry.size == 0 ? 0 : (entry.size + chunk_size - 1) / chunk_size;
+    if (op_count > std::numeric_limits<std::uint32_t>::max()) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::invalid_argument, "full stream has too many chunks"));
+    }
+    header.op_count = static_cast<std::uint32_t>(op_count);
+
+    Frame begin;
+    begin.type = MessageType::delta_begin;
+    begin.body = encode_delta_header(header);
+    report.payload_bytes_sent += begin.body.size();
+    auto begin_written = write_frame(connection, begin);
+    if (!begin_written) {
+        return Result<DeltaStreamSendReport>::failure(begin_written.error());
+    }
+
+    std::vector<std::byte> buffer(chunk_size);
+    std::uint64_t bytes_sent = 0;
+    if (publish_progress) {
+        publish_progress(bytes_sent, entry.size);
+    }
+
+    while (bytes_sent < entry.size) {
+        if (cancellation.is_cancelled()) {
+            return Result<DeltaStreamSendReport>::failure(
+                make_error(ErrorCode::cancelled, "sync transfer cancelled"));
+        }
+
+        const auto remaining = entry.size - bytes_sent;
+        const auto want = std::min<std::uint64_t>(buffer.size(), remaining);
+        input.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(want));
+        const auto got = input.gcount();
+        if (got <= 0) {
+            return Result<DeltaStreamSendReport>::failure(
+                make_error(ErrorCode::io_error, "failed to read " + quote_path(source)));
+        }
+
+        DeltaOp op;
+        op.type = DeltaOpType::literal_data;
+        const auto bytes_read = static_cast<std::size_t>(got);
+        op.size = static_cast<std::uint64_t>(bytes_read);
+        op.data.assign(buffer.begin(), buffer.begin() + bytes_read);
+
+        Frame frame;
+        frame.type = MessageType::delta;
+        frame.body = encode_delta_op(op);
+        report.payload_bytes_sent += frame.body.size();
+        auto written = write_frame(connection, frame);
+        if (!written) {
+            return Result<DeltaStreamSendReport>::failure(written.error());
+        }
+
+        bytes_sent += static_cast<std::uint64_t>(got);
+        if (publish_progress) {
+            publish_progress(bytes_sent, entry.size);
+        }
+    }
+
+    Frame end;
+    end.type = MessageType::delta_end;
+    auto end_written = write_frame(connection, end);
+    if (!end_written) {
+        return Result<DeltaStreamSendReport>::failure(end_written.error());
+    }
+
+    return Result<DeltaStreamSendReport>::success(report);
+}
+
 Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
     Frame hello;
     hello.type = MessageType::hello;
@@ -499,6 +598,10 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                     .manifest_scanned_files = progress.files,
                     .manifest_scanned_bytes = progress.bytes,
                     .processed_files = progress.files,
+                    .current_file = {},
+                    .current_action = SyncAction::skip,
+                    .current_file_bytes = 0,
+                    .current_file_total_bytes = 0,
                     .elapsed_seconds = transfer_timer.elapsed_seconds(),
                 });
             }
@@ -517,11 +620,19 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
     report.manifest_files = manifest.value().files.size();
     report.block_size = plan.value().block_size;
     std::uint64_t processed_files = 0;
+    std::filesystem::path current_file;
+    SyncAction current_action = SyncAction::skip;
+    std::uint64_t current_file_bytes = 0;
+    std::uint64_t current_file_total_bytes = 0;
     auto publish_progress = [&] {
         if (on_progress) {
             on_progress(SendSyncProgress{
                 .manifest_files = report.manifest_files,
                 .processed_files = processed_files,
+                .current_file = current_file,
+                .current_action = current_action,
+                .current_file_bytes = current_file_bytes,
+                .current_file_total_bytes = current_file_total_bytes,
                 .skipped_files = report.skipped_files,
                 .full_files = report.full_files,
                 .delta_files = report.delta_files,
@@ -541,6 +652,10 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         }
 
         if (entry.action == SyncAction::skip) {
+            current_file = entry.manifest_entry.relative_path;
+            current_action = entry.action;
+            current_file_bytes = entry.manifest_entry.size;
+            current_file_total_bytes = entry.manifest_entry.size;
             ++report.skipped_files;
             ++processed_files;
             publish_progress();
@@ -548,11 +663,37 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         }
 
         const auto source = config.source_path / entry.manifest_entry.relative_path;
-        auto delta = build_delta(source, entry.basis_signatures, plan.value().block_size);
-        if (!delta) {
-            return Result<SendSyncReport>::failure(delta.error());
+        current_file = entry.manifest_entry.relative_path;
+        current_action = entry.action;
+        current_file_bytes = 0;
+        current_file_total_bytes = entry.manifest_entry.size;
+        publish_progress();
+
+        Result<DeltaStreamSendReport> delta_written =
+            Result<DeltaStreamSendReport>::failure(
+                make_error(ErrorCode::internal_error, "delta stream did not run"));
+        if (entry.action == SyncAction::full) {
+            delta_written = send_full_stream(
+                connection,
+                source,
+                entry.manifest_entry,
+                plan.value().block_size,
+                cancellation,
+                [&](std::uint64_t bytes, std::uint64_t total) {
+                    current_file_bytes = bytes;
+                    current_file_total_bytes = total;
+                    publish_progress();
+                });
+        } else {
+            auto delta = build_delta(source, entry.basis_signatures, plan.value().block_size);
+            if (!delta) {
+                return Result<SendSyncReport>::failure(delta.error());
+            }
+            current_file_bytes = entry.manifest_entry.size;
+            current_file_total_bytes = entry.manifest_entry.size;
+            publish_progress();
+            delta_written = send_delta_stream(connection, delta.value());
         }
-        auto delta_written = send_delta_stream(connection, delta.value());
         if (!delta_written) {
             return Result<SendSyncReport>::failure(delta_written.error());
         }

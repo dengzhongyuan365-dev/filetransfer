@@ -120,7 +120,8 @@ TransferProgress make_sender_directory_progress(std::uint64_t transfer_id,
         .path = {},
         .name = {},
         .current_bytes = scanning ? progress.manifest_scanned_bytes
-                                  : progress.delta_payload_bytes_sent,
+                                  : progress.current_file_bytes,
+        .total_bytes = scanning ? 0 : progress.current_file_total_bytes,
         .processed_files = scanning ? progress.manifest_scanned_files
                                     : progress.processed_files,
         .total_files = progress.manifest_files,

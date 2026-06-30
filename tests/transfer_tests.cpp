@@ -1370,12 +1370,14 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
         lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
     std::vector<std::uint64_t> sender_progress_processed;
     std::vector<std::uint64_t> sender_progress_totals;
+    std::vector<std::uint64_t> sender_current_file_bytes;
 
     std::thread sender([&] {
         sender_result = lan::sync_sender_to_connection(
             sender_config, 5, pair.client, [&](const lan::SendSyncProgress& progress) {
                 sender_progress_processed.push_back(progress.processed_files);
                 sender_progress_totals.push_back(progress.manifest_files);
+                sender_current_file_bytes.push_back(progress.current_file_bytes);
             });
     });
     std::thread receiver([&] {
@@ -1403,10 +1405,19 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_GT(sender_result.value().delta_payload_bytes_sent, 0);
     EXPECT_GT(sender_result.value().elapsed_seconds, 0.0);
 
-    const std::vector<std::uint64_t> expected_sender_processed = {1, 2, 3, 0, 1, 2, 3};
-    const std::vector<std::uint64_t> expected_sender_totals = {0, 0, 0, 3, 3, 3, 3};
-    EXPECT_EQ(sender_progress_processed, expected_sender_processed);
-    EXPECT_EQ(sender_progress_totals, expected_sender_totals);
+    ASSERT_FALSE(sender_progress_processed.empty());
+    EXPECT_EQ(sender_progress_processed.front(), 1);
+    EXPECT_EQ(sender_progress_processed.back(), 3);
+    EXPECT_EQ(sender_progress_totals.front(), 0);
+    EXPECT_EQ(sender_progress_totals.back(), 3);
+    EXPECT_NE(std::find(sender_current_file_bytes.begin(),
+                        sender_current_file_bytes.end(),
+                        5),
+              sender_current_file_bytes.end());
+    EXPECT_NE(std::find(sender_current_file_bytes.begin(),
+                        sender_current_file_bytes.end(),
+                        10),
+              sender_current_file_bytes.end());
 
     EXPECT_EQ(receiver_result.value().manifest_files, 3);
     EXPECT_EQ(receiver_result.value().skipped_files, 1);
@@ -1636,18 +1647,22 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
 
-    const std::vector<std::uint64_t> expected_processed = {1, 2, 0, 1, 2};
-    const std::vector<std::uint64_t> expected_totals = {0, 0, 2, 2, 2};
-    const std::vector<std::uint64_t> expected_progress_ids(expected_processed.size(), 1);
+    ASSERT_FALSE(events.directory_progress_processed.empty());
+    EXPECT_EQ(events.directory_progress_processed.front(), 1);
+    EXPECT_EQ(events.directory_progress_processed.back(), 2);
+    EXPECT_EQ(events.directory_progress_totals.front(), 0);
+    EXPECT_EQ(events.directory_progress_totals.back(), 2);
+    const std::vector<std::uint64_t> expected_progress_ids(
+        events.directory_progress_processed.size(), 1);
     const std::vector<lan::TransferDirection> expected_directions(
-        expected_processed.size(), lan::TransferDirection::send);
+        events.directory_progress_processed.size(), lan::TransferDirection::send);
     const std::vector<lan::TransferKind> expected_kinds(
-        expected_processed.size(), lan::TransferKind::directory);
+        events.directory_progress_processed.size(), lan::TransferKind::directory);
     EXPECT_EQ(events.directions, expected_directions);
     EXPECT_EQ(events.kinds, expected_kinds);
     EXPECT_EQ(events.progress_ids, expected_progress_ids);
-    EXPECT_EQ(events.directory_progress_processed, expected_processed);
-    EXPECT_EQ(events.directory_progress_totals, expected_totals);
+    EXPECT_EQ(events.directory_progress_processed.size(),
+              events.directory_progress_totals.size());
 }
 
 TEST(SenderTransferRunnerTest, ReportsLifecycleFailureWhenConnectionFails) {
