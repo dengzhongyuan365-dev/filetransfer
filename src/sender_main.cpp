@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <iostream>
 #include <utility>
 
@@ -5,6 +6,26 @@
 #include "lan/common/size.h"
 #include "lan/transfer/single_file.h"
 #include "lan/transfer/sync_session.h"
+
+namespace {
+
+void print_send_file_progress(const lan::SendFileProgress& progress) {
+    std::cerr << '\r' << "sending " << progress.file_name << "  "
+              << lan::format_size(progress.bytes_sent) << " / "
+              << lan::format_size(progress.total_bytes) << "  "
+              << lan::format_rate(progress.bytes_sent, progress.elapsed_seconds);
+    std::cerr.flush();
+}
+
+void print_send_sync_progress(const lan::SendSyncProgress& progress) {
+    std::cerr << '\r' << "syncing files " << progress.processed_files << " / "
+              << progress.manifest_files << "  skipped " << progress.skipped_files
+              << "  full " << progress.full_files << "  delta " << progress.delta_files
+              << "  delta frames " << progress.delta_frames_sent;
+    std::cerr.flush();
+}
+
+}  // namespace
 
 int main(int argc, char* argv[]) {
     auto result = lan::parse_sender_args(argc, argv);
@@ -37,7 +58,10 @@ int main(int argc, char* argv[]) {
     std::cout << "  resume: " << (final_config.resume ? "true" : "false") << '\n';
 
     if (std::filesystem::is_directory(final_config.source_path)) {
-        auto synced = lan::sync_sender(final_config, static_cast<std::uint32_t>(final_config.chunk_size));
+        auto synced = lan::sync_sender(final_config,
+                                       static_cast<std::uint32_t>(final_config.chunk_size),
+                                       print_send_sync_progress);
+        std::cerr << '\n';
         if (!synced) {
             std::cerr << synced.error().message << '\n';
             return 1;
@@ -53,7 +77,8 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    auto sent = lan::send_single_file(final_config);
+    auto sent = lan::send_single_file(final_config, print_send_file_progress);
+    std::cerr << '\n';
     if (!sent) {
         std::cerr << sent.error().message << '\n';
         return 1;
