@@ -12,6 +12,54 @@ Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
 }
 
+TransferStarted make_receiver_started(const ReceiverConfig& config, TransferKind kind) {
+    return TransferStarted{
+        .direction = TransferDirection::receive,
+        .kind = kind,
+        .path = config.receive_dir,
+        .name = {},
+    };
+}
+
+TransferFailed make_receiver_failed(const ReceiverConfig& config,
+                                     TransferKind kind,
+                                     const Error& error) {
+    return TransferFailed{
+        .direction = TransferDirection::receive,
+        .kind = kind,
+        .path = config.receive_dir,
+        .name = {},
+        .error = error,
+    };
+}
+
+TransferCompleted make_receiver_file_completed(const ReceiveFileReport& report) {
+    return TransferCompleted{
+        .direction = TransferDirection::receive,
+        .kind = TransferKind::file,
+        .path = report.target_path,
+        .name = report.target_path.filename().string(),
+        .bytes = report.bytes_received,
+        .elapsed_seconds = report.elapsed_seconds,
+    };
+}
+
+TransferCompleted make_receiver_directory_completed(const ReceiverConfig& config,
+                                                    const ReceiveSyncReport& report) {
+    return TransferCompleted{
+        .direction = TransferDirection::receive,
+        .kind = TransferKind::directory,
+        .path = config.receive_dir,
+        .name = config.receive_dir.filename().string(),
+        .total_files = report.manifest_files,
+        .skipped_files = report.skipped_files,
+        .full_files = report.full_files,
+        .delta_files = report.delta_files,
+        .payload_bytes = report.delta_payload_bytes_received,
+        .elapsed_seconds = report.elapsed_seconds,
+    };
+}
+
 }  // namespace
 
 ReceiverServer::ReceiverServer(NetworkBackend& backend) : backend_(backend) {}
@@ -114,7 +162,11 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
             make_error(ErrorCode::protocol_error, "expected hello frame"));
     }
 
-    if (body_as_string(hello.value()) == "sync") {
+    const auto kind = body_as_string(hello.value()) == "sync" ? TransferKind::directory
+                                                              : TransferKind::file;
+    events.on_transfer_started(make_receiver_started(config, kind));
+
+    if (kind == TransferKind::directory) {
         auto synced = sync_receiver_from_connection(
             config,
             static_cast<std::uint32_t>(config.block_size),
@@ -124,10 +176,12 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
                 events.on_directory_progress(progress);
             });
         if (!synced) {
+            events.on_transfer_failed(make_receiver_failed(config, kind, synced.error()));
             return Result<bool>::failure(synced.error());
         }
 
         events.on_directory_synced(synced.value());
+        events.on_transfer_completed(make_receiver_directory_completed(config, synced.value()));
         return Result<bool>::success(true);
     }
 
@@ -136,10 +190,12 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
             events.on_file_progress(progress);
         });
     if (!received) {
+        events.on_transfer_failed(make_receiver_failed(config, kind, received.error()));
         return Result<bool>::failure(received.error());
     }
 
     events.on_file_received(received.value());
+    events.on_transfer_completed(make_receiver_file_completed(received.value()));
     return Result<bool>::success(true);
 }
 

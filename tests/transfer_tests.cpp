@@ -259,6 +259,10 @@ private:
 
 class CapturingSenderEvents final : public lan::SenderTransferEvents {
 public:
+    void on_transfer_started(const lan::TransferStarted& started) override {
+        started_kinds.push_back(started.kind);
+    }
+
     void on_transfer_progress(const lan::TransferProgress& progress) override {
         directions.push_back(progress.direction);
         kinds.push_back(progress.kind);
@@ -272,6 +276,19 @@ public:
         directory_progress_totals.push_back(progress.total_files);
     }
 
+    void on_transfer_completed(const lan::TransferCompleted& completed) override {
+        completed_kinds.push_back(completed.kind);
+    }
+
+    void on_transfer_failed(const lan::TransferFailed& failed) override {
+        failed_kinds.push_back(failed.kind);
+        failed_errors.push_back(failed.error.code);
+    }
+
+    std::vector<lan::TransferKind> started_kinds;
+    std::vector<lan::TransferKind> completed_kinds;
+    std::vector<lan::TransferKind> failed_kinds;
+    std::vector<lan::ErrorCode> failed_errors;
     std::vector<lan::TransferDirection> directions;
     std::vector<lan::TransferKind> kinds;
     std::vector<std::uint64_t> file_progress_bytes;
@@ -288,6 +305,18 @@ public:
             listening = true;
         }
         listening_changed_.notify_all();
+    }
+
+    void on_transfer_started(const lan::TransferStarted& started) override {
+        started_kinds.push_back(started.kind);
+    }
+
+    void on_transfer_completed(const lan::TransferCompleted& completed) override {
+        completed_kinds.push_back(completed.kind);
+    }
+
+    void on_transfer_failed(const lan::TransferFailed& failed) override {
+        failed_kinds.push_back(failed.kind);
     }
 
     void on_file_received(const lan::ReceiveFileReport& report) override {
@@ -329,6 +358,9 @@ public:
     lan::ReceiveFileReport file_report;
     lan::ReceiveSyncReport sync_report;
     lan::Error last_error;
+    std::vector<lan::TransferKind> started_kinds;
+    std::vector<lan::TransferKind> completed_kinds;
+    std::vector<lan::TransferKind> failed_kinds;
     std::vector<std::uint64_t> file_progress_bytes;
     std::vector<std::uint64_t> file_progress_totals;
     std::vector<std::uint64_t> directory_progress_processed;
@@ -766,6 +798,12 @@ TEST(SenderTransferRunnerTest, SendsFileThroughInjectedNetworkBackend) {
     EXPECT_EQ(transferred.value().file.bytes_sent, 6);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
+    const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::file};
+    const std::vector<lan::TransferKind> expected_completed = {lan::TransferKind::file};
+    EXPECT_EQ(events.started_kinds, expected_started);
+    EXPECT_EQ(events.completed_kinds, expected_completed);
+    EXPECT_TRUE(events.failed_kinds.empty());
+
     const std::vector<std::uint64_t> expected_progress = {0, 3, 6};
     const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
     const std::vector<lan::TransferDirection> expected_directions(
@@ -824,6 +862,12 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     EXPECT_EQ(transferred.value().directory.full_files, 1);
     EXPECT_EQ(read_text(receive.path() / "new.txt"), "new\n");
 
+    const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::directory};
+    const std::vector<lan::TransferKind> expected_completed = {lan::TransferKind::directory};
+    EXPECT_EQ(events.started_kinds, expected_started);
+    EXPECT_EQ(events.completed_kinds, expected_completed);
+    EXPECT_TRUE(events.failed_kinds.empty());
+
     const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
     const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
     const std::vector<lan::TransferDirection> expected_directions(
@@ -834,6 +878,36 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     EXPECT_EQ(events.kinds, expected_kinds);
     EXPECT_EQ(events.directory_progress_processed, expected_processed);
     EXPECT_EQ(events.directory_progress_totals, expected_totals);
+}
+
+TEST(SenderTransferRunnerTest, ReportsLifecycleFailureWhenConnectionFails) {
+    TempDir temp("sender-transfer-failure-test");
+    const auto source = temp.path() / "source.txt";
+    write_text(source, "abcdef");
+
+    lan::SenderConfig sender_config;
+    sender_config.target.host = "memory";
+    sender_config.target.port = 1;
+    sender_config.source_path = source;
+
+    FakeConnectBackend backend(nullptr);
+    CapturingSenderEvents events;
+    lan::SenderTransferRunner runner(backend);
+
+    auto transferred = runner.run(sender_config, events);
+
+    ASSERT_FALSE(transferred);
+    EXPECT_EQ(transferred.error().code, lan::ErrorCode::network_error);
+
+    const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::file};
+    const std::vector<lan::TransferKind> expected_failed = {lan::TransferKind::file};
+    const std::vector<lan::ErrorCode> expected_errors = {lan::ErrorCode::network_error};
+    EXPECT_EQ(events.started_kinds, expected_started);
+    EXPECT_TRUE(events.completed_kinds.empty());
+    EXPECT_EQ(events.failed_kinds, expected_failed);
+    EXPECT_EQ(events.failed_errors, expected_errors);
+    EXPECT_TRUE(events.directions.empty());
+    EXPECT_TRUE(events.kinds.empty());
 }
 
 TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
@@ -879,6 +953,10 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_TRUE(events.directory_synced);
     EXPECT_FALSE(events.file_received);
     EXPECT_FALSE(events.client_error);
+    const std::vector<lan::TransferKind> expected_lifecycle = {lan::TransferKind::directory};
+    EXPECT_EQ(events.started_kinds, expected_lifecycle);
+    EXPECT_EQ(events.completed_kinds, expected_lifecycle);
+    EXPECT_TRUE(events.failed_kinds.empty());
     EXPECT_EQ(served.value().accepted_connections, 1);
     EXPECT_EQ(served.value().failed_connections, 0);
     EXPECT_EQ(events.sync_report.skipped_files, 1);
@@ -971,6 +1049,10 @@ TEST(ReceiverServerTest, EmitsFileProgressEvents) {
     ASSERT_TRUE(served) << served.error().message;
     EXPECT_TRUE(events.file_received);
     EXPECT_FALSE(events.directory_synced);
+    const std::vector<lan::TransferKind> expected_lifecycle = {lan::TransferKind::file};
+    EXPECT_EQ(events.started_kinds, expected_lifecycle);
+    EXPECT_EQ(events.completed_kinds, expected_lifecycle);
+    EXPECT_TRUE(events.failed_kinds.empty());
     EXPECT_EQ(read_text(receive_dir / "progress.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
