@@ -725,6 +725,8 @@ public:
     void on_directory_progress(const lan::ReceiveSyncProgress& progress) override {
         directory_progress_processed.push_back(progress.processed_files);
         directory_progress_totals.push_back(progress.manifest_files);
+        directory_progress_current_bytes.push_back(progress.current_file_bytes);
+        directory_progress_current_ops.push_back(progress.current_file_ops);
     }
 
     void on_client_error(const lan::Error& error) override {
@@ -770,6 +772,8 @@ public:
     std::vector<std::uint64_t> file_progress_totals;
     std::vector<std::uint64_t> directory_progress_processed;
     std::vector<std::uint64_t> directory_progress_totals;
+    std::vector<std::uint64_t> directory_progress_current_bytes;
+    std::vector<std::uint64_t> directory_progress_current_ops;
 
 private:
     std::mutex mutex_;
@@ -1441,6 +1445,8 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     std::vector<std::uint64_t> sender_progress_processed;
     std::vector<std::uint64_t> sender_progress_totals;
     std::vector<std::uint64_t> sender_current_file_bytes;
+    std::vector<std::uint64_t> receiver_current_file_bytes;
+    std::vector<std::uint64_t> receiver_current_file_ops;
 
     std::thread sender([&] {
         sender_result = lan::sync_sender_to_connection(
@@ -1458,7 +1464,14 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
             return;
         }
         receiver_result = lan::sync_receiver_from_connection(
-            receiver_config, 5, pair.server, initial_hello.value());
+            receiver_config,
+            5,
+            pair.server,
+            initial_hello.value(),
+            [&](const lan::ReceiveSyncProgress& progress) {
+                receiver_current_file_bytes.push_back(progress.current_file_bytes);
+                receiver_current_file_ops.push_back(progress.current_file_ops);
+            });
     });
 
     sender.join();
@@ -1497,6 +1510,14 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_EQ(receiver_result.value().delta_payload_bytes_received,
               sender_result.value().delta_payload_bytes_sent);
     EXPECT_GT(receiver_result.value().elapsed_seconds, 0.0);
+    EXPECT_NE(std::find(receiver_current_file_bytes.begin(),
+                        receiver_current_file_bytes.end(),
+                        5),
+              receiver_current_file_bytes.end());
+    EXPECT_NE(std::find(receiver_current_file_ops.begin(),
+                        receiver_current_file_ops.end(),
+                        1),
+              receiver_current_file_ops.end());
 
     auto manifest = lan::build_manifest(source.path(), 4096);
     ASSERT_TRUE(manifest);
@@ -1896,12 +1917,24 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_EQ(events.sync_report.skipped_files, 1);
     EXPECT_EQ(events.sync_report.full_files, 1);
 
-    const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
-    const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
-    const std::vector<std::uint64_t> expected_progress_ids(expected_processed.size(), 1);
-    EXPECT_EQ(events.progress_ids, expected_progress_ids);
-    EXPECT_EQ(events.directory_progress_processed, expected_processed);
-    EXPECT_EQ(events.directory_progress_totals, expected_totals);
+    ASSERT_FALSE(events.directory_progress_processed.empty());
+    EXPECT_EQ(events.directory_progress_processed.front(), 0);
+    EXPECT_EQ(events.directory_progress_processed.back(), 2);
+    ASSERT_FALSE(events.directory_progress_totals.empty());
+    EXPECT_EQ(events.directory_progress_totals.front(), 2);
+    EXPECT_EQ(events.directory_progress_totals.back(), 2);
+    EXPECT_EQ(events.progress_ids.size(), events.directory_progress_processed.size());
+    EXPECT_TRUE(std::all_of(events.progress_ids.begin(), events.progress_ids.end(), [](auto id) {
+        return id == 1;
+    }));
+    EXPECT_NE(std::find(events.directory_progress_current_bytes.begin(),
+                        events.directory_progress_current_bytes.end(),
+                        5),
+              events.directory_progress_current_bytes.end());
+    EXPECT_NE(std::find(events.directory_progress_current_ops.begin(),
+                        events.directory_progress_current_ops.end(),
+                        1),
+              events.directory_progress_current_ops.end());
 
     auto src_hash = lan::hash_file(source.path() / "new.txt");
     auto dst_hash = lan::hash_file(receive.path() / "new.txt");

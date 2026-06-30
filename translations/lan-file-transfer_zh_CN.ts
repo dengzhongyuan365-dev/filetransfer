@@ -314,9 +314,19 @@ Send to the linked machine</source>
         <translation>这个传输任务没有活动的发送端。</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1056"/>
+        <source>No active receiver for this transfer.</source>
+        <translation>这个传输任务没有活动的接收端。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1011"/>
         <source>Stopping transfer...</source>
         <translation>正在停止传输...</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1059"/>
+        <source>Stopping receive transfer...</source>
+        <translation>正在停止接收任务...</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1017"/>
@@ -486,9 +496,29 @@ Code: %2</source>
         <translation>正在发送文件：%1</translation>
     </message>
     <message>
+        <location filename="../src/gui/transfer_events.cpp" line="116"/>
+        <source>Preparing to receive directory...</source>
+        <translation>正在准备接收目录...</translation>
+    </message>
+    <message>
         <location filename="../src/gui/transfer_events.cpp" line="144"/>
         <source>received %1</source>
         <translation>已接收 %1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_events.cpp" line="161"/>
+        <source>Receiving directory: %1 files</source>
+        <translation>正在接收目录：%1 个文件</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_events.cpp" line="170"/>
+        <source>Receiver skipped unchanged file: %1</source>
+        <translation>接收端跳过未变化文件：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_events.cpp" line="173"/>
+        <source>Receiver applying file: %1</source>
+        <translation>接收端正在写入文件：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/transfer_events.cpp" line="151"/>

@@ -155,6 +155,7 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
         events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, connection.error()));
         return Result<SenderTransferReport>::failure(connection.error());
     }
+    set_active_connection(connection.value().get());
 
     SenderTransferReport report;
     if (kind == TransferKind::directory) {
@@ -169,9 +170,11 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
             },
             cancellation_);
         if (!synced) {
-            if (synced.error().code == ErrorCode::cancelled) {
+            clear_active_connection(connection.value().get());
+            if (cancellation_.is_cancelled() || synced.error().code == ErrorCode::cancelled) {
                 events.on_transfer_cancelled(make_sender_cancelled(transfer_id, config, kind));
-                return Result<SenderTransferReport>::failure(synced.error());
+                return Result<SenderTransferReport>::failure(
+                    Error{ErrorCode::cancelled, "send transfer cancelled"});
             }
             events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, synced.error()));
             return Result<SenderTransferReport>::failure(synced.error());
@@ -181,6 +184,7 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
         report.directory = std::move(synced).value();
         events.on_transfer_completed(
             make_sender_directory_completed(transfer_id, config, report.directory));
+        clear_active_connection(connection.value().get());
         return Result<SenderTransferReport>::success(std::move(report));
     }
 
@@ -190,9 +194,11 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
             events.on_file_progress(progress);
         }, cancellation_);
     if (!sent) {
-        if (sent.error().code == ErrorCode::cancelled) {
+        clear_active_connection(connection.value().get());
+        if (cancellation_.is_cancelled() || sent.error().code == ErrorCode::cancelled) {
             events.on_transfer_cancelled(make_sender_cancelled(transfer_id, config, kind));
-            return Result<SenderTransferReport>::failure(sent.error());
+            return Result<SenderTransferReport>::failure(
+                Error{ErrorCode::cancelled, "send transfer cancelled"});
         }
         events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, sent.error()));
         return Result<SenderTransferReport>::failure(sent.error());
@@ -201,11 +207,34 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
     report.kind = TransferKind::file;
     report.file = std::move(sent).value();
     events.on_transfer_completed(make_sender_file_completed(transfer_id, config, report.file));
+    clear_active_connection(connection.value().get());
     return Result<SenderTransferReport>::success(std::move(report));
 }
 
 void SenderTransferRunner::cancel() {
     cancellation_.cancel();
+
+    Connection* connection = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(active_io_mutex_);
+        connection = active_connection_;
+    }
+
+    if (connection != nullptr) {
+        connection->close();
+    }
+}
+
+void SenderTransferRunner::set_active_connection(Connection* connection) {
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
+    active_connection_ = connection;
+}
+
+void SenderTransferRunner::clear_active_connection(Connection* connection) {
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
+    if (active_connection_ == connection) {
+        active_connection_ = nullptr;
+    }
 }
 
 Result<SenderTransferReport> run_sender_transfer(const SenderConfig& config,

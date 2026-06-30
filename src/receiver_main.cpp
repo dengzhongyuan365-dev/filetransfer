@@ -62,6 +62,10 @@ public:
                   << progress.manifest_files << "  skipped " << progress.skipped_files
                   << "  full " << progress.full_files << "  delta " << progress.delta_files
                   << "  written " << progress.files_written
+                  << "  current " << progress.current_file.generic_string()
+                  << "  " << lan::format_size(progress.current_file_bytes) << " / "
+                  << lan::format_size(progress.current_file_total_bytes)
+                  << "  ops " << progress.current_file_ops
                   << "  payload " << lan::format_size(progress.delta_payload_bytes_received)
                   << "  elapsed " << progress.elapsed_seconds << " s";
         std::cerr.flush();

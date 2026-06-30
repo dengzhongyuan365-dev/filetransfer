@@ -70,6 +70,11 @@ struct ReceiveSyncReport {
 struct ReceiveSyncProgress {
     std::uint64_t manifest_files = 0;
     std::uint64_t processed_files = 0;
+    std::filesystem::path current_file;
+    SyncAction current_action = SyncAction::skip;
+    std::uint64_t current_file_bytes = 0;
+    std::uint64_t current_file_total_bytes = 0;
+    std::uint64_t current_file_ops = 0;
     std::uint64_t skipped_files = 0;
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;

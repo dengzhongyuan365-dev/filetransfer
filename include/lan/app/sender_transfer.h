@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 #include "lan/app/sender_config.h"
 #include "lan/app/transfer_event.h"
@@ -34,9 +35,14 @@ public:
     void cancel();
 
 private:
+    void set_active_connection(Connection* connection);
+    void clear_active_connection(Connection* connection);
+
     NetworkBackend& backend_;
     std::atomic_uint64_t next_transfer_id_ = 1;
     CancellationToken cancellation_;
+    std::mutex active_io_mutex_;
+    Connection* active_connection_ = nullptr;
 };
 
 Result<SenderTransferReport> run_sender_transfer(const SenderConfig& config,

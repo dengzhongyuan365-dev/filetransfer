@@ -63,6 +63,8 @@ private:
     std::function<void(TransferSnapshotStore)> on_change_;
     std::function<void(QString)> on_log_;
     std::function<void(const ReceiverConfig&)> on_listening_;
+    bool directory_receive_logged_ = false;
+    std::string current_directory_file_;
 };
 
 }  // namespace lan::gui

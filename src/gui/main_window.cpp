@@ -1001,9 +1001,6 @@ QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
 }
 
 bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
-    if (snapshot.direction != TransferDirection::send) {
-        return false;
-    }
     return snapshot.state == TransferState::pending || snapshot.state == TransferState::running;
 }
 
@@ -1052,6 +1049,15 @@ void MainWindow::stop_transfer(const QString& key) {
     }
     if (!can_stop_transfer(it.value())) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer is not running."));
+        return;
+    }
+    if (it.value().direction == TransferDirection::receive) {
+        if (receiver_runner_ == nullptr) {
+            show_log(QCoreApplication::translate("MainWindow", "No active receiver for this transfer."));
+            return;
+        }
+        show_log(QCoreApplication::translate("MainWindow", "Stopping receive transfer..."));
+        stop_receiver();
         return;
     }
     if (sender_runner_ == nullptr) {

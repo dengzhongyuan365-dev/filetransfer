@@ -36,6 +36,9 @@ struct DeltaStreamSendReport {
 
 using SendProgressPublisher = std::function<void(std::uint64_t current_file_bytes,
                                                  std::uint64_t current_file_total_bytes)>;
+using ReceiveProgressPublisher = std::function<void(std::uint64_t current_file_bytes,
+                                                    std::uint64_t current_file_total_bytes,
+                                                    std::uint64_t current_file_ops)>;
 
 struct DeltaStreamReceiveReport {
     std::uint64_t payload_bytes_received = 0;
@@ -179,7 +182,8 @@ Result<bool> apply_file_metadata(const std::filesystem::path& target, const Mani
 Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     Connection& connection,
     const std::filesystem::path& receive_root,
-    const SyncPlanEntry& entry) {
+    const SyncPlanEntry& entry,
+    const ReceiveProgressPublisher& publish_progress) {
     const auto target = receive_root / entry.manifest_entry.relative_path;
     const auto part_path = part_path_for(target);
     std::filesystem::create_directories(target.parent_path());
@@ -219,6 +223,10 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
 
     std::uint64_t ops_received = 0;
     std::uint64_t expected_ops = 0;
+    std::uint64_t bytes_written = 0;
+    if (publish_progress) {
+        publish_progress(bytes_written, entry.manifest_entry.size, ops_received);
+    }
     while (true) {
         auto frame = read_frame(connection);
         if (!frame) {
@@ -251,6 +259,10 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
             return Result<DeltaStreamReceiveReport>::failure(applied.error());
         }
         ++ops_received;
+        bytes_written += op.value().size;
+        if (publish_progress) {
+            publish_progress(bytes_written, entry.manifest_entry.size, ops_received);
+        }
     }
 
     if (ops_received != expected_ops) {
@@ -882,11 +894,21 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
     report.manifest_files = manifest_files;
     report.block_size = plan.value().block_size;
     std::uint64_t processed_files = 0;
+    std::filesystem::path current_file;
+    SyncAction current_action = SyncAction::skip;
+    std::uint64_t current_file_bytes = 0;
+    std::uint64_t current_file_total_bytes = 0;
+    std::uint64_t current_file_ops = 0;
     auto publish_progress = [&] {
         if (on_progress) {
             on_progress(ReceiveSyncProgress{
                 .manifest_files = report.manifest_files,
                 .processed_files = processed_files,
+                .current_file = current_file,
+                .current_action = current_action,
+                .current_file_bytes = current_file_bytes,
+                .current_file_total_bytes = current_file_total_bytes,
+                .current_file_ops = current_file_ops,
                 .skipped_files = report.skipped_files,
                 .full_files = report.full_files,
                 .delta_files = report.delta_files,
@@ -900,14 +922,31 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
     publish_progress();
 
     for (const auto& entry : plan.value().entries) {
+        current_file = entry.manifest_entry.relative_path;
+        current_action = entry.action;
+        current_file_bytes = 0;
+        current_file_total_bytes = entry.manifest_entry.size;
+        current_file_ops = 0;
+
         if (entry.action == SyncAction::skip) {
+            current_file_bytes = entry.manifest_entry.size;
             ++report.skipped_files;
             ++processed_files;
             publish_progress();
             continue;
         }
 
-        auto applied = apply_delta_stream_to_target(connection, config.receive_dir, entry);
+        publish_progress();
+        auto applied = apply_delta_stream_to_target(
+            connection,
+            config.receive_dir,
+            entry,
+            [&](std::uint64_t bytes, std::uint64_t total, std::uint64_t ops) {
+                current_file_bytes = bytes;
+                current_file_total_bytes = total;
+                current_file_ops = ops;
+                publish_progress();
+            });
         if (!applied) {
             return fail_sync_receiver(connection, applied.error());
         }

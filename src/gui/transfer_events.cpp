@@ -109,6 +109,13 @@ void GuiReceiverEvents::on_listening(const ReceiverConfig& config) {
 }
 
 void GuiReceiverEvents::on_transfer_started(const TransferStarted& started) {
+    if (started.kind == TransferKind::directory) {
+        directory_receive_logged_ = false;
+        current_directory_file_.clear();
+        if (on_log_) {
+            on_log_(QCoreApplication::translate("MainWindow", "Preparing to receive directory..."));
+        }
+    }
     update([&] {
         snapshots_.apply(started);
     });
@@ -145,7 +152,29 @@ void GuiReceiverEvents::on_file_received(const ReceiveFileReport& report) {
                 .arg(to_qstring(report.target_path)));
 }
 
-void GuiReceiverEvents::on_directory_progress(const ReceiveSyncProgress&) {}
+void GuiReceiverEvents::on_directory_progress(const ReceiveSyncProgress& progress) {
+    if (!on_log_) {
+        return;
+    }
+
+    if (!directory_receive_logged_ && progress.manifest_files > 0) {
+        on_log_(QCoreApplication::translate("MainWindow", "Receiving directory: %1 files")
+                    .arg(progress.manifest_files));
+        directory_receive_logged_ = true;
+    }
+
+    const auto current = progress.current_file.generic_string();
+    if (!current.empty() && current != current_directory_file_) {
+        current_directory_file_ = current;
+        if (progress.current_action == SyncAction::skip) {
+            on_log_(QCoreApplication::translate("MainWindow", "Receiver skipped unchanged file: %1")
+                        .arg(to_qstring(current_directory_file_)));
+        } else {
+            on_log_(QCoreApplication::translate("MainWindow", "Receiver applying file: %1")
+                        .arg(to_qstring(current_directory_file_)));
+        }
+    }
+}
 
 void GuiReceiverEvents::on_directory_synced(const ReceiveSyncReport& report) {
     on_log_(QCoreApplication::translate("MainWindow", "synced directory: %1 files")
