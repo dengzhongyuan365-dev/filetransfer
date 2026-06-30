@@ -18,6 +18,9 @@ enum class MessageType : std::uint8_t {
     file_end = 4,
     error = 5,
     ack = 6,
+    manifest = 7,
+    sync_plan = 8,
+    delta = 9,
 };
 
 struct Frame {

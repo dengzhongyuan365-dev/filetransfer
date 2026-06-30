@@ -51,6 +51,9 @@ bool is_valid_message_type(std::uint8_t value) {
         case MessageType::file_end:
         case MessageType::error:
         case MessageType::ack:
+        case MessageType::manifest:
+        case MessageType::sync_plan:
+        case MessageType::delta:
             return true;
     }
 
@@ -73,6 +76,12 @@ std::string message_type_name(MessageType type) {
             return "error";
         case MessageType::ack:
             return "ack";
+        case MessageType::manifest:
+            return "manifest";
+        case MessageType::sync_plan:
+            return "sync_plan";
+        case MessageType::delta:
+            return "delta";
     }
 
     return "unknown";
