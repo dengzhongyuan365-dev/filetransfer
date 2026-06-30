@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LAN File Transfer
+Name[zh_CN]=局域网文件传输
+Comment=Send files to machines on the local network
+Comment[zh_CN]=在局域网设备之间发送文件
+Exec=lan-gui
+Icon=lan-file-transfer
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+StartupNotify=true

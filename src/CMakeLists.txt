@@ -53,7 +53,13 @@ target_link_libraries(lan_tests PRIVATE lan_core)
 
 add_test(NAME lan_tests COMMAND lan_tests)
 
+install(TARGETS sender receiver local-copy
+    RUNTIME DESTINATION bin
+)
+
 if(Qt6_FOUND)
+    find_package(Qt6LinguistTools QUIET)
+
     add_executable(lan-gui
         gui/drop_panel.cpp
         gui/main_window.cpp
@@ -63,4 +69,24 @@ if(Qt6_FOUND)
     )
     target_include_directories(lan-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lan-gui PRIVATE lan_core Qt6::Widgets Qt6::Network)
+
+    target_compile_definitions(lan-gui PRIVATE
+        LAN_TRANSLATION_DIR="${CMAKE_INSTALL_FULL_DATADIR}/lan-file-transfer/translations"
+    )
+
+    install(TARGETS lan-gui
+        RUNTIME DESTINATION bin
+    )
+
+    if(Qt6LinguistTools_FOUND)
+        qt_add_translation(LAN_GUI_QM_FILES
+            ${PROJECT_SOURCE_DIR}/translations/lan-file-transfer_zh_CN.ts
+        )
+        add_custom_target(lan-gui-translations ALL DEPENDS ${LAN_GUI_QM_FILES})
+        install(FILES ${LAN_GUI_QM_FILES}
+            DESTINATION share/lan-file-transfer/translations
+        )
+    else()
+        message(STATUS "Qt6 LinguistTools not found; translation .qm files will not be generated")
+    endif()
 endif()
