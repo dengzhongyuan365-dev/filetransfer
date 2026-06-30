@@ -31,6 +31,7 @@ struct SendSyncReport {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t delta_frames_sent = 0;
+    std::uint32_t block_size = 0;
 };
 
 struct ReceiveSyncReport {
@@ -39,6 +40,7 @@ struct ReceiveSyncReport {
     std::uint64_t full_files = 0;
     std::uint64_t delta_files = 0;
     std::uint64_t files_written = 0;
+    std::uint32_t block_size = 0;
 };
 
 Result<SendSyncNegotiationReport> negotiate_sync_sender(const SenderConfig& config,

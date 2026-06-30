@@ -287,6 +287,8 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
 }
 
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size) {
+    (void)block_size;
+
     auto manifest = build_manifest(config.source_path);
     if (!manifest) {
         return Result<SendSyncReport>::failure(manifest.error());
@@ -304,6 +306,7 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
 
     SendSyncReport report;
     report.manifest_files = manifest.value().files.size();
+    report.block_size = plan.value().block_size;
 
     for (const auto& entry : plan.value().entries) {
         if (entry.action == SyncAction::skip) {
@@ -312,7 +315,7 @@ Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t blo
         }
 
         const auto source = config.source_path / entry.manifest_entry.relative_path;
-        auto delta = build_delta(source, entry.basis_signatures, block_size);
+        auto delta = build_delta(source, entry.basis_signatures, plan.value().block_size);
         if (!delta) {
             return Result<SendSyncReport>::failure(delta.error());
         }
@@ -388,6 +391,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& co
 
     ReceiveSyncReport report;
     report.manifest_files = manifest_files;
+    report.block_size = plan.value().block_size;
 
     for (const auto& entry : plan.value().entries) {
         if (entry.action == SyncAction::skip) {

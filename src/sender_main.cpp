@@ -49,6 +49,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  full: " << synced.value().full_files << '\n';
         std::cout << "  delta: " << synced.value().delta_files << '\n';
         std::cout << "  delta frames sent: " << synced.value().delta_frames_sent << '\n';
+        std::cout << "  block size: " << lan::format_size(synced.value().block_size) << '\n';
         return 0;
     }
 
