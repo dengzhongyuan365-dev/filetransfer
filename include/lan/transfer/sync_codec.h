@@ -20,6 +20,8 @@ std::vector<std::byte> encode_delta_plan(const DeltaPlan& plan);
 Result<DeltaPlan> decode_delta_plan(const std::vector<std::byte>& body);
 std::vector<std::byte> encode_delta_header(const DeltaPlan& plan);
 Result<DeltaPlan> decode_delta_header(const std::vector<std::byte>& body);
+std::vector<std::byte> encode_delta_end(const DeltaPlan& plan);
+Result<DeltaPlan> decode_delta_end(const std::vector<std::byte>& body);
 std::vector<std::byte> encode_delta_op(const DeltaOp& op);
 Result<DeltaOp> decode_delta_op(const std::vector<std::byte>& body);
 

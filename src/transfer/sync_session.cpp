@@ -41,6 +41,9 @@ struct DeltaStreamReceiveReport {
     std::uint64_t payload_bytes_received = 0;
 };
 
+constexpr std::uint64_t delta_op_metadata_size = 1 + 8 + 8 + 8;
+constexpr std::uint64_t max_delta_data_size = max_frame_body_size - delta_op_metadata_size;
+
 Result<bool> send_error_frame(Connection& connection, std::string_view message) {
     Frame frame;
     frame.type = MessageType::error;
@@ -215,6 +218,7 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     }
 
     std::uint64_t ops_received = 0;
+    std::uint64_t expected_ops = 0;
     while (true) {
         auto frame = read_frame(connection);
         if (!frame) {
@@ -222,6 +226,12 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
         }
 
         if (frame.value().type == MessageType::delta_end) {
+            report.payload_bytes_received += frame.value().body.size();
+            auto end = decode_delta_end(frame.value().body);
+            if (!end) {
+                return Result<DeltaStreamReceiveReport>::failure(end.error());
+            }
+            expected_ops = end.value().op_count;
             break;
         }
 
@@ -243,9 +253,9 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
         ++ops_received;
     }
 
-    if (ops_received != header.value().op_count) {
+    if (ops_received != expected_ops) {
         return Result<DeltaStreamReceiveReport>::failure(
-            make_error(ErrorCode::protocol_error, "delta op count does not match delta header"));
+            make_error(ErrorCode::protocol_error, "delta op count does not match delta end"));
     }
 
     output.close();
@@ -277,38 +287,6 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     return Result<DeltaStreamReceiveReport>::success(report);
 }
 
-Result<DeltaStreamSendReport> send_delta_stream(Connection& connection, const DeltaPlan& delta) {
-    DeltaStreamSendReport report;
-    Frame begin;
-    begin.type = MessageType::delta_begin;
-    begin.body = encode_delta_header(delta);
-    report.payload_bytes_sent += begin.body.size();
-    auto begin_written = write_frame(connection, begin);
-    if (!begin_written) {
-        return Result<DeltaStreamSendReport>::failure(begin_written.error());
-    }
-
-    for (const auto& op : delta.ops) {
-        Frame frame;
-        frame.type = MessageType::delta;
-        frame.body = encode_delta_op(op);
-        report.payload_bytes_sent += frame.body.size();
-        auto written = write_frame(connection, frame);
-        if (!written) {
-            return Result<DeltaStreamSendReport>::failure(written.error());
-        }
-    }
-
-    Frame end;
-    end.type = MessageType::delta_end;
-    auto end_written = write_frame(connection, end);
-    if (!end_written) {
-        return Result<DeltaStreamSendReport>::failure(end_written.error());
-    }
-
-    return Result<DeltaStreamSendReport>::success(report);
-}
-
 Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
                                                const std::filesystem::path& source,
                                                const ManifestEntry& entry,
@@ -319,7 +297,7 @@ Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
         return Result<DeltaStreamSendReport>::failure(
             make_error(ErrorCode::invalid_argument, "block size must be greater than zero"));
     }
-    if (chunk_size > max_frame_body_size) {
+    if (chunk_size > max_delta_data_size) {
         return Result<DeltaStreamSendReport>::failure(
             make_error(ErrorCode::invalid_argument, "block size exceeds max frame body size"));
     }
@@ -334,12 +312,6 @@ Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
     DeltaPlan header;
     header.source_size = entry.size;
     header.source_sha256 = entry.sha256;
-    const auto op_count = entry.size == 0 ? 0 : (entry.size + chunk_size - 1) / chunk_size;
-    if (op_count > std::numeric_limits<std::uint32_t>::max()) {
-        return Result<DeltaStreamSendReport>::failure(
-            make_error(ErrorCode::invalid_argument, "full stream has too many chunks"));
-    }
-    header.op_count = static_cast<std::uint32_t>(op_count);
 
     Frame begin;
     begin.type = MessageType::delta_begin;
@@ -352,6 +324,7 @@ Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
 
     std::vector<std::byte> buffer(chunk_size);
     std::uint64_t bytes_sent = 0;
+    std::uint32_t ops_sent = 0;
     if (publish_progress) {
         publish_progress(bytes_sent, entry.size);
     }
@@ -369,6 +342,10 @@ Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
         if (got <= 0) {
             return Result<DeltaStreamSendReport>::failure(
                 make_error(ErrorCode::io_error, "failed to read " + quote_path(source)));
+        }
+        if (ops_sent == std::numeric_limits<std::uint32_t>::max()) {
+            return Result<DeltaStreamSendReport>::failure(
+                make_error(ErrorCode::invalid_argument, "full stream has too many chunks"));
         }
 
         DeltaOp op;
@@ -390,10 +367,95 @@ Result<DeltaStreamSendReport> send_full_stream(Connection& connection,
         if (publish_progress) {
             publish_progress(bytes_sent, entry.size);
         }
+        ++ops_sent;
     }
+
+    DeltaPlan end_plan;
+    end_plan.op_count = ops_sent;
 
     Frame end;
     end.type = MessageType::delta_end;
+    end.body = encode_delta_end(end_plan);
+    report.payload_bytes_sent += end.body.size();
+    auto end_written = write_frame(connection, end);
+    if (!end_written) {
+        return Result<DeltaStreamSendReport>::failure(end_written.error());
+    }
+
+    return Result<DeltaStreamSendReport>::success(report);
+}
+
+Result<DeltaStreamSendReport> send_streaming_delta(Connection& connection,
+                                                   const std::filesystem::path& source,
+                                                   const ManifestEntry& entry,
+                                                   const std::vector<BlockSignature>& basis_signatures,
+                                                   std::uint32_t block_size,
+                                                   const CancellationToken& cancellation,
+                                                   const SendProgressPublisher& publish_progress) {
+    if (block_size == 0) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::invalid_argument, "block size must be greater than zero"));
+    }
+    if (block_size > max_delta_data_size) {
+        return Result<DeltaStreamSendReport>::failure(
+            make_error(ErrorCode::invalid_argument, "block size exceeds max frame body size"));
+    }
+
+    DeltaStreamSendReport report;
+    DeltaPlan header;
+    header.source_size = entry.size;
+    header.source_sha256 = entry.sha256;
+
+    Frame begin;
+    begin.type = MessageType::delta_begin;
+    begin.body = encode_delta_header(header);
+    report.payload_bytes_sent += begin.body.size();
+    auto begin_written = write_frame(connection, begin);
+    if (!begin_written) {
+        return Result<DeltaStreamSendReport>::failure(begin_written.error());
+    }
+
+    std::uint64_t bytes_processed = 0;
+    if (publish_progress) {
+        publish_progress(bytes_processed, entry.size);
+    }
+
+    auto op_count = stream_delta_ops(
+        source,
+        basis_signatures,
+        block_size,
+        [&](const DeltaOp& op) -> Result<bool> {
+            if (cancellation.is_cancelled()) {
+                return Result<bool>::failure(
+                    make_error(ErrorCode::cancelled, "sync transfer cancelled"));
+            }
+
+            Frame frame;
+            frame.type = MessageType::delta;
+            frame.body = encode_delta_op(op);
+            report.payload_bytes_sent += frame.body.size();
+            auto written = write_frame(connection, frame);
+            if (!written) {
+                return Result<bool>::failure(written.error());
+            }
+
+            bytes_processed += op.size;
+            if (publish_progress) {
+                publish_progress(bytes_processed, entry.size);
+            }
+            return Result<bool>::success(true);
+        });
+    if (!op_count) {
+        return Result<DeltaStreamSendReport>::failure(op_count.error());
+    }
+
+    DeltaPlan end_plan;
+    end_plan.op_count = op_count.value();
+
+    Frame end;
+    end.type = MessageType::delta_end;
+    end.body = encode_delta_end(end_plan);
+    report.payload_bytes_sent += end.body.size();
     auto end_written = write_frame(connection, end);
     if (!end_written) {
         return Result<DeltaStreamSendReport>::failure(end_written.error());
@@ -685,14 +747,18 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                     publish_progress();
                 });
         } else {
-            auto delta = build_delta(source, entry.basis_signatures, plan.value().block_size);
-            if (!delta) {
-                return Result<SendSyncReport>::failure(delta.error());
-            }
-            current_file_bytes = entry.manifest_entry.size;
-            current_file_total_bytes = entry.manifest_entry.size;
-            publish_progress();
-            delta_written = send_delta_stream(connection, delta.value());
+            delta_written = send_streaming_delta(
+                connection,
+                source,
+                entry.manifest_entry,
+                entry.basis_signatures,
+                plan.value().block_size,
+                cancellation,
+                [&](std::uint64_t bytes, std::uint64_t total) {
+                    current_file_bytes = bytes;
+                    current_file_total_bytes = total;
+                    publish_progress();
+                });
         }
         if (!delta_written) {
             return Result<SendSyncReport>::failure(delta_written.error());

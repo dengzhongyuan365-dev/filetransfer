@@ -170,6 +170,24 @@ delta*
 delta_end
 ```
 
+`delta_begin` carries the target file metadata needed before applying the stream:
+
+```text
+0..7        source size, big endian uint64
+8..11       sha256 string byte length, big endian uint32
+12..        sha256 string bytes
+```
+
+Each `delta` frame carries one operation. It is either a literal payload or a copy range from the receiver's basis file.
+
+`delta_end` carries the final operation count:
+
+```text
+0..3        op count, big endian uint32
+```
+
+The sender reports the operation count at the end so future implementations can generate delta operations while streaming, without precomputing the whole operation list.
+
 The receiver writes through `.part` files and verifies hashes before committing.
 
 ## Error Handling

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <vector>
 
@@ -30,9 +31,15 @@ struct DeltaPlan {
     std::vector<DeltaOp> ops;
 };
 
+using DeltaOpCallback = std::function<Result<bool>(const DeltaOp&)>;
+
 Result<DeltaPlan> build_delta(const std::filesystem::path& source_path,
                               const std::vector<BlockSignature>& basis_signatures,
                               std::uint32_t block_size);
+Result<std::uint32_t> stream_delta_ops(const std::filesystem::path& source_path,
+                                       const std::vector<BlockSignature>& basis_signatures,
+                                       std::uint32_t block_size,
+                                       const DeltaOpCallback& on_op);
 Result<bool> apply_delta(const std::filesystem::path& basis_path,
                          const std::filesystem::path& output_path,
                          const std::vector<DeltaOp>& ops);

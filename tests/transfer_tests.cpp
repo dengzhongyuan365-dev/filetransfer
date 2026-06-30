@@ -1283,7 +1283,13 @@ TEST(SyncCodecTest, RoundTripsManifestSyncPlanAndDeltaPlan) {
 
     auto decoded_header = lan::decode_delta_header(lan::encode_delta_header(delta));
     ASSERT_TRUE(decoded_header);
-    EXPECT_EQ(decoded_header.value().op_count, 1);
+    EXPECT_EQ(decoded_header.value().source_size, 2);
+    EXPECT_EQ(decoded_header.value().source_sha256, "sha");
+    EXPECT_EQ(decoded_header.value().op_count, 0);
+
+    auto decoded_end = lan::decode_delta_end(lan::encode_delta_end(delta));
+    ASSERT_TRUE(decoded_end);
+    EXPECT_EQ(decoded_end.value().op_count, 1);
 
     auto decoded_op = lan::decode_delta_op(lan::encode_delta_op(delta.ops[0]));
     ASSERT_TRUE(decoded_op);
@@ -1307,6 +1313,70 @@ TEST(DeltaTest, RebuildsSourceFromBasisAndDelta) {
     EXPECT_GT(delta.value().ops.size(), 0);
 
     auto applied = lan::apply_delta(basis, rebuilt, delta.value().ops);
+    ASSERT_TRUE(applied);
+    EXPECT_EQ(read_text(rebuilt), read_text(source));
+}
+
+TEST(DeltaTest, StreamsDeltaOpsWithoutBuildingFullPlan) {
+    TempDir temp("delta-stream-test");
+    const auto basis = temp.path() / "basis.txt";
+    const auto source = temp.path() / "source.txt";
+    const auto rebuilt = temp.path() / "rebuilt.txt";
+
+    write_text(basis, "aaaa-bbbb-cccc-dddd-eeee\n");
+    write_text(source, "xxxx-bbbb-cccc-yyyy-eeee\n");
+
+    auto signatures = lan::build_block_signatures(basis, 5);
+    ASSERT_TRUE(signatures);
+
+    std::vector<lan::DeltaOp> ops;
+    auto op_count = lan::stream_delta_ops(
+        source,
+        signatures.value(),
+        5,
+        [&](const lan::DeltaOp& op) {
+            ops.push_back(op);
+            return lan::Result<bool>::success(true);
+        });
+
+    ASSERT_TRUE(op_count);
+    EXPECT_EQ(op_count.value(), ops.size());
+
+    auto applied = lan::apply_delta(basis, rebuilt, ops);
+    ASSERT_TRUE(applied);
+    EXPECT_EQ(read_text(rebuilt), read_text(source));
+}
+
+TEST(DeltaTest, StreamingDeltaFindsShiftedBasisBlocks) {
+    TempDir temp("delta-shifted-stream-test");
+    const auto basis = temp.path() / "basis.txt";
+    const auto source = temp.path() / "source.txt";
+    const auto rebuilt = temp.path() / "rebuilt.txt";
+
+    write_text(basis, "0123456789abcdef");
+    write_text(source, "xx0123456789abcdefyy");
+
+    auto signatures = lan::build_block_signatures(basis, 4);
+    ASSERT_TRUE(signatures);
+
+    std::vector<lan::DeltaOp> ops;
+    auto op_count = lan::stream_delta_ops(
+        source,
+        signatures.value(),
+        4,
+        [&](const lan::DeltaOp& op) {
+            ops.push_back(op);
+            return lan::Result<bool>::success(true);
+        });
+
+    ASSERT_TRUE(op_count);
+    EXPECT_EQ(op_count.value(), ops.size());
+    EXPECT_NE(std::find_if(ops.begin(), ops.end(), [](const auto& op) {
+                  return op.type == lan::DeltaOpType::copy_from_basis;
+              }),
+              ops.end());
+
+    auto applied = lan::apply_delta(basis, rebuilt, ops);
     ASSERT_TRUE(applied);
     EXPECT_EQ(read_text(rebuilt), read_text(source));
 }
