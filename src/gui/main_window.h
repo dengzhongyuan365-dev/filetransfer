@@ -67,6 +67,7 @@ private:
     QString transfer_rate_text(const TransferSnapshot& snapshot) const;
     QString transfer_size_text(const TransferSnapshot& snapshot) const;
     bool can_stop_transfer(const TransferSnapshot& snapshot) const;
+    bool can_clear_transfer(const TransferSnapshot& snapshot) const;
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
 

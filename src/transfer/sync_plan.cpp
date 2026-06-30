@@ -1,5 +1,7 @@
 #include "lan/transfer/sync_plan.h"
 
+#include <chrono>
+#include <cstdlib>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -59,13 +61,38 @@ Result<SyncAction> choose_action(const ManifestEntry& entry, const std::filesyst
                        "failed to read receive target size " + quote_path(target) + ": " + ec.message()));
     }
 
-    if (local_size == entry.size) {
+    if (local_size != entry.size) {
+        return Result<SyncAction>::success(SyncAction::delta);
+    }
+
+    if (!entry.sha256.empty()) {
         auto local_hash = hash_file(target);
         if (!local_hash) {
             return Result<SyncAction>::failure(local_hash.error());
         }
 
         if (local_hash.value().hex_digest == entry.sha256) {
+            return Result<SyncAction>::success(SyncAction::skip);
+        }
+
+        return Result<SyncAction>::success(SyncAction::delta);
+    }
+
+    const auto local_mtime = std::filesystem::last_write_time(target, ec);
+    if (ec) {
+        return Result<SyncAction>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to read receive target mtime " + quote_path(target) + ": " + ec.message()));
+    }
+
+    const auto local_system_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+        local_mtime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+    const auto local_ns = local_system_time.time_since_epoch().count();
+    if (local_ns >= 0) {
+        constexpr auto mtime_tolerance_ns = 1000LL * 1000LL;
+        const auto source_ns = static_cast<long long>(entry.mtime_ns);
+        const auto delta = std::llabs(static_cast<long long>(local_ns) - source_ns);
+        if (delta <= mtime_tolerance_ns) {
             return Result<SyncAction>::success(SyncAction::skip);
         }
     }

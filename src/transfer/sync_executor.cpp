@@ -1,10 +1,12 @@
 #include "lan/transfer/sync_executor.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
 #include <system_error>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -128,6 +130,25 @@ Result<std::uint64_t> copy_file_to_part(const std::filesystem::path& source,
 }
 
 Result<bool> verify_part_hash(const std::filesystem::path& part_path, const ManifestEntry& entry) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(part_path, ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to read synced file size " + quote_path(part_path) + ": " + ec.message()));
+    }
+
+    if (size != entry.size) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::checksum_mismatch,
+                       "synced file size does not match manifest: " +
+                           entry.relative_path.generic_string()));
+    }
+
+    if (entry.sha256.empty()) {
+        return Result<bool>::success(true);
+    }
+
     auto hash = hash_file(part_path);
     if (!hash) {
         return Result<bool>::failure(hash.error());
@@ -138,6 +159,32 @@ Result<bool> verify_part_hash(const std::filesystem::path& part_path, const Mani
             make_error(ErrorCode::checksum_mismatch,
                        "synced file sha256 does not match manifest: " +
                            entry.relative_path.generic_string()));
+    }
+
+    return Result<bool>::success(true);
+}
+
+std::filesystem::file_time_type file_time_from_mtime_ns(std::uint64_t mtime_ns) {
+    const auto system_time =
+        std::chrono::system_clock::time_point(std::chrono::nanoseconds(mtime_ns));
+    return std::chrono::time_point_cast<std::filesystem::file_time_type::duration>(
+        system_time - std::chrono::system_clock::now() +
+        std::filesystem::file_time_type::clock::now());
+}
+
+Result<bool> apply_file_metadata(const std::filesystem::path& target, const ManifestEntry& entry) {
+    std::error_code ec;
+    std::filesystem::last_write_time(target, file_time_from_mtime_ns(entry.mtime_ns), ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to set mtime on " + quote_path(target) + ": " + ec.message()));
+    }
+
+    if (entry.mode != 0 && ::chmod(target.c_str(), static_cast<mode_t>(entry.mode & 07777)) != 0) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to chmod " + quote_path(target) + ": " + std::strerror(errno)));
     }
 
     return Result<bool>::success(true);
@@ -181,6 +228,11 @@ Result<std::uint64_t> write_full_file(const std::filesystem::path& source,
         return Result<std::uint64_t>::failure(committed.error());
     }
 
+    auto metadata = apply_file_metadata(target, entry);
+    if (!metadata) {
+        return Result<std::uint64_t>::failure(metadata.error());
+    }
+
     return copied;
 }
 
@@ -211,6 +263,11 @@ Result<std::uint64_t> write_delta_file(const std::filesystem::path& source,
     auto committed = commit_part_file(part_path, target, part_file);
     if (!committed) {
         return Result<std::uint64_t>::failure(committed.error());
+    }
+
+    auto metadata = apply_file_metadata(target, entry.manifest_entry);
+    if (!metadata) {
+        return Result<std::uint64_t>::failure(metadata.error());
     }
 
     return Result<std::uint64_t>::success(entry.manifest_entry.size);

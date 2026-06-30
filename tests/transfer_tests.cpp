@@ -70,6 +70,17 @@ std::string read_text(const std::filesystem::path& path) {
     return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
+void copy_mtime(const std::filesystem::path& from, const std::filesystem::path& to) {
+    std::filesystem::last_write_time(to, std::filesystem::last_write_time(from));
+}
+
+void make_source_newer_than_target(const std::filesystem::path& source,
+                                   const std::filesystem::path& target) {
+    const auto now = std::filesystem::file_time_type::clock::now();
+    std::filesystem::last_write_time(target, now - std::chrono::seconds(10));
+    std::filesystem::last_write_time(source, now);
+}
+
 TEST(TransferStateTest, NamesAndValidatesTransitions) {
     EXPECT_EQ(lan::transfer_state_name(lan::TransferState::pending), "pending");
     EXPECT_EQ(lan::transfer_state_name(lan::TransferState::running), "running");
@@ -1216,6 +1227,8 @@ TEST(ManifestTest, RecursivelyScansRegularFiles) {
     ASSERT_EQ(manifest.value().files.size(), 2);
     EXPECT_EQ(manifest.value().files[0].relative_path.generic_string(), "a.txt");
     EXPECT_EQ(manifest.value().files[1].relative_path.generic_string(), "sub/b.txt");
+    EXPECT_TRUE(manifest.value().files[0].sha256.empty());
+    EXPECT_TRUE(manifest.value().files[1].sha256.empty());
 }
 
 TEST(SyncCodecTest, RoundTripsManifestSyncPlanAndDeltaPlan) {
@@ -1307,6 +1320,8 @@ TEST(SyncPlanAndExecutorTest, HandlesSkipFullAndDelta) {
     write_text(source.path() / "sub" / "new.txt", "new nested\n");
     write_text(source.path() / "changed.txt", "xxxx-bbbb-cccc-yyyy-eeee\n");
     write_text(receive.path() / "changed.txt", "aaaa-bbbb-cccc-dddd-eeee\n");
+    copy_mtime(source.path() / "same.txt", receive.path() / "same.txt");
+    make_source_newer_than_target(source.path() / "changed.txt", receive.path() / "changed.txt");
 
     auto manifest = lan::build_manifest(source.path(), 4096);
     ASSERT_TRUE(manifest);
@@ -1338,6 +1353,8 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     write_text(source.path() / "sub" / "new.txt", "new nested\n");
     write_text(source.path() / "changed.txt", "xxxx-bbbb-cccc-yyyy-eeee\n");
     write_text(receive.path() / "changed.txt", "aaaa-bbbb-cccc-dddd-eeee\n");
+    copy_mtime(source.path() / "same.txt", receive.path() / "same.txt");
+    make_source_newer_than_target(source.path() / "changed.txt", receive.path() / "changed.txt");
 
     lan::SenderConfig sender_config;
     sender_config.source_path = source.path();
@@ -1570,6 +1587,7 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     write_text(source.path() / "same.txt", "same\n");
     write_text(receive.path() / "same.txt", "same\n");
     write_text(source.path() / "new.txt", "new\n");
+    copy_mtime(source.path() / "same.txt", receive.path() / "same.txt");
 
     lan::SenderConfig sender_config;
     sender_config.target.host = "memory";

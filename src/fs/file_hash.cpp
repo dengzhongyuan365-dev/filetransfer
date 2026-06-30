@@ -55,6 +55,12 @@ Result<FileDescriptor> open_for_read(const std::filesystem::path& path) {
 }  // namespace
 
 Result<FileHash> hash_file(const std::filesystem::path& path, std::uint64_t buffer_size) {
+    return hash_file(path, buffer_size, nullptr);
+}
+
+Result<FileHash> hash_file(const std::filesystem::path& path,
+                           std::uint64_t buffer_size,
+                           const CancellationToken* cancellation) {
     if (buffer_size == 0) {
         return Result<FileHash>::failure(
             make_error(ErrorCode::invalid_argument, "buffer size must be greater than zero"));
@@ -81,6 +87,11 @@ Result<FileHash> hash_file(const std::filesystem::path& path, std::uint64_t buff
     std::uint64_t bytes_hashed = 0;
 
     while (true) {
+        if (cancellation != nullptr && cancellation->is_cancelled()) {
+            return Result<FileHash>::failure(
+                make_error(ErrorCode::cancelled, "file hashing cancelled"));
+        }
+
         const auto bytes_read = ::read(file.value().get(), buffer.data(), buffer.size());
         if (bytes_read < 0) {
             if (errno == EINTR) {

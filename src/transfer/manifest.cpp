@@ -6,8 +6,6 @@
 #include <sys/stat.h>
 #include <utility>
 
-#include "lan/fs/file_hash.h"
-
 namespace lan {
 
 namespace {
@@ -61,8 +59,7 @@ std::uint32_t file_mode(const std::filesystem::path& path) {
 }
 
 Result<ManifestEntry> build_entry(const std::filesystem::path& root,
-                                  const std::filesystem::path& file,
-                                  std::uint64_t hash_buffer_size) {
+                                  const std::filesystem::path& file) {
     std::error_code ec;
     auto relative = std::filesystem::relative(file, root, ec);
     if (ec || !is_safe_relative_path(relative)) {
@@ -78,15 +75,10 @@ Result<ManifestEntry> build_entry(const std::filesystem::path& root,
                        "failed to read file size " + quote_path(file) + ": " + ec.message()));
     }
 
-    auto hash = hash_file(file, hash_buffer_size);
-    if (!hash) {
-        return Result<ManifestEntry>::failure(hash.error());
-    }
-
     return Result<ManifestEntry>::success(ManifestEntry{
         .relative_path = relative.lexically_normal(),
         .size = size,
-        .sha256 = hash.value().hex_digest,
+        .sha256 = {},
         .mtime_ns = file_mtime_ns(file),
         .mode = file_mode(file),
     });
@@ -102,6 +94,8 @@ Result<Manifest> build_manifest(const std::filesystem::path& root,
                                 std::uint64_t hash_buffer_size,
                                 ManifestProgressCallback on_progress,
                                 const CancellationToken* cancellation) {
+    (void)hash_buffer_size;
+
     std::error_code ec;
     const auto root_status = std::filesystem::symlink_status(root, ec);
     if (ec) {
@@ -165,7 +159,7 @@ Result<Manifest> build_manifest(const std::filesystem::path& root,
             continue;
         }
 
-        auto entry = build_entry(root, it->path(), hash_buffer_size);
+        auto entry = build_entry(root, it->path());
         if (!entry) {
             return Result<Manifest>::failure(entry.error());
         }

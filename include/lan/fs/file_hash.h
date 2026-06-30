@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 
+#include "lan/common/cancellation.h"
 #include "lan/common/result.h"
 
 namespace lan {
@@ -16,5 +17,8 @@ struct FileHash {
 
 Result<FileHash> hash_file(const std::filesystem::path& path,
                            std::uint64_t buffer_size = 1024 * 1024);
+Result<FileHash> hash_file(const std::filesystem::path& path,
+                           std::uint64_t buffer_size,
+                           const CancellationToken* cancellation);
 
 }  // namespace lan

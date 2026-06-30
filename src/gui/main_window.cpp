@@ -927,8 +927,9 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
         stop_transfer(key);
     });
     auto* remove = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), QCoreApplication::translate("MainWindow", "Remove from list"), card);
+        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), QCoreApplication::translate("MainWindow", "Clear from list"), card);
     remove->setObjectName("taskRemoveButton");
+    remove->setEnabled(can_clear_transfer(snapshot));
     connect(remove, &QToolButton::clicked, this, [this, key] {
         remove_transfer_card(key);
     });
@@ -987,6 +988,12 @@ bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
     return snapshot.state == TransferState::pending || snapshot.state == TransferState::running;
 }
 
+bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
+    return snapshot.state == TransferState::completed ||
+           snapshot.state == TransferState::failed ||
+           snapshot.state == TransferState::cancelled;
+}
+
 void MainWindow::stop_transfer(const QString& key) {
     const auto it = transfer_snapshots_.find(key);
     if (it == transfer_snapshots_.end()) {
@@ -1005,6 +1012,12 @@ void MainWindow::stop_transfer(const QString& key) {
 }
 
 void MainWindow::remove_transfer_card(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it != transfer_snapshots_.end() && !can_clear_transfer(it.value())) {
+        show_log(QCoreApplication::translate("MainWindow", "Stop the transfer before clearing it from the list."));
+        return;
+    }
+
     transfer_snapshots_.remove(key);
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {

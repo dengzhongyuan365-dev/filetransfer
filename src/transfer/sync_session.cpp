@@ -1,8 +1,12 @@
 #include "lan/transfer/sync_session.h"
 
+#include <cerrno>
+#include <chrono>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <sys/stat.h>
 #include <utility>
 
 #include "lan/common/stopwatch.h"
@@ -100,17 +104,64 @@ std::filesystem::path part_path_for(const std::filesystem::path& target) {
     return part;
 }
 
-Result<bool> verify_file_hash(const std::filesystem::path& path, const ManifestEntry& entry) {
+Result<bool> verify_file_hash(const std::filesystem::path& path,
+                              const ManifestEntry& entry,
+                              std::string_view expected_sha256) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to read synced file size " + quote_path(path) + ": " + ec.message()));
+    }
+
+    if (size != entry.size) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::checksum_mismatch,
+                       "synced file size does not match manifest: " +
+                           entry.relative_path.generic_string()));
+    }
+
+    if (expected_sha256.empty()) {
+        return Result<bool>::success(true);
+    }
+
     auto hash = hash_file(path);
     if (!hash) {
         return Result<bool>::failure(hash.error());
     }
 
-    if (hash.value().hex_digest != entry.sha256) {
+    if (hash.value().hex_digest != expected_sha256) {
         return Result<bool>::failure(
             make_error(ErrorCode::checksum_mismatch,
-                       "synced file sha256 does not match manifest: " +
+                       "synced file sha256 does not match sender delta header: " +
                            entry.relative_path.generic_string()));
+    }
+
+    return Result<bool>::success(true);
+}
+
+std::filesystem::file_time_type file_time_from_mtime_ns(std::uint64_t mtime_ns) {
+    const auto system_time =
+        std::chrono::system_clock::time_point(std::chrono::nanoseconds(mtime_ns));
+    return std::chrono::time_point_cast<std::filesystem::file_time_type::duration>(
+        system_time - std::chrono::system_clock::now() +
+        std::filesystem::file_time_type::clock::now());
+}
+
+Result<bool> apply_file_metadata(const std::filesystem::path& target, const ManifestEntry& entry) {
+    std::error_code ec;
+    std::filesystem::last_write_time(target, file_time_from_mtime_ns(entry.mtime_ns), ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to set mtime on " + quote_path(target) + ": " + ec.message()));
+    }
+
+    if (entry.mode != 0 && ::chmod(target.c_str(), static_cast<mode_t>(entry.mode & 07777)) != 0) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to chmod " + quote_path(target) + ": " + std::strerror(errno)));
     }
 
     return Result<bool>::success(true);
@@ -140,10 +191,14 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     if (!header) {
         return Result<DeltaStreamReceiveReport>::failure(header.error());
     }
-    if (header.value().source_size != entry.manifest_entry.size ||
+    if (header.value().source_size != entry.manifest_entry.size) {
+        return Result<DeltaStreamReceiveReport>::failure(
+            make_error(ErrorCode::protocol_error, "delta header size does not match sync plan entry"));
+    }
+    if (!entry.manifest_entry.sha256.empty() &&
         header.value().source_sha256 != entry.manifest_entry.sha256) {
         return Result<DeltaStreamReceiveReport>::failure(
-            make_error(ErrorCode::protocol_error, "delta header does not match sync plan entry"));
+            make_error(ErrorCode::protocol_error, "delta header hash does not match sync plan entry"));
     }
 
     std::ifstream basis(target, std::ios::binary);
@@ -193,7 +248,7 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
             make_error(ErrorCode::io_error, "failed to close " + quote_path(part_path)));
     }
 
-    auto verified = verify_file_hash(part_path, entry.manifest_entry);
+    auto verified = verify_file_hash(part_path, entry.manifest_entry, header.value().source_sha256);
     if (!verified) {
         return Result<DeltaStreamReceiveReport>::failure(verified.error());
     }
@@ -208,6 +263,11 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     }
 
     part_file.commit();
+    auto metadata = apply_file_metadata(target, entry.manifest_entry);
+    if (!metadata) {
+        return Result<DeltaStreamReceiveReport>::failure(metadata.error());
+    }
+
     return Result<DeltaStreamReceiveReport>::success(report);
 }
 

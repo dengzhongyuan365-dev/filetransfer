@@ -290,143 +290,148 @@ Send to the linked machine</source>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="930"/>
-        <source>Remove from list</source>
-        <translation>从列表移除</translation>
+        <source>Clear from list</source>
+        <translation>清除列表记录</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="974"/>
+        <location filename="../src/gui/main_window.cpp" line="975"/>
         <source>%1 file(s)</source>
         <translation>%1 个文件</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="996"/>
+        <location filename="../src/gui/main_window.cpp" line="1003"/>
         <source>This transfer is not running.</source>
         <translation>这个传输任务没有运行。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1000"/>
+        <location filename="../src/gui/main_window.cpp" line="1007"/>
         <source>No active sender for this transfer.</source>
         <translation>这个传输任务没有活动的发送端。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1004"/>
+        <location filename="../src/gui/main_window.cpp" line="1011"/>
         <source>Stopping transfer...</source>
         <translation>正在停止传输...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1026"/>
+        <location filename="../src/gui/main_window.cpp" line="1017"/>
+        <source>Stop the transfer before clearing it from the list.</source>
+        <translation>请先停止传输，再清除列表记录。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1039"/>
         <source>Waiting for %1 to accept code %2...</source>
         <translation>正在等待 %1 接受验证码 %2...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1027"/>
+        <location filename="../src/gui/main_window.cpp" line="1040"/>
         <source>Sending link request to %1 %2:%3 code=%4</source>
         <translation>正在向 %1 %2:%3 发送连接请求，验证码=%4</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1045"/>
+        <location filename="../src/gui/main_window.cpp" line="1058"/>
         <source>Link request from %1 %2:%3 code=%4</source>
         <translation>来自 %1 %2:%3 的连接请求，验证码=%4</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1051"/>
+        <location filename="../src/gui/main_window.cpp" line="1064"/>
         <source>Link request</source>
         <translation>连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1052"/>
+        <location filename="../src/gui/main_window.cpp" line="1065"/>
         <source>%1 wants to link with this machine.
 Code: %2</source>
         <translation>%1 想要连接这台机器。
 验证码：%2</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1056"/>
+        <location filename="../src/gui/main_window.cpp" line="1069"/>
         <source>Accepted link request from %1</source>
         <translation>已接受来自 %1 的连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1060"/>
+        <location filename="../src/gui/main_window.cpp" line="1073"/>
         <source>Rejected link request from %1</source>
         <translation>已拒绝来自 %1 的连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1078"/>
+        <location filename="../src/gui/main_window.cpp" line="1091"/>
         <source>Link request rejected.</source>
         <translation>连接请求已被拒绝。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1079"/>
+        <location filename="../src/gui/main_window.cpp" line="1092"/>
         <source>Link request rejected by peer.</source>
         <translation>连接请求被对端拒绝。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1082"/>
+        <location filename="../src/gui/main_window.cpp" line="1095"/>
         <source>Link accepted by %1</source>
         <translation>%1 已接受连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1099"/>
+        <location filename="../src/gui/main_window.cpp" line="1112"/>
         <source>Sent control &apos;%1&apos; to %2:%3</source>
         <translation>已向 %2:%3 发送控制消息 &apos;%1&apos;</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1111"/>
+        <location filename="../src/gui/main_window.cpp" line="1124"/>
         <source>Linked to %1</source>
         <translation>已连接到 %1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1112"/>
+        <location filename="../src/gui/main_window.cpp" line="1125"/>
         <source>Linked to %1.</source>
         <translation>已连接到 %1。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1113"/>
+        <location filename="../src/gui/main_window.cpp" line="1126"/>
         <source>Linked peer: %1 %2:%3</source>
         <translation>已连接设备：%1 %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1119"/>
+        <location filename="../src/gui/main_window.cpp" line="1132"/>
         <source>No linked machine.</source>
         <translation>没有已连接的设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1122"/>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
         <source>Dropped %1 path(s) for sending.</source>
         <translation>已拖入 %1 个路径准备发送。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1130"/>
+        <location filename="../src/gui/main_window.cpp" line="1143"/>
         <source>A send is already running.</source>
         <translation>已有发送任务正在运行。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1131"/>
+        <location filename="../src/gui/main_window.cpp" line="1144"/>
         <source>Send ignored while another send is running: %1</source>
         <translation>另一个发送任务正在运行，已忽略：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1145"/>
+        <location filename="../src/gui/main_window.cpp" line="1158"/>
         <source>Sender config invalid for %1: %2</source>
         <translation>%1 的发送配置无效：%2</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1148"/>
+        <location filename="../src/gui/main_window.cpp" line="1161"/>
         <source>Starting send %1 -&gt; %2:%3</source>
         <translation>开始发送 %1 -&gt; %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1166"/>
+        <location filename="../src/gui/main_window.cpp" line="1179"/>
         <source>Connect or send to %1:%2 failed: %3</source>
         <translation>连接或发送到 %1:%2 失败：%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1173"/>
+        <location filename="../src/gui/main_window.cpp" line="1186"/>
         <source>Send to %1:%2 completed.</source>
         <translation>发送到 %1:%2 已完成。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1189"/>
+        <location filename="../src/gui/main_window.cpp" line="1202"/>
         <source>Sender stopped.</source>
         <translation>发送端已停止。</translation>
     </message>
