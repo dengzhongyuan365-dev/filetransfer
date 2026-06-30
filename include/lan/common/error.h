@@ -35,6 +35,7 @@ struct Error {
 std::string_view error_code_name(ErrorCode code);
 std::string_view error_category_name(ErrorCategory category);
 ErrorCategory error_category(ErrorCode code);
+ErrorCategory error_category(const Error& error);
 bool is_retryable(ErrorCode code);
 bool is_retryable(const Error& error);
 bool needs_user_action(ErrorCode code);

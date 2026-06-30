@@ -74,6 +74,8 @@ TEST(ErrorTest, ExposesStableNamesAndCategories) {
     EXPECT_EQ(lan::error_category_name(lan::ErrorCategory::network), "network");
     EXPECT_EQ(lan::error_category(lan::ErrorCode::checksum_mismatch),
               lan::ErrorCategory::integrity);
+    EXPECT_EQ(lan::error_category(lan::Error{lan::ErrorCode::protocol_error, "bad frame"}),
+              lan::ErrorCategory::protocol);
 }
 
 TEST(ErrorTest, ClassifiesRetryAndUserAction) {

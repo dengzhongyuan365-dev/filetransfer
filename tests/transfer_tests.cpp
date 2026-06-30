@@ -295,6 +295,9 @@ public:
         failed_ids.push_back(failed.transfer_id);
         failed_kinds.push_back(failed.kind);
         failed_errors.push_back(failed.error.code);
+        failed_categories.push_back(failed.category);
+        failed_retryable.push_back(failed.retryable);
+        failed_user_action_required.push_back(failed.user_action_required);
     }
 
     void on_transfer_cancelled(const lan::TransferCancelled& cancelled) override {
@@ -314,6 +317,9 @@ public:
     std::vector<lan::TransferCompletionStatus> completed_statuses;
     std::vector<std::uint64_t> completed_resumed_from;
     std::vector<lan::ErrorCode> failed_errors;
+    std::vector<lan::ErrorCategory> failed_categories;
+    std::vector<bool> failed_retryable;
+    std::vector<bool> failed_user_action_required;
     std::vector<lan::TransferDirection> directions;
     std::vector<lan::TransferKind> kinds;
     std::vector<std::uint64_t> file_progress_bytes;
@@ -351,6 +357,10 @@ public:
     void on_transfer_failed(const lan::TransferFailed& failed) override {
         failed_ids.push_back(failed.transfer_id);
         failed_kinds.push_back(failed.kind);
+        failed_errors.push_back(failed.error.code);
+        failed_categories.push_back(failed.category);
+        failed_retryable.push_back(failed.retryable);
+        failed_user_action_required.push_back(failed.user_action_required);
     }
 
     void on_transfer_cancelled(const lan::TransferCancelled& cancelled) override {
@@ -406,6 +416,10 @@ public:
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
     std::vector<lan::TransferKind> cancelled_kinds;
+    std::vector<lan::ErrorCode> failed_errors;
+    std::vector<lan::ErrorCategory> failed_categories;
+    std::vector<bool> failed_retryable;
+    std::vector<bool> failed_user_action_required;
     std::vector<lan::TransferCompletionStatus> completed_statuses;
     std::vector<std::uint64_t> completed_resumed_from;
     std::vector<std::uint64_t> file_progress_bytes;
@@ -1300,12 +1314,18 @@ TEST(SenderTransferRunnerTest, ReportsLifecycleFailureWhenConnectionFails) {
     const std::vector<lan::TransferKind> expected_failed = {lan::TransferKind::file};
     const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
     const std::vector<lan::ErrorCode> expected_errors = {lan::ErrorCode::network_error};
+    const std::vector<lan::ErrorCategory> expected_categories = {lan::ErrorCategory::network};
+    const std::vector<bool> expected_retryable = {true};
+    const std::vector<bool> expected_user_action_required = {false};
     EXPECT_EQ(events.started_kinds, expected_started);
     EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.completed_kinds.empty());
     EXPECT_EQ(events.failed_kinds, expected_failed);
     EXPECT_EQ(events.failed_ids, expected_lifecycle_ids);
     EXPECT_EQ(events.failed_errors, expected_errors);
+    EXPECT_EQ(events.failed_categories, expected_categories);
+    EXPECT_EQ(events.failed_retryable, expected_retryable);
+    EXPECT_EQ(events.failed_user_action_required, expected_user_action_required);
     EXPECT_TRUE(events.directions.empty());
     EXPECT_TRUE(events.kinds.empty());
 }
@@ -1532,6 +1552,63 @@ TEST(ReceiverServerTest, EmitsFileProgressEvents) {
     EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.file_progress_bytes, expected_bytes);
     EXPECT_EQ(events.file_progress_totals, expected_totals);
+}
+
+TEST(ReceiverServerTest, ReportsProtocolFailureSemantics) {
+    TempDir temp("receiver-server-protocol-failure-test");
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    MemoryConnection client(server_to_client, client_to_server);
+    auto server_connection =
+        std::make_unique<MemoryConnection>(client_to_server, server_to_client);
+
+    auto listener =
+        std::make_unique<SingleConnectionListener>(std::move(server_connection));
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+    receiver_config.once = true;
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServer server(backend);
+
+    auto served_future = std::async(std::launch::async, [&] {
+        return server.run(receiver_config, events);
+    });
+
+    ASSERT_TRUE(events.wait_until_listening());
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("file");
+    ASSERT_TRUE(lan::write_frame(client, hello));
+
+    lan::Frame wrong;
+    wrong.type = lan::MessageType::file_end;
+    ASSERT_TRUE(lan::write_frame(client, wrong));
+
+    auto served = served_future.get();
+    ASSERT_FALSE(served);
+    EXPECT_TRUE(events.client_error);
+    EXPECT_EQ(events.last_error.code, lan::ErrorCode::protocol_error);
+
+    const std::vector<lan::TransferKind> expected_failed = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
+    const std::vector<lan::ErrorCode> expected_errors = {lan::ErrorCode::protocol_error};
+    const std::vector<lan::ErrorCategory> expected_categories = {lan::ErrorCategory::protocol};
+    const std::vector<bool> expected_retryable = {false};
+    const std::vector<bool> expected_user_action_required = {true};
+    EXPECT_EQ(events.failed_kinds, expected_failed);
+    EXPECT_EQ(events.failed_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.failed_errors, expected_errors);
+    EXPECT_EQ(events.failed_categories, expected_categories);
+    EXPECT_EQ(events.failed_retryable, expected_retryable);
+    EXPECT_EQ(events.failed_user_action_required, expected_user_action_required);
+    EXPECT_TRUE(events.completed_kinds.empty());
 }
 
 TEST(ReceiverServerTest, StopsActiveFileTransferAndCleansPartFile) {

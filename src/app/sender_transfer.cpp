@@ -31,6 +31,9 @@ TransferFailed make_sender_failed(std::uint64_t transfer_id,
         .path = config.source_path,
         .name = config.source_path.filename().string(),
         .error = error,
+        .category = error_category(error),
+        .retryable = is_retryable(error),
+        .user_action_required = needs_user_action(error),
     };
 }
 

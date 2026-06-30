@@ -73,6 +73,10 @@ ErrorCategory error_category(ErrorCode code) {
     return ErrorCategory::internal;
 }
 
+ErrorCategory error_category(const Error& error) {
+    return error_category(error.code);
+}
+
 bool is_retryable(ErrorCode code) {
     switch (code) {
         case ErrorCode::network_error:

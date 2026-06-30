@@ -36,6 +36,9 @@ TransferFailed make_receiver_failed(std::uint64_t transfer_id,
         .path = config.receive_dir,
         .name = {},
         .error = error,
+        .category = error_category(error),
+        .retryable = is_retryable(error),
+        .user_action_required = needs_user_action(error),
     };
 }
 

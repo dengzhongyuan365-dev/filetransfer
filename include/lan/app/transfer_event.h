@@ -73,6 +73,9 @@ struct TransferFailed {
     std::filesystem::path path;
     std::string name;
     Error error;
+    ErrorCategory category = ErrorCategory::internal;
+    bool retryable = false;
+    bool user_action_required = false;
 };
 
 struct TransferCancelled {
