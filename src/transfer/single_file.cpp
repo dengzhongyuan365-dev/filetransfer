@@ -188,28 +188,57 @@ Result<std::filesystem::path> safe_target_path(const ReceiverConfig& config, std
 }  // namespace
 
 Result<SendFileReport> send_single_file(const SenderConfig& config) {
-    return send_single_file(config, {});
+    CancellationToken cancellation;
+    return send_single_file(config, SendFileProgressCallback{}, cancellation);
+}
+
+Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        const CancellationToken& cancellation) {
+    return send_single_file(config, SendFileProgressCallback{}, cancellation);
 }
 
 Result<SendFileReport> send_single_file(const SenderConfig& config,
                                         SendFileProgressCallback on_progress) {
+    CancellationToken cancellation;
+    return send_single_file(config, std::move(on_progress), cancellation);
+}
+
+Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        SendFileProgressCallback on_progress,
+                                        const CancellationToken& cancellation) {
     auto connection = default_network_backend().connect(config.target.host, config.target.port);
     if (!connection) {
         return Result<SendFileReport>::failure(connection.error());
     }
 
-    return send_single_file_to_connection(config, *connection.value(), std::move(on_progress));
+    return send_single_file_to_connection(config, *connection.value(), std::move(on_progress), cancellation);
 }
 
 Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
                                                        Connection& connection) {
-    return send_single_file_to_connection(config, connection, {});
+    CancellationToken cancellation;
+    return send_single_file_to_connection(config, connection, SendFileProgressCallback{}, cancellation);
+}
+
+Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
+                                                       Connection& connection,
+                                                       const CancellationToken& cancellation) {
+    return send_single_file_to_connection(config, connection, SendFileProgressCallback{}, cancellation);
 }
 
 Result<SendFileReport> send_single_file_to_connection(
     const SenderConfig& config,
     Connection& connection,
     SendFileProgressCallback on_progress) {
+    CancellationToken cancellation;
+    return send_single_file_to_connection(config, connection, std::move(on_progress), cancellation);
+}
+
+Result<SendFileReport> send_single_file_to_connection(
+    const SenderConfig& config,
+    Connection& connection,
+    SendFileProgressCallback on_progress,
+    const CancellationToken& cancellation) {
     auto regular_file = require_regular_file(config.source_path);
     if (!regular_file) {
         return Result<SendFileReport>::failure(regular_file.error());
@@ -274,6 +303,11 @@ Result<SendFileReport> send_single_file_to_connection(
     publish_progress();
 
     while (true) {
+        if (cancellation.is_cancelled()) {
+            return Result<SendFileReport>::failure(
+                make_error(ErrorCode::cancelled, "send file transfer cancelled"));
+        }
+
         const auto bytes_read = ::read(source.value().get(), buffer.data(), buffer.size());
         if (bytes_read < 0) {
             if (errno == EINTR) {

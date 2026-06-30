@@ -400,13 +400,33 @@ Result<ReceiveSyncNegotiationReport> negotiate_sync_receiver(const ReceiverConfi
 Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                                                  std::uint32_t block_size,
                                                  Connection& connection) {
-    return sync_sender_to_connection(config, block_size, connection, {});
+    CancellationToken cancellation;
+    return sync_sender_to_connection(
+        config, block_size, connection, SendSyncProgressCallback{}, cancellation);
+}
+
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection,
+                                                 const CancellationToken& cancellation) {
+    return sync_sender_to_connection(
+        config, block_size, connection, SendSyncProgressCallback{}, cancellation);
 }
 
 Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                                                  std::uint32_t block_size,
                                                  Connection& connection,
                                                  SendSyncProgressCallback on_progress) {
+    CancellationToken cancellation;
+    return sync_sender_to_connection(
+        config, block_size, connection, std::move(on_progress), cancellation);
+}
+
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection,
+                                                 SendSyncProgressCallback on_progress,
+                                                 const CancellationToken& cancellation) {
     (void)block_size;
 
     Stopwatch transfer_timer;
@@ -442,6 +462,11 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
     publish_progress();
 
     for (const auto& entry : plan.value().entries) {
+        if (cancellation.is_cancelled()) {
+            return Result<SendSyncReport>::failure(
+                make_error(ErrorCode::cancelled, "sync transfer cancelled"));
+        }
+
         if (entry.action == SyncAction::skip) {
             ++report.skipped_files;
             ++processed_files;
@@ -485,18 +510,34 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
 }
 
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size) {
-    return sync_sender(config, block_size, {});
+    CancellationToken cancellation;
+    return sync_sender(config, block_size, SendSyncProgressCallback{}, cancellation);
+}
+
+Result<SendSyncReport> sync_sender(const SenderConfig& config,
+                                   std::uint32_t block_size,
+                                   const CancellationToken& cancellation) {
+    return sync_sender(config, block_size, SendSyncProgressCallback{}, cancellation);
 }
 
 Result<SendSyncReport> sync_sender(const SenderConfig& config,
                                    std::uint32_t block_size,
                                    SendSyncProgressCallback on_progress) {
+    CancellationToken cancellation;
+    return sync_sender(config, block_size, std::move(on_progress), cancellation);
+}
+
+Result<SendSyncReport> sync_sender(const SenderConfig& config,
+                                   std::uint32_t block_size,
+                                   SendSyncProgressCallback on_progress,
+                                   const CancellationToken& cancellation) {
     auto connection = default_network_backend().connect(config.target.host, config.target.port);
     if (!connection) {
         return Result<SendSyncReport>::failure(connection.error());
     }
 
-    return sync_sender_to_connection(config, block_size, *connection.value(), std::move(on_progress));
+    return sync_sender_to_connection(
+        config, block_size, *connection.value(), std::move(on_progress), cancellation);
 }
 
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size) {

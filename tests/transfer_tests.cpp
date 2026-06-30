@@ -258,7 +258,7 @@ private:
     std::unique_ptr<lan::Connection> connection_;
 };
 
-class CapturingSenderEvents final : public lan::SenderTransferEvents {
+class CapturingSenderEvents : public lan::SenderTransferEvents {
 public:
     void on_transfer_started(const lan::TransferStarted& started) override {
         started_ids.push_back(started.transfer_id);
@@ -290,13 +290,20 @@ public:
         failed_errors.push_back(failed.error.code);
     }
 
+    void on_transfer_cancelled(const lan::TransferCancelled& cancelled) override {
+        cancelled_ids.push_back(cancelled.transfer_id);
+        cancelled_kinds.push_back(cancelled.kind);
+    }
+
     std::vector<std::uint64_t> started_ids;
     std::vector<std::uint64_t> progress_ids;
     std::vector<std::uint64_t> completed_ids;
     std::vector<std::uint64_t> failed_ids;
+    std::vector<std::uint64_t> cancelled_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
+    std::vector<lan::TransferKind> cancelled_kinds;
     std::vector<lan::ErrorCode> failed_errors;
     std::vector<lan::TransferDirection> directions;
     std::vector<lan::TransferKind> kinds;
@@ -970,6 +977,64 @@ TEST(SenderTransferRunnerTest, ReportsLifecycleFailureWhenConnectionFails) {
     EXPECT_EQ(events.failed_errors, expected_errors);
     EXPECT_TRUE(events.directions.empty());
     EXPECT_TRUE(events.kinds.empty());
+}
+
+TEST(SenderTransferRunnerTest, ReportsLifecycleCancellation) {
+    TempDir temp("sender-transfer-cancel-test");
+    const auto source = temp.path() / "source.txt";
+    write_text(source, "abcdef");
+
+    lan::SenderConfig sender_config;
+    sender_config.target.host = "memory";
+    sender_config.target.port = 1;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    auto pair = make_unique_memory_connection_pair();
+    auto server = std::move(pair.server);
+    FakeConnectBackend backend(std::move(pair.client));
+    lan::SenderTransferRunner runner(backend);
+    class CancellingEvents final : public CapturingSenderEvents {
+    public:
+        explicit CancellingEvents(lan::SenderTransferRunner& runner) : runner_(runner) {}
+
+        void on_file_progress(const lan::SendFileProgress&) override {
+            runner_.cancel();
+        }
+
+    private:
+        lan::SenderTransferRunner& runner_;
+    };
+    CancellingEvents events(runner);
+
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(*server);
+        ASSERT_TRUE(hello);
+
+        auto begin = lan::read_frame(*server);
+        ASSERT_TRUE(begin);
+        ASSERT_EQ(begin.value().type, lan::MessageType::file_begin);
+
+        lan::Frame ack;
+        ack.type = lan::MessageType::ack;
+        ack.body = lan::bytes_from_string("ready");
+        ASSERT_TRUE(lan::write_frame(*server, ack));
+    });
+
+    auto transferred = runner.run(sender_config, events);
+    receiver.join();
+
+    ASSERT_FALSE(transferred);
+    EXPECT_EQ(transferred.error().code, lan::ErrorCode::cancelled);
+
+    const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
+    EXPECT_EQ(events.started_kinds, expected_started);
+    EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
+    EXPECT_TRUE(events.completed_kinds.empty());
+    EXPECT_TRUE(events.failed_kinds.empty());
+    EXPECT_EQ(events.cancelled_kinds, expected_started);
+    EXPECT_EQ(events.cancelled_ids, expected_lifecycle_ids);
 }
 
 TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {

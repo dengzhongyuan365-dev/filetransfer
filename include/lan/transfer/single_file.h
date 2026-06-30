@@ -7,6 +7,7 @@
 
 #include "lan/app/receiver_config.h"
 #include "lan/app/sender_config.h"
+#include "lan/common/cancellation.h"
 #include "lan/common/result.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
@@ -49,13 +50,26 @@ using ReceiveFileProgressCallback = std::function<void(const ReceiveFileProgress
 
 Result<SendFileReport> send_single_file(const SenderConfig& config);
 Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        const CancellationToken& cancellation);
+Result<SendFileReport> send_single_file(const SenderConfig& config,
                                         SendFileProgressCallback on_progress);
+Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        SendFileProgressCallback on_progress,
+                                        const CancellationToken& cancellation);
 Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
                                                        Connection& connection);
+Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
+                                                       Connection& connection,
+                                                       const CancellationToken& cancellation);
 Result<SendFileReport> send_single_file_to_connection(
     const SenderConfig& config,
     Connection& connection,
     SendFileProgressCallback on_progress);
+Result<SendFileReport> send_single_file_to_connection(
+    const SenderConfig& config,
+    Connection& connection,
+    SendFileProgressCallback on_progress,
+    const CancellationToken& cancellation);
 Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config);
 Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConfig& config,
                                                               Connection& connection,

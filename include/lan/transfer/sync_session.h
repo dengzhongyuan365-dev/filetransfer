@@ -5,6 +5,7 @@
 
 #include "lan/app/receiver_config.h"
 #include "lan/app/sender_config.h"
+#include "lan/common/cancellation.h"
 #include "lan/common/result.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
@@ -85,11 +86,27 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
 Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                                                  std::uint32_t block_size,
                                                  Connection& connection,
+                                                 const CancellationToken& cancellation);
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection,
                                                  SendSyncProgressCallback on_progress);
+Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
+                                                 std::uint32_t block_size,
+                                                 Connection& connection,
+                                                 SendSyncProgressCallback on_progress,
+                                                 const CancellationToken& cancellation);
 Result<SendSyncReport> sync_sender(const SenderConfig& config, std::uint32_t block_size);
 Result<SendSyncReport> sync_sender(const SenderConfig& config,
                                    std::uint32_t block_size,
+                                   const CancellationToken& cancellation);
+Result<SendSyncReport> sync_sender(const SenderConfig& config,
+                                   std::uint32_t block_size,
                                    SendSyncProgressCallback on_progress);
+Result<SendSyncReport> sync_sender(const SenderConfig& config,
+                                   std::uint32_t block_size,
+                                   SendSyncProgressCallback on_progress,
+                                   const CancellationToken& cancellation);
 Result<ReceiveSyncReport> sync_receiver(const ReceiverConfig& config, std::uint32_t block_size);
 Result<ReceiveSyncReport> sync_receiver_from_connection(const ReceiverConfig& config,
                                                         std::uint32_t block_size,

@@ -34,6 +34,18 @@ TransferFailed make_sender_failed(std::uint64_t transfer_id,
     };
 }
 
+TransferCancelled make_sender_cancelled(std::uint64_t transfer_id,
+                                        const SenderConfig& config,
+                                        TransferKind kind) {
+    return TransferCancelled{
+        .transfer_id = transfer_id,
+        .direction = TransferDirection::send,
+        .kind = kind,
+        .path = config.source_path,
+        .name = config.source_path.filename().string(),
+    };
+}
+
 TransferCompleted make_sender_file_completed(std::uint64_t transfer_id,
                                              const SenderConfig& config,
                                              const SendFileReport& report) {
@@ -108,6 +120,7 @@ SenderTransferRunner::SenderTransferRunner(NetworkBackend& backend) : backend_(b
 
 Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& config,
                                                        SenderTransferEvents& events) {
+    cancellation_.reset();
     const auto transfer_id = next_transfer_id_.fetch_add(1);
     const auto kind = std::filesystem::is_directory(config.source_path)
                           ? TransferKind::directory
@@ -130,8 +143,13 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
                 events.on_transfer_progress(
                     make_sender_directory_progress(transfer_id, progress));
                 events.on_directory_progress(progress);
-            });
+            },
+            cancellation_);
         if (!synced) {
+            if (synced.error().code == ErrorCode::cancelled) {
+                events.on_transfer_cancelled(make_sender_cancelled(transfer_id, config, kind));
+                return Result<SenderTransferReport>::failure(synced.error());
+            }
             events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, synced.error()));
             return Result<SenderTransferReport>::failure(synced.error());
         }
@@ -147,8 +165,12 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
         config, *connection.value(), [transfer_id, &events](const SendFileProgress& progress) {
             events.on_transfer_progress(make_sender_file_progress(transfer_id, progress));
             events.on_file_progress(progress);
-        });
+        }, cancellation_);
     if (!sent) {
+        if (sent.error().code == ErrorCode::cancelled) {
+            events.on_transfer_cancelled(make_sender_cancelled(transfer_id, config, kind));
+            return Result<SenderTransferReport>::failure(sent.error());
+        }
         events.on_transfer_failed(make_sender_failed(transfer_id, config, kind, sent.error()));
         return Result<SenderTransferReport>::failure(sent.error());
     }
@@ -157,6 +179,10 @@ Result<SenderTransferReport> SenderTransferRunner::run(const SenderConfig& confi
     report.file = std::move(sent).value();
     events.on_transfer_completed(make_sender_file_completed(transfer_id, config, report.file));
     return Result<SenderTransferReport>::success(std::move(report));
+}
+
+void SenderTransferRunner::cancel() {
+    cancellation_.cancel();
 }
 
 Result<SenderTransferReport> run_sender_transfer(const SenderConfig& config,

@@ -31,10 +31,12 @@ public:
     explicit SenderTransferRunner(NetworkBackend& backend = default_network_backend());
 
     Result<SenderTransferReport> run(const SenderConfig& config, SenderTransferEvents& events);
+    void cancel();
 
 private:
     NetworkBackend& backend_;
     std::atomic_uint64_t next_transfer_id_ = 1;
+    CancellationToken cancellation_;
 };
 
 Result<SenderTransferReport> run_sender_transfer(const SenderConfig& config,
