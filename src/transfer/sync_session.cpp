@@ -430,7 +430,20 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
     (void)block_size;
 
     Stopwatch transfer_timer;
-    auto manifest = build_manifest(config.source_path);
+    auto manifest = build_manifest(
+        config.source_path,
+        1024 * 1024,
+        [&](const ManifestProgress& progress) {
+            if (on_progress) {
+                on_progress(SendSyncProgress{
+                    .manifest_scanned_files = progress.files,
+                    .manifest_scanned_bytes = progress.bytes,
+                    .processed_files = progress.files,
+                    .elapsed_seconds = transfer_timer.elapsed_seconds(),
+                });
+            }
+        },
+        &cancellation);
     if (!manifest) {
         return Result<SendSyncReport>::failure(manifest.error());
     }

@@ -20,6 +20,7 @@ class QListWidget;
 class QListWidgetItem;
 class QPlainTextEdit;
 class QStackedWidget;
+class QSystemTrayIcon;
 class QToolButton;
 class QVBoxLayout;
 class QUdpSocket;
@@ -44,6 +45,9 @@ private:
     QWidget* build_peer_page();
     QWidget* build_transfer_page();
     void apply_style();
+    void setup_tray();
+    void toggle_window_visibility();
+    void quit_from_tray();
 
     void setup_discovery();
     bool start_receiver();
@@ -94,6 +98,7 @@ private:
     QVBoxLayout* transfers_layout_ = nullptr;
     QLabel* empty_transfer_label_ = nullptr;
     QPlainTextEdit* log_ = nullptr;
+    QSystemTrayIcon* tray_icon_ = nullptr;
 
     std::unique_ptr<QUdpSocket> discovery_;
     QMap<QString, Peer> peers_;
@@ -104,6 +109,8 @@ private:
     QString pending_link_code_;
     QString node_id_;
     bool receiver_ready_ = false;
+    bool force_quit_ = false;
+    bool tray_message_shown_ = false;
     std::unique_ptr<ReceiverServerRunner> receiver_runner_;
     std::unique_ptr<GuiReceiverEvents> receiver_events_;
     std::unique_ptr<SenderTransferRunner> sender_runner_;

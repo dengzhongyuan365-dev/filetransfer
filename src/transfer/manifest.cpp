@@ -95,6 +95,13 @@ Result<ManifestEntry> build_entry(const std::filesystem::path& root,
 }  // namespace
 
 Result<Manifest> build_manifest(const std::filesystem::path& root, std::uint64_t hash_buffer_size) {
+    return build_manifest(root, hash_buffer_size, ManifestProgressCallback{}, nullptr);
+}
+
+Result<Manifest> build_manifest(const std::filesystem::path& root,
+                                std::uint64_t hash_buffer_size,
+                                ManifestProgressCallback on_progress,
+                                const CancellationToken* cancellation) {
     std::error_code ec;
     const auto root_status = std::filesystem::symlink_status(root, ec);
     if (ec) {
@@ -128,7 +135,13 @@ Result<Manifest> build_manifest(const std::filesystem::path& root, std::uint64_t
     }
 
     const std::filesystem::recursive_directory_iterator end;
+    std::uint64_t scanned_bytes = 0;
     for (; it != end; it.increment(ec)) {
+        if (cancellation != nullptr && cancellation->is_cancelled()) {
+            return Result<Manifest>::failure(
+                make_error(ErrorCode::cancelled, "manifest scan cancelled"));
+        }
+
         if (ec) {
             return Result<Manifest>::failure(
                 make_error(ErrorCode::io_error, "failed while scanning manifest: " + ec.message()));
@@ -156,7 +169,14 @@ Result<Manifest> build_manifest(const std::filesystem::path& root, std::uint64_t
         if (!entry) {
             return Result<Manifest>::failure(entry.error());
         }
+        scanned_bytes += entry.value().size;
         manifest.files.push_back(std::move(entry).value());
+        if (on_progress) {
+            on_progress(ManifestProgress{
+                .files = static_cast<std::uint64_t>(manifest.files.size()),
+                .bytes = scanned_bytes,
+            });
+        }
     }
 
     std::sort(manifest.files.begin(), manifest.files.end(), [](const auto& lhs, const auto& rhs) {

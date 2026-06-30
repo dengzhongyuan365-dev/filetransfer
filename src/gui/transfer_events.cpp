@@ -10,7 +10,19 @@ namespace lan::gui {
 GuiSenderEvents::GuiSenderEvents(std::function<void(TransferSnapshotStore)> on_change)
     : on_change_(std::move(on_change)) {}
 
+GuiSenderEvents::GuiSenderEvents(std::function<void(TransferSnapshotStore)> on_change,
+                                 std::function<void(QString)> on_log)
+    : on_change_(std::move(on_change)), on_log_(std::move(on_log)) {}
+
 void GuiSenderEvents::on_transfer_started(const TransferStarted& started) {
+    if (started.kind == TransferKind::directory) {
+        directory_scan_logged_ = false;
+        directory_transfer_logged_ = false;
+        if (on_log_) {
+            on_log_(QCoreApplication::translate("MainWindow", "Preparing directory transfer: %1")
+                        .arg(to_qstring(started.path)));
+        }
+    }
     update([&] {
         snapshots_.apply(started);
     });
@@ -23,6 +35,10 @@ void GuiSenderEvents::on_transfer_progress(const TransferProgress& progress) {
 }
 
 void GuiSenderEvents::on_transfer_completed(const TransferCompleted& completed) {
+    if (completed.kind == TransferKind::directory && on_log_) {
+        on_log_(QCoreApplication::translate("MainWindow", "Directory transfer completed: %1 files")
+                    .arg(completed.total_files));
+    }
     update([&] {
         snapshots_.apply(completed);
     });
@@ -38,6 +54,26 @@ void GuiSenderEvents::on_transfer_cancelled(const TransferCancelled& cancelled) 
     update([&] {
         snapshots_.apply(cancelled);
     });
+}
+
+void GuiSenderEvents::on_directory_progress(const SendSyncProgress& progress) {
+    if (!on_log_) {
+        return;
+    }
+
+    if (progress.manifest_files == 0) {
+        if (!directory_scan_logged_) {
+            on_log_(QCoreApplication::translate("MainWindow", "Scanning directory and hashing files..."));
+            directory_scan_logged_ = true;
+        }
+        return;
+    }
+
+    if (!directory_transfer_logged_) {
+        on_log_(QCoreApplication::translate("MainWindow", "Directory scan complete: %1 files. Starting transfer...")
+                    .arg(progress.manifest_files));
+        directory_transfer_logged_ = true;
+    }
 }
 
 void GuiSenderEvents::update(const std::function<void()>& apply) {

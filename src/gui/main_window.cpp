@@ -8,10 +8,12 @@
 #include <QFileDialog>
 #include <QFrame>
 #include <QHostAddress>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
@@ -24,6 +26,7 @@
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QSystemTrayIcon>
 #include <QThread>
 #include <QTimer>
 #include <QTime>
@@ -75,6 +78,27 @@ QString make_link_code() {
     return QString::number(value);
 }
 
+QIcon application_icon() {
+    auto icon = QIcon::fromTheme("lan-file-transfer");
+    if (!icon.isNull()) {
+        return icon;
+    }
+
+    const QStringList paths{
+        QStringLiteral("/usr/share/icons/hicolor/scalable/apps/lan-file-transfer.svg"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../share/icons/hicolor/scalable/apps/lan-file-transfer.svg"),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../resources/icons/lan-file-transfer.svg"),
+        QDir::currentPath() + QStringLiteral("/resources/icons/lan-file-transfer.svg"),
+    };
+    for (const auto& path : paths) {
+        icon = QIcon(path);
+        if (!icon.isNull()) {
+            return icon;
+        }
+    }
+    return QApplication::style()->standardIcon(QStyle::SP_ComputerIcon);
+}
+
 class ElidedLabel final : public QLabel {
 public:
     explicit ElidedLabel(QString text, QWidget* parent = nullptr) : QLabel(parent), full_text_(std::move(text)) {
@@ -101,10 +125,12 @@ private:
 
 MainWindow::MainWindow() : node_id_(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
     setWindowTitle(QCoreApplication::translate("MainWindow", "LAN File Transfer"));
+    setWindowIcon(application_icon());
     resize(400, 600);
     setMinimumSize(380, 560);
     setObjectName("app");
     build_ui();
+    setup_tray();
     setup_discovery();
 }
 
@@ -114,6 +140,19 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    if (!force_quit_ && tray_icon_ != nullptr && QSystemTrayIcon::isSystemTrayAvailable()) {
+        hide();
+        event->ignore();
+        if (!tray_message_shown_) {
+            tray_icon_->showMessage(
+                QCoreApplication::translate("MainWindow", "LAN File Transfer"),
+                QCoreApplication::translate("MainWindow", "LAN File Transfer is still running in the tray."),
+                QSystemTrayIcon::Information,
+                2500);
+            tray_message_shown_ = true;
+        }
+        return;
+    }
     stop_receiver();
     stop_sender();
     event->accept();
@@ -511,6 +550,55 @@ void MainWindow::apply_style() {
     )");
 }
 
+void MainWindow::setup_tray() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        return;
+    }
+
+    auto* menu = new QMenu(this);
+    auto* show_action = menu->addAction(QCoreApplication::translate("MainWindow", "Show"));
+    auto* hide_action = menu->addAction(QCoreApplication::translate("MainWindow", "Hide"));
+    menu->addSeparator();
+    auto* quit_action = menu->addAction(QCoreApplication::translate("MainWindow", "Quit"));
+
+    connect(show_action, &QAction::triggered, this, [this] {
+        showNormal();
+        raise();
+        activateWindow();
+    });
+    connect(hide_action, &QAction::triggered, this, [this] {
+        hide();
+    });
+    connect(quit_action, &QAction::triggered, this, [this] {
+        quit_from_tray();
+    });
+
+    tray_icon_ = new QSystemTrayIcon(application_icon(), this);
+    tray_icon_->setToolTip(QCoreApplication::translate("MainWindow", "LAN File Transfer"));
+    tray_icon_->setContextMenu(menu);
+    connect(tray_icon_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            toggle_window_visibility();
+        }
+    });
+    tray_icon_->show();
+}
+
+void MainWindow::toggle_window_visibility() {
+    if (isVisible() && !isMinimized()) {
+        hide();
+        return;
+    }
+    showNormal();
+    raise();
+    activateWindow();
+}
+
+void MainWindow::quit_from_tray() {
+    force_quit_ = true;
+    close();
+}
+
 void MainWindow::setup_discovery() {
     discovery_ = std::make_unique<QUdpSocket>();
     const auto bound = discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
@@ -882,6 +970,10 @@ QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
     if (snapshot.kind == TransferKind::directory && snapshot.total_files > 0) {
         return QString("%1/%2").arg(snapshot.processed_files).arg(snapshot.total_files);
     }
+    if (snapshot.kind == TransferKind::directory && snapshot.processed_files > 0) {
+        return QCoreApplication::translate("MainWindow", "%1 file(s)")
+            .arg(snapshot.processed_files);
+    }
     if (snapshot.total_bytes == 0) {
         return to_qstring(format_size(snapshot.current_bytes));
     }
@@ -1058,9 +1150,13 @@ void MainWindow::start_sender(const QString& path) {
                   .arg(linked_peer_.port));
 
     sender_runner_ = std::make_unique<SenderTransferRunner>();
-    auto events = std::make_shared<GuiSenderEvents>([this](TransferSnapshotStore store) {
-        merge_snapshots(std::move(store));
-    });
+    auto events = std::make_shared<GuiSenderEvents>(
+        [this](TransferSnapshotStore store) {
+            merge_snapshots(std::move(store));
+        },
+        [this](QString line) {
+            show_log(std::move(line));
+        });
     sender_events_ = events;
 
     sender_thread_ = std::thread([this, config = std::move(validated).value(), events] {

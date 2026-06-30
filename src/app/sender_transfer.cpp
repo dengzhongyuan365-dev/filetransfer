@@ -112,13 +112,17 @@ TransferProgress make_sender_file_progress(std::uint64_t transfer_id,
 
 TransferProgress make_sender_directory_progress(std::uint64_t transfer_id,
                                                 const SendSyncProgress& progress) {
+    const auto scanning = progress.manifest_files == 0;
     return TransferProgress{
         .transfer_id = transfer_id,
         .direction = TransferDirection::send,
         .kind = TransferKind::directory,
         .path = {},
         .name = {},
-        .processed_files = progress.processed_files,
+        .current_bytes = scanning ? progress.manifest_scanned_bytes
+                                  : progress.delta_payload_bytes_sent,
+        .processed_files = scanning ? progress.manifest_scanned_files
+                                    : progress.processed_files,
         .total_files = progress.manifest_files,
         .skipped_files = progress.skipped_files,
         .full_files = progress.full_files,

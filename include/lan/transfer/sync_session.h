@@ -39,6 +39,8 @@ struct SendSyncReport {
 };
 
 struct SendSyncProgress {
+    std::uint64_t manifest_scanned_files = 0;
+    std::uint64_t manifest_scanned_bytes = 0;
     std::uint64_t manifest_files = 0;
     std::uint64_t processed_files = 0;
     std::uint64_t skipped_files = 0;

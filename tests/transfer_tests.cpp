@@ -1386,8 +1386,8 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_GT(sender_result.value().delta_payload_bytes_sent, 0);
     EXPECT_GT(sender_result.value().elapsed_seconds, 0.0);
 
-    const std::vector<std::uint64_t> expected_sender_processed = {0, 1, 2, 3};
-    const std::vector<std::uint64_t> expected_sender_totals = {3, 3, 3, 3};
+    const std::vector<std::uint64_t> expected_sender_processed = {1, 2, 3, 0, 1, 2, 3};
+    const std::vector<std::uint64_t> expected_sender_totals = {0, 0, 0, 3, 3, 3, 3};
     EXPECT_EQ(sender_progress_processed, expected_sender_processed);
     EXPECT_EQ(sender_progress_totals, expected_sender_totals);
 
@@ -1618,8 +1618,8 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
 
-    const std::vector<std::uint64_t> expected_processed = {0, 1, 2};
-    const std::vector<std::uint64_t> expected_totals = {2, 2, 2};
+    const std::vector<std::uint64_t> expected_processed = {1, 2, 0, 1, 2};
+    const std::vector<std::uint64_t> expected_totals = {0, 0, 2, 2, 2};
     const std::vector<std::uint64_t> expected_progress_ids(expected_processed.size(), 1);
     const std::vector<lan::TransferDirection> expected_directions(
         expected_processed.size(), lan::TransferDirection::send);
