@@ -187,6 +187,28 @@ Result<std::filesystem::path> safe_target_path(const ReceiverConfig& config, std
 }  // namespace
 
 Result<SendFileReport> send_single_file(const SenderConfig& config) {
+    return send_single_file(config, {});
+}
+
+Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        SendFileProgressCallback on_progress) {
+    auto connection = default_network_backend().connect(config.target.host, config.target.port);
+    if (!connection) {
+        return Result<SendFileReport>::failure(connection.error());
+    }
+
+    return send_single_file_to_connection(config, *connection.value(), std::move(on_progress));
+}
+
+Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
+                                                       Connection& connection) {
+    return send_single_file_to_connection(config, connection, {});
+}
+
+Result<SendFileReport> send_single_file_to_connection(
+    const SenderConfig& config,
+    Connection& connection,
+    SendFileProgressCallback on_progress) {
     auto regular_file = require_regular_file(config.source_path);
     if (!regular_file) {
         return Result<SendFileReport>::failure(regular_file.error());
@@ -202,17 +224,12 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         return Result<SendFileReport>::failure(hash.error());
     }
 
-    auto connection = default_network_backend().connect(config.target.host, config.target.port);
-    if (!connection) {
-        return Result<SendFileReport>::failure(connection.error());
-    }
-
     const auto file_name = config.source_path.filename().string();
 
     Frame hello;
     hello.type = MessageType::hello;
     hello.body = bytes_from_string("file");
-    auto hello_result = write_frame(*connection.value(), hello);
+    auto hello_result = write_frame(connection, hello);
     if (!hello_result) {
         return Result<SendFileReport>::failure(hello_result.error());
     }
@@ -224,12 +241,12 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         .size = size.value(),
         .sha256 = hash.value().hex_digest,
     }));
-    auto begin_result = write_frame(*connection.value(), begin);
+    auto begin_result = write_frame(connection, begin);
     if (!begin_result) {
         return Result<SendFileReport>::failure(begin_result.error());
     }
 
-    auto begin_ack = wait_for_ack(*connection.value(), "file_begin");
+    auto begin_ack = wait_for_ack(connection, "file_begin");
     if (!begin_ack) {
         return Result<SendFileReport>::failure(begin_ack.error());
     }
@@ -242,6 +259,18 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
     Stopwatch transfer_timer;
     std::vector<std::byte> buffer(static_cast<std::size_t>(config.chunk_size));
     std::uint64_t bytes_sent = 0;
+    auto publish_progress = [&] {
+        if (on_progress) {
+            on_progress(SendFileProgress{
+                .source_path = config.source_path,
+                .file_name = file_name,
+                .bytes_sent = bytes_sent,
+                .total_bytes = size.value(),
+                .elapsed_seconds = transfer_timer.elapsed_seconds(),
+            });
+        }
+    };
+    publish_progress();
 
     while (true) {
         const auto bytes_read = ::read(source.value().get(), buffer.data(), buffer.size());
@@ -263,22 +292,23 @@ Result<SendFileReport> send_single_file(const SenderConfig& config) {
         chunk.body = encode_chunk_body(
             bytes_sent, buffer.data(), static_cast<std::size_t>(bytes_read));
 
-        auto chunk_result = write_frame(*connection.value(), chunk);
+        auto chunk_result = write_frame(connection, chunk);
         if (!chunk_result) {
             return Result<SendFileReport>::failure(chunk_result.error());
         }
 
         bytes_sent += static_cast<std::uint64_t>(bytes_read);
+        publish_progress();
     }
 
     Frame end;
     end.type = MessageType::file_end;
-    auto end_result = write_frame(*connection.value(), end);
+    auto end_result = write_frame(connection, end);
     if (!end_result) {
         return Result<SendFileReport>::failure(end_result.error());
     }
 
-    auto end_ack = wait_for_ack(*connection.value(), "file_end");
+    auto end_ack = wait_for_ack(connection, "file_end");
     if (!end_ack) {
         return Result<SendFileReport>::failure(end_ack.error());
     }

@@ -375,6 +375,56 @@ TEST(ReceiveSingleFileTest, ReportsProgressForChunks) {
     EXPECT_EQ(progress_totals, expected_totals);
 }
 
+TEST(SendSingleFileTest, ReportsProgressForChunks) {
+    TempDir temp("send-progress-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+    write_text(source, "abcdef");
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(
+            receiver_config, pair.server, hello.value());
+    });
+
+    std::vector<std::uint64_t> progress_bytes;
+    std::vector<std::uint64_t> progress_totals;
+    auto sent = lan::send_single_file_to_connection(
+        sender_config, pair.client, [&](const lan::SendFileProgress& progress) {
+            progress_bytes.push_back(progress.bytes_sent);
+            progress_totals.push_back(progress.total_bytes);
+        });
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_EQ(sent.value().bytes_sent, 6);
+    EXPECT_EQ(received.value().bytes_received, 6);
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+
+    const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};
+    const std::vector<std::uint64_t> expected_totals = {6, 6, 6};
+    EXPECT_EQ(progress_bytes, expected_bytes);
+    EXPECT_EQ(progress_totals, expected_totals);
+}
+
 TEST(ManifestTest, RecursivelyScansRegularFiles) {
     TempDir temp("manifest-test");
     write_text(temp.path() / "a.txt", "a");

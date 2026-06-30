@@ -20,6 +20,16 @@ struct SendFileReport {
     double elapsed_seconds = 0.0;
 };
 
+struct SendFileProgress {
+    std::filesystem::path source_path;
+    std::string file_name;
+    std::uint64_t bytes_sent = 0;
+    std::uint64_t total_bytes = 0;
+    double elapsed_seconds = 0.0;
+};
+
+using SendFileProgressCallback = std::function<void(const SendFileProgress&)>;
+
 struct ReceiveFileReport {
     std::filesystem::path target_path;
     std::uint64_t bytes_received = 0;
@@ -38,6 +48,14 @@ struct ReceiveFileProgress {
 using ReceiveFileProgressCallback = std::function<void(const ReceiveFileProgress&)>;
 
 Result<SendFileReport> send_single_file(const SenderConfig& config);
+Result<SendFileReport> send_single_file(const SenderConfig& config,
+                                        SendFileProgressCallback on_progress);
+Result<SendFileReport> send_single_file_to_connection(const SenderConfig& config,
+                                                       Connection& connection);
+Result<SendFileReport> send_single_file_to_connection(
+    const SenderConfig& config,
+    Connection& connection,
+    SendFileProgressCallback on_progress);
 Result<ReceiveFileReport> receive_single_file(const ReceiverConfig& config);
 Result<ReceiveFileReport> receive_single_file_from_connection(const ReceiverConfig& config,
                                                               Connection& connection,
