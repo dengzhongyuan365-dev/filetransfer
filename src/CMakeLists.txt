@@ -54,6 +54,13 @@ target_link_libraries(lan_tests PRIVATE lan_core)
 add_test(NAME lan_tests COMMAND lan_tests)
 
 if(Qt6_FOUND)
-    add_executable(lan-gui gui_main.cpp)
+    add_executable(lan-gui
+        gui/drop_panel.cpp
+        gui/main_window.cpp
+        gui/qt_utils.cpp
+        gui/transfer_events.cpp
+        gui_main.cpp
+    )
+    target_include_directories(lan-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lan-gui PRIVATE lan_core Qt6::Widgets Qt6::Network)
 endif()
