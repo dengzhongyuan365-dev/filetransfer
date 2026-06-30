@@ -9,8 +9,11 @@ add_library(lan_core
     fs/file_hash.cpp
     fs/local_copy.cpp
     net/tcp.cpp
+    transfer/block_signature.cpp
     transfer/chunk_codec.cpp
+    transfer/delta.cpp
     transfer/file_metadata.cpp
+    transfer/manifest.cpp
     transfer/part_file_guard.cpp
     protocol/frame.cpp
     transfer/single_file.cpp
