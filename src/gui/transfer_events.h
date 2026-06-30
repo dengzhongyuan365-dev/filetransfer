@@ -32,7 +32,8 @@ private:
 class GuiReceiverEvents final : public ReceiverServerEvents {
 public:
     GuiReceiverEvents(std::function<void(TransferSnapshotStore)> on_change,
-                      std::function<void(QString)> on_log);
+                      std::function<void(QString)> on_log,
+                      std::function<void(const ReceiverConfig&)> on_listening = {});
 
     void on_listening(const ReceiverConfig& config) override;
     void on_transfer_started(const TransferStarted& started) override;
@@ -53,6 +54,7 @@ private:
     TransferSnapshotStore snapshots_;
     std::function<void(TransferSnapshotStore)> on_change_;
     std::function<void(QString)> on_log_;
+    std::function<void(const ReceiverConfig&)> on_listening_;
 };
 
 }  // namespace lan::gui

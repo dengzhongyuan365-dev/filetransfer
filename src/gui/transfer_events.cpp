@@ -45,10 +45,17 @@ void GuiSenderEvents::update(const std::function<void()>& apply) {
 }
 
 GuiReceiverEvents::GuiReceiverEvents(std::function<void(TransferSnapshotStore)> on_change,
-                                     std::function<void(QString)> on_log)
-    : on_change_(std::move(on_change)), on_log_(std::move(on_log)) {}
+                                     std::function<void(QString)> on_log,
+                                     std::function<void(const ReceiverConfig&)> on_listening)
+    : on_change_(std::move(on_change)),
+      on_log_(std::move(on_log)),
+      on_listening_(std::move(on_listening)) {}
 
-void GuiReceiverEvents::on_listening(const ReceiverConfig&) {}
+void GuiReceiverEvents::on_listening(const ReceiverConfig& config) {
+    if (on_listening_) {
+        on_listening_(config);
+    }
+}
 
 void GuiReceiverEvents::on_transfer_started(const TransferStarted& started) {
     update([&] {

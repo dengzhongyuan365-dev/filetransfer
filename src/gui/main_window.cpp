@@ -1,6 +1,7 @@
 #include "gui/main_window.h"
 
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QBoxLayout>
 #include <QCloseEvent>
 #include <QFileDialog>
@@ -12,18 +13,24 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPushButton>
 #include <QRandomGenerator>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QTimer>
+#include <QToolButton>
 #include <QUdpSocket>
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <utility>
 
@@ -47,48 +54,32 @@ QString state_text(TransferState state) {
     return to_qstring(std::string(transfer_state_name(state)));
 }
 
-QString direction_text(TransferDirection direction) {
-    return direction == TransferDirection::receive ? "Receive" : "Send";
-}
-
-QString kind_text(TransferKind kind) {
-    return kind == TransferKind::directory ? "directory" : "file";
-}
-
-QString detail_text(const TransferSnapshot& snapshot) {
-    if (snapshot.error) {
-        return to_qstring(format_error(snapshot.error.value()));
-    }
-    if (snapshot.kind == TransferKind::directory) {
-        return QString("files %1/%2  skipped %3  full %4  delta %5")
-            .arg(snapshot.processed_files)
-            .arg(snapshot.total_files)
-            .arg(snapshot.skipped_files)
-            .arg(snapshot.full_files)
-            .arg(snapshot.delta_files);
-    }
-    return QString("%1 / %2")
-        .arg(to_qstring(format_size(snapshot.current_bytes)))
-        .arg(to_qstring(format_size(snapshot.total_bytes)));
-}
-
-int progress_percent(const TransferSnapshot& snapshot) {
-    if (snapshot.state == TransferState::completed) {
-        return 100;
-    }
-    if (snapshot.kind == TransferKind::directory && snapshot.total_files > 0) {
-        return static_cast<int>((snapshot.processed_files * 100) / snapshot.total_files);
-    }
-    if (snapshot.total_bytes > 0) {
-        return static_cast<int>((snapshot.current_bytes * 100) / snapshot.total_bytes);
-    }
-    return 0;
-}
-
 QString make_link_code() {
     const auto value = QRandomGenerator::global()->bounded(100000, 1000000);
     return QString::number(value);
 }
+
+class ElidedLabel final : public QLabel {
+public:
+    explicit ElidedLabel(QString text, QWidget* parent = nullptr) : QLabel(parent), full_text_(std::move(text)) {
+        setToolTip(full_text_);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    QSize minimumSizeHint() const override {
+        return QSize(16, QLabel::minimumSizeHint().height());
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        const auto text = fontMetrics().elidedText(full_text_, Qt::ElideMiddle, width());
+        painter.drawText(rect(), alignment() | Qt::TextSingleLine, text);
+    }
+
+private:
+    QString full_text_;
+};
 
 }  // namespace
 
@@ -248,32 +239,36 @@ QWidget* MainWindow::build_transfer_page() {
     header->addWidget(back);
 
     drop_panel_ = new DropPanel(transfer_page_);
-    drop_panel_->setMinimumHeight(150);
+    drop_panel_->setMinimumHeight(360);
+    auto* drop_layout = new QVBoxLayout(drop_panel_);
+    drop_layout->setContentsMargins(0, 0, 0, 0);
+    drop_layout->setSpacing(0);
 
-    auto* scroll = new QScrollArea(transfer_page_);
+    auto* scroll = new QScrollArea(drop_panel_);
     scroll->setObjectName("transferScroll");
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     auto* transfer_list = new QWidget(scroll);
     transfers_layout_ = new QVBoxLayout(transfer_list);
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);
 
-    empty_transfer_label_ = new QLabel("Transfer list is empty.", transfer_list);
+    empty_transfer_label_ = new QLabel("Drop files or folders here\nSend to the linked machine", transfer_list);
     empty_transfer_label_->setObjectName("emptyTransfer");
     empty_transfer_label_->setAlignment(Qt::AlignCenter);
-    empty_transfer_label_->setMinimumHeight(170);
+    empty_transfer_label_->setMinimumHeight(320);
     transfers_layout_->addWidget(empty_transfer_label_);
     transfers_layout_->addStretch(1);
     scroll->setWidget(transfer_list);
+    drop_layout->addWidget(scroll);
 
     log_ = new QLabel("", transfer_page_);
     log_->setObjectName("mutedText");
 
     layout->addLayout(header);
-    layout->addWidget(drop_panel_);
-    layout->addWidget(scroll, 1);
+    layout->addWidget(drop_panel_, 1);
     layout->addWidget(log_);
 
     connect(back, &QPushButton::clicked, this, [this] {
@@ -316,14 +311,10 @@ void MainWindow::apply_style() {
             color: #364152;
             font-size: 13px;
         }
-        #dropPanel {
+        #transferDropArea {
             border: 1px dashed #97a3b6;
             border-radius: 8px;
             background: #ffffff;
-        }
-        #dropTitle {
-            font-size: 18px;
-            font-weight: 700;
         }
         #searchInput {
             min-height: 38px;
@@ -344,33 +335,34 @@ void MainWindow::apply_style() {
             border-radius: 8px;
         }
         #peerIcon {
-            background: #e9f1ff;
-            color: #2563eb;
             border-radius: 8px;
-            font-size: 20px;
-            font-weight: 700;
         }
         #peerName, #transferName {
             color: #1e2430;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
         }
-        #peerMeta, #transferMeta {
+        #transferName {
+            min-width: 0px;
+        }
+        #peerMeta, #transferMeta, #transferMetric {
             color: #717b8b;
             font-size: 12px;
+        }
+        #transferMetric {
+            line-height: 16px;
         }
         #onlineBadge, #stateBadge {
             color: #087443;
             background: #e7f8ef;
             border-radius: 7px;
-            padding: 3px 8px;
+            padding: 3px 4px;
             font-size: 12px;
         }
         #emptyTransfer {
             color: #8a93a3;
-            background: #ffffff;
-            border: 1px solid #e2e7ef;
-            border-radius: 8px;
+            background: transparent;
+            border: none;
         }
         QPushButton {
             min-height: 34px;
@@ -417,6 +409,39 @@ void MainWindow::apply_style() {
         #secondaryButton:focus {
             border-color: #d8dee8;
         }
+        #taskStopButton {
+            min-width: 24px;
+            max-width: 24px;
+            min-height: 24px;
+            max-height: 24px;
+            padding: 0;
+            border-radius: 12px;
+            border-color: transparent;
+            background: #f3f4f6;
+            color: #9f2f2f;
+        }
+        #taskStopButton:hover {
+            background: #fdecec;
+        }
+        #taskStopButton:disabled {
+            color: #a6adb8;
+            background: #f3f4f6;
+        }
+        #taskRemoveButton {
+            min-height: 24px;
+            max-height: 24px;
+            min-width: 24px;
+            max-width: 24px;
+            padding: 0;
+            border-radius: 12px;
+            border-color: transparent;
+            background: #f3f4f6;
+            color: #687386;
+        }
+        #taskRemoveButton:hover {
+            background: #eef2f7;
+            color: #1e2430;
+        }
     )");
 }
 
@@ -443,12 +468,21 @@ bool MainWindow::start_receiver() {
         return false;
     }
 
+    auto listening_promise = std::make_shared<std::promise<void>>();
+    auto listening_reported = std::make_shared<bool>(false);
+    auto listening = listening_promise->get_future();
     receiver_events_ = std::make_unique<GuiReceiverEvents>(
         [this](TransferSnapshotStore store) {
             merge_snapshots(std::move(store));
         },
         [this](QString line) {
             show_log(std::move(line));
+        },
+        [listening_promise, listening_reported](const ReceiverConfig&) {
+            if (!*listening_reported) {
+                *listening_reported = true;
+                listening_promise->set_value();
+            }
         });
     receiver_runner_ = std::make_unique<ReceiverServerRunner>();
     auto started = receiver_runner_->start(validated.value(), *receiver_events_);
@@ -458,6 +492,19 @@ bool MainWindow::start_receiver() {
         status_->setText(to_qstring(format_error(started.error())));
         return false;
     }
+    if (listening.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+        receiver_runner_->stop();
+        auto result = receiver_runner_->join();
+        receiver_runner_.reset();
+        receiver_events_.reset();
+        if (!result) {
+            status_->setText(to_qstring(format_error(result.error())));
+            return false;
+        }
+        status_->setText("Receiver failed to start listening.");
+        return false;
+    }
+    status_->setText(QString("Receiver listening on TCP %1.").arg(kTransferPort));
     return true;
 }
 
@@ -614,10 +661,13 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     row->setContentsMargins(12, 10, 12, 10);
     row->setSpacing(12);
 
-    auto* icon = new QLabel(peer.name.left(1).toUpper(), card);
+    auto* icon = new QLabel(card);
     icon->setObjectName("peerIcon");
     icon->setFixedSize(44, 44);
     icon->setAlignment(Qt::AlignCenter);
+    icon->setPixmap(QApplication::style()
+                        ->standardIcon(QStyle::SP_ComputerIcon)
+                        .pixmap(38, 38));
 
     auto* text_box = new QVBoxLayout();
     text_box->setContentsMargins(0, 0, 0, 0);
@@ -648,35 +698,124 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
 }
 
 QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
+    const auto key = snapshot_key(snapshot);
     auto* card = new QFrame(transfer_page_);
     card->setObjectName("transferCard");
-    auto* layout = new QVBoxLayout(card);
-    layout->setContentsMargins(12, 10, 12, 10);
-    layout->setSpacing(5);
+    auto* row = new QHBoxLayout(card);
+    row->setContentsMargins(8, 9, 8, 9);
+    row->setSpacing(4);
 
-    auto* top = new QHBoxLayout();
-    auto* name = new QLabel(QString::fromStdString(snapshot.name), card);
+    auto* name = new ElidedLabel(QString::fromStdString(snapshot.name), card);
     name->setObjectName("transferName");
-    name->setWordWrap(true);
+    name->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto* rate = make_metric_label("Speed", transfer_rate_text(snapshot), card);
+    rate->setFixedWidth(40);
+    rate->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    auto* size = make_metric_label("Size", transfer_size_text(snapshot), card);
+    size->setFixedWidth(62);
+    size->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
     auto* state = new QLabel(state_text(snapshot.state), card);
     state->setObjectName("stateBadge");
     state->setAlignment(Qt::AlignCenter);
-    top->addWidget(name, 1);
-    top->addWidget(state);
+    state->setFixedWidth(84);
+    state->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    auto* meta = new QLabel(
-        QString("%1  %2  %3%").arg(direction_text(snapshot.direction), kind_text(snapshot.kind))
-            .arg(progress_percent(snapshot)),
-        card);
-    meta->setObjectName("transferMeta");
-    auto* detail = new QLabel(detail_text(snapshot), card);
-    detail->setObjectName("transferMeta");
-    detail->setWordWrap(true);
+    auto* actions = new QHBoxLayout();
+    actions->setContentsMargins(0, 0, 0, 0);
+    actions->setSpacing(4);
+    auto* stop = make_task_tool_button(
+        QApplication::style()->standardIcon(QStyle::SP_MediaStop), "Stop transfer", card);
+    stop->setObjectName("taskStopButton");
+    stop->setEnabled(can_stop_transfer(snapshot));
+    connect(stop, &QToolButton::clicked, this, [this, key] {
+        stop_transfer(key);
+    });
+    auto* remove = make_task_tool_button(
+        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), "Remove from list", card);
+    remove->setObjectName("taskRemoveButton");
+    connect(remove, &QToolButton::clicked, this, [this, key] {
+        remove_transfer_card(key);
+    });
+    actions->addWidget(stop);
+    actions->addWidget(remove);
+    actions->setSizeConstraint(QLayout::SetFixedSize);
 
-    layout->addLayout(top);
-    layout->addWidget(meta);
-    layout->addWidget(detail);
+    row->addWidget(name, 1);
+    row->addWidget(rate, 0);
+    row->addWidget(size, 0);
+    row->addWidget(state, 0);
+    row->addLayout(actions);
     return card;
+}
+
+QLabel* MainWindow::make_metric_label(const QString& title, const QString& value, QWidget* parent) {
+    auto* label = new QLabel(QString("%1\n%2").arg(title, value), parent);
+    label->setObjectName("transferMetric");
+    label->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    return label;
+}
+
+QToolButton* MainWindow::make_task_tool_button(const QIcon& icon,
+                                               const QString& tooltip,
+                                               QWidget* parent) {
+    auto* button = new QToolButton(parent);
+    button->setIcon(icon);
+    button->setIconSize(QSize(12, 12));
+    button->setToolTip(tooltip);
+    button->setFixedSize(24, 24);
+    return button;
+}
+
+QString MainWindow::transfer_rate_text(const TransferSnapshot& snapshot) const {
+    return to_qstring(format_rate(snapshot.current_bytes, snapshot.elapsed_seconds));
+}
+
+QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
+    if (snapshot.kind == TransferKind::directory && snapshot.total_files > 0) {
+        return QString("%1/%2").arg(snapshot.processed_files).arg(snapshot.total_files);
+    }
+    if (snapshot.total_bytes == 0) {
+        return to_qstring(format_size(snapshot.current_bytes));
+    }
+    return to_qstring(format_size(snapshot.total_bytes));
+}
+
+bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
+    if (snapshot.direction != TransferDirection::send) {
+        return false;
+    }
+    return snapshot.state == TransferState::pending || snapshot.state == TransferState::running;
+}
+
+void MainWindow::stop_transfer(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end()) {
+        return;
+    }
+    if (!can_stop_transfer(it.value())) {
+        show_log("This transfer is not running.");
+        return;
+    }
+    if (sender_runner_ == nullptr) {
+        show_log("No active sender for this transfer.");
+        return;
+    }
+    sender_runner_->cancel();
+    show_log("Stopping transfer...");
+}
+
+void MainWindow::remove_transfer_card(const QString& key) {
+    transfer_snapshots_.remove(key);
+    auto* card = transfer_cards_.take(key);
+    if (card != nullptr) {
+        transfers_layout_->removeWidget(card);
+        card->deleteLater();
+    }
+    if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
+        empty_transfer_label_->show();
+    }
 }
 
 void MainWindow::request_link(const QString& id) {
@@ -800,9 +939,12 @@ void MainWindow::start_sender(const QString& path) {
 
     sender_thread_ = std::thread([this, config = std::move(validated).value(), events] {
         auto result = sender_runner_->run(config, *events);
-        QMetaObject::invokeMethod(this, [this, result = std::move(result)] {
+        QMetaObject::invokeMethod(this, [this, result = std::move(result), target = config.target] {
             if (!result) {
-                show_log(to_qstring(format_error(result.error())));
+                show_log(QString("Connect or send to %1:%2 failed: %3")
+                             .arg(to_qstring(target.host))
+                             .arg(target.port)
+                             .arg(to_qstring(format_error(result.error()))));
             }
             stop_sender();
         }, Qt::QueuedConnection);
@@ -833,6 +975,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot) {
         empty_transfer_label_->hide();
     }
     const auto key = snapshot_key(snapshot);
+    transfer_snapshots_.insert(key, snapshot);
     if (transfer_cards_.contains(key)) {
         auto* old = transfer_cards_.take(key);
         transfers_layout_->removeWidget(old);

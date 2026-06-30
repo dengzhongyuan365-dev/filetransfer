@@ -19,6 +19,7 @@ class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class QStackedWidget;
+class QToolButton;
 class QVBoxLayout;
 class QUdpSocket;
 
@@ -56,6 +57,13 @@ private:
     QWidget* make_empty_peer_card(const QString& text);
     QWidget* make_peer_card(const Peer& peer);
     QWidget* make_transfer_card(const TransferSnapshot& snapshot);
+    QLabel* make_metric_label(const QString& title, const QString& value, QWidget* parent);
+    QToolButton* make_task_tool_button(const QIcon& icon, const QString& tooltip, QWidget* parent);
+    QString transfer_rate_text(const TransferSnapshot& snapshot) const;
+    QString transfer_size_text(const TransferSnapshot& snapshot) const;
+    bool can_stop_transfer(const TransferSnapshot& snapshot) const;
+    void stop_transfer(const QString& key);
+    void remove_transfer_card(const QString& key);
 
     void request_link(const QString& id);
     void receive_link_request(const QHostAddress& address, const QJsonObject& obj);
@@ -88,6 +96,7 @@ private:
     std::unique_ptr<QUdpSocket> discovery_;
     QMap<QString, Peer> peers_;
     QMap<QString, QWidget*> transfer_cards_;
+    QMap<QString, TransferSnapshot> transfer_snapshots_;
     Peer linked_peer_;
     QString pending_link_id_;
     QString pending_link_code_;

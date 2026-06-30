@@ -1,13 +1,13 @@
 #pragma once
 
-#include <QFrame>
+#include <QWidget>
 #include <QStringList>
 
 #include <functional>
 
 namespace lan::gui {
 
-class DropPanel final : public QFrame {
+class DropPanel final : public QWidget {
 public:
     explicit DropPanel(QWidget* parent = nullptr);
 
