@@ -1,4 +1,8 @@
 #include <iostream>
+#include <csignal>
+#include <cstring>
+#include <pthread.h>
+#include <thread>
 #include <utility>
 
 #include "lan/app/receiver_config.h"
@@ -40,6 +44,64 @@ public:
     }
 };
 
+class SignalStopper {
+public:
+    SignalStopper(lan::ReceiverServer& server, bool enabled)
+        : server_(server), enabled_(enabled) {}
+
+    SignalStopper(const SignalStopper&) = delete;
+    SignalStopper& operator=(const SignalStopper&) = delete;
+
+    ~SignalStopper() {
+        stop_waiting();
+    }
+
+    bool start() {
+        if (!enabled_) {
+            return true;
+        }
+
+        ::sigemptyset(&signals_);
+        ::sigaddset(&signals_, SIGINT);
+        ::sigaddset(&signals_, SIGTERM);
+        ::sigaddset(&signals_, SIGUSR1);
+
+        const int mask_result = ::pthread_sigmask(SIG_BLOCK, &signals_, nullptr);
+        if (mask_result != 0) {
+            std::cerr << "failed to block receiver signals: " << std::strerror(mask_result) << '\n';
+            return false;
+        }
+
+        thread_ = std::thread([this] {
+            int signal_number = 0;
+            const int wait_result = ::sigwait(&signals_, &signal_number);
+            if (wait_result != 0 || signal_number == SIGUSR1) {
+                return;
+            }
+
+            std::cerr << "\nreceived signal " << signal_number << ", stopping receiver...\n";
+            server_.stop();
+        });
+
+        return true;
+    }
+
+    void stop_waiting() {
+        if (!thread_.joinable()) {
+            return;
+        }
+
+        (void)::pthread_kill(thread_.native_handle(), SIGUSR1);
+        thread_.join();
+    }
+
+private:
+    lan::ReceiverServer& server_;
+    bool enabled_ = false;
+    sigset_t signals_{};
+    std::thread thread_;
+};
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -75,7 +137,13 @@ int main(int argc, char* argv[]) {
 
     ConsoleReceiverEvents events;
     lan::ReceiverServer server;
+    SignalStopper signal_stopper(server, !final_config.once);
+    if (!signal_stopper.start()) {
+        return 1;
+    }
+
     auto served = server.run(final_config, events);
+    signal_stopper.stop_waiting();
     if (!served) {
         std::cerr << served.error().message << '\n';
         return 1;
