@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QFileDialog>
 #include <QFrame>
 #include <QHostAddress>
@@ -54,6 +55,18 @@ QString snapshot_key(const TransferSnapshot& snapshot) {
 }
 
 QString state_text(TransferState state) {
+    switch (state) {
+        case TransferState::pending:
+            return QCoreApplication::translate("MainWindow", "pending");
+        case TransferState::running:
+            return QCoreApplication::translate("MainWindow", "running");
+        case TransferState::completed:
+            return QCoreApplication::translate("MainWindow", "completed");
+        case TransferState::failed:
+            return QCoreApplication::translate("MainWindow", "failed");
+        case TransferState::cancelled:
+            return QCoreApplication::translate("MainWindow", "cancelled");
+    }
     return to_qstring(std::string(transfer_state_name(state)));
 }
 
@@ -87,7 +100,7 @@ private:
 }  // namespace
 
 MainWindow::MainWindow() : node_id_(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
-    setWindowTitle("LAN File Transfer");
+    setWindowTitle(QCoreApplication::translate("MainWindow", "LAN File Transfer"));
     resize(400, 600);
     setMinimumSize(380, 560);
     setObjectName("app");
@@ -130,9 +143,9 @@ QWidget* MainWindow::build_setup_page() {
     card_layout->setContentsMargins(24, 24, 24, 24);
     card_layout->setSpacing(14);
 
-    auto* title = new QLabel("Receiving folder", page);
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Receiving folder"), page);
     title->setObjectName("title");
-    auto* subtitle = new QLabel("Files sent to this machine will be saved here.", page);
+    auto* subtitle = new QLabel(QCoreApplication::translate("MainWindow", "Files sent to this machine will be saved here."), page);
     subtitle->setObjectName("mutedText");
 
     auto* path_box = new QFrame(page);
@@ -145,12 +158,12 @@ QWidget* MainWindow::build_setup_page() {
     receive_dir_->setObjectName("pathLabel");
     receive_dir_->setWordWrap(true);
 
-    auto* choose = new QPushButton("Choose", page);
+    auto* choose = new QPushButton(QCoreApplication::translate("MainWindow", "Choose"), page);
     choose->setObjectName("secondaryButton");
     row->addWidget(receive_dir_, 1);
     row->addWidget(choose);
 
-    auto* continue_button = new QPushButton("Start", page);
+    auto* continue_button = new QPushButton(QCoreApplication::translate("MainWindow", "Start"), page);
     continue_button->setObjectName("primaryButton");
 
     card_layout->addWidget(title);
@@ -165,7 +178,7 @@ QWidget* MainWindow::build_setup_page() {
     layout->addStretch(1);
 
     connect(choose, &QPushButton::clicked, this, [this] {
-        const auto dir = QFileDialog::getExistingDirectory(this, "Receiving folder", receive_dir_->text());
+        const auto dir = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("MainWindow", "Receiving folder"), receive_dir_->text());
         if (!dir.isEmpty()) {
             receive_dir_->setText(dir);
         }
@@ -185,9 +198,9 @@ QWidget* MainWindow::build_peer_page() {
     layout->setContentsMargins(24, 22, 24, 18);
     layout->setSpacing(12);
 
-    auto* title = new QLabel("Nearby machines", peer_page_);
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Nearby machines"), peer_page_);
     title->setObjectName("title");
-    auto* search = new QPushButton("Refresh", peer_page_);
+    auto* search = new QPushButton(QCoreApplication::translate("MainWindow", "Refresh"), peer_page_);
     search->setObjectName("secondaryButton");
 
     auto* header = new QHBoxLayout();
@@ -197,7 +210,7 @@ QWidget* MainWindow::build_peer_page() {
 
     peer_filter_ = new QLineEdit(peer_page_);
     peer_filter_->setObjectName("searchInput");
-    peer_filter_->setPlaceholderText("Search device name or IP");
+    peer_filter_->setPlaceholderText(QCoreApplication::translate("MainWindow", "Search device name or IP"));
 
     peer_list_ = new QListWidget(peer_page_);
     peer_list_->setObjectName("peerList");
@@ -206,7 +219,7 @@ QWidget* MainWindow::build_peer_page() {
     peer_list_->setSelectionMode(QAbstractItemView::NoSelection);
     peer_list_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 
-    status_ = new QLabel("Ready to find machines.", peer_page_);
+    status_ = new QLabel(QCoreApplication::translate("MainWindow", "Ready to find machines."), peer_page_);
     status_->setObjectName("mutedText");
 
     layout->addLayout(header);
@@ -232,9 +245,9 @@ QWidget* MainWindow::build_transfer_page() {
     layout->setContentsMargins(24, 22, 24, 18);
     layout->setSpacing(12);
 
-    linked_label_ = new QLabel("Not linked", transfer_page_);
+    linked_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Not linked"), transfer_page_);
     linked_label_->setObjectName("title");
-    auto* back = new QPushButton("Change", transfer_page_);
+    auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
 
     auto* header = new QHBoxLayout();
@@ -258,7 +271,7 @@ QWidget* MainWindow::build_transfer_page() {
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);
 
-    empty_transfer_label_ = new QLabel("Drop files or folders here\nSend to the linked machine", transfer_list);
+    empty_transfer_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Drop files or folders here\nSend to the linked machine"), transfer_list);
     empty_transfer_label_->setObjectName("emptyTransfer");
     empty_transfer_label_->setAlignment(Qt::AlignCenter);
     empty_transfer_label_->setMinimumHeight(320);
@@ -272,7 +285,7 @@ QWidget* MainWindow::build_transfer_page() {
     log_->setReadOnly(true);
     log_->setMaximumBlockCount(120);
     log_->setFixedHeight(96);
-    log_->setPlaceholderText("Logs");
+    log_->setPlaceholderText(QCoreApplication::translate("MainWindow", "Logs"));
 
     layout->addLayout(header);
     layout->addWidget(drop_panel_, 1);
@@ -503,9 +516,9 @@ void MainWindow::setup_discovery() {
     const auto bound = discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
                                         QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
     if (bound) {
-        log_event(QString("UDP discovery listening on %1").arg(kDiscoveryPort));
+        log_event(QCoreApplication::translate("MainWindow", "UDP discovery listening on %1").arg(kDiscoveryPort));
     } else {
-        log_event(QString("UDP discovery bind failed on %1: %2")
+        log_event(QCoreApplication::translate("MainWindow", "UDP discovery bind failed on %1: %2")
                       .arg(kDiscoveryPort)
                       .arg(discovery_->errorString()));
     }
@@ -516,7 +529,7 @@ void MainWindow::setup_discovery() {
 
 bool MainWindow::start_receiver() {
     receiver_ready_ = false;
-    log_event(QString("Starting receiver in %1").arg(receive_dir_->text()));
+    log_event(QCoreApplication::translate("MainWindow", "Starting receiver in %1").arg(receive_dir_->text()));
     ReceiverConfig config;
     config.bind_address = "0.0.0.0";
     config.port = kTransferPort;
@@ -528,7 +541,7 @@ bool MainWindow::start_receiver() {
     if (!validated) {
         const auto message = to_qstring(format_error(validated.error()));
         status_->setText(message);
-        log_event(QString("Receiver config invalid: %1").arg(message));
+        log_event(QCoreApplication::translate("MainWindow", "Receiver config invalid: %1").arg(message));
         return false;
     }
 
@@ -555,7 +568,7 @@ bool MainWindow::start_receiver() {
         receiver_events_.reset();
         const auto message = to_qstring(format_error(started.error()));
         status_->setText(message);
-        log_event(QString("Receiver thread failed to start: %1").arg(message));
+        log_event(QCoreApplication::translate("MainWindow", "Receiver thread failed to start: %1").arg(message));
         return false;
     }
     if (listening.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
@@ -566,16 +579,16 @@ bool MainWindow::start_receiver() {
         if (!result) {
             const auto message = to_qstring(format_error(result.error()));
             status_->setText(message);
-            log_event(QString("Receiver listen failed: %1").arg(message));
+            log_event(QCoreApplication::translate("MainWindow", "Receiver listen failed: %1").arg(message));
             return false;
         }
-        status_->setText("Receiver failed to start listening.");
-        log_event("Receiver failed to start listening within 2s.");
+        status_->setText(QCoreApplication::translate("MainWindow", "Receiver failed to start listening."));
+        log_event(QCoreApplication::translate("MainWindow", "Receiver failed to start listening within 2s."));
         return false;
     }
-    status_->setText(QString("Receiver listening on TCP %1.").arg(kTransferPort));
+    status_->setText(QCoreApplication::translate("MainWindow", "Receiver listening on TCP %1.").arg(kTransferPort));
     receiver_ready_ = true;
-    log_event(QString("Receiver listening on 0.0.0.0:%1").arg(kTransferPort));
+    log_event(QCoreApplication::translate("MainWindow", "Receiver listening on 0.0.0.0:%1").arg(kTransferPort));
     return true;
 }
 
@@ -588,14 +601,14 @@ void MainWindow::stop_receiver() {
     receiver_runner_.reset();
     receiver_events_.reset();
     receiver_ready_ = false;
-    log_event("Receiver stopped.");
+    log_event(QCoreApplication::translate("MainWindow", "Receiver stopped."));
 }
 
 void MainWindow::search_peers() {
     peers_.clear();
     refresh_peer_list();
-    status_->setText("Searching...");
-    log_event(QString("Broadcast discover on UDP %1").arg(kDiscoveryPort));
+    status_->setText(QCoreApplication::translate("MainWindow", "Searching..."));
+    log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1").arg(kDiscoveryPort));
     const auto message = QJsonDocument(QJsonObject{
         {"protocol", kProtocol},
         {"type", "discover"},
@@ -606,11 +619,11 @@ void MainWindow::search_peers() {
     discovery_->writeDatagram(message, QHostAddress::Broadcast, kDiscoveryPort);
     QTimer::singleShot(1200, this, [this] {
         if (peers_.isEmpty()) {
-            status_->setText("No machines found.");
-            log_event("Discovery finished: no machines found.");
+            status_->setText(QCoreApplication::translate("MainWindow", "No machines found."));
+            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: no machines found."));
         } else {
-            status_->setText(QString("%1 machine(s) found.").arg(peers_.size()));
-            log_event(QString("Discovery finished: %1 machine(s) found.").arg(peers_.size()));
+            status_->setText(QCoreApplication::translate("MainWindow", "%1 machine(s) found.").arg(peers_.size()));
+            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(peers_.size()));
         }
     });
 }
@@ -635,29 +648,29 @@ void MainWindow::read_discovery() {
         if (type == "discover") {
             if (obj.value("id").toString() != node_id_) {
                 if (!receiver_ready_) {
-                    log_event(QString("Ignored discover from %1 because receiver is not ready.")
+                    log_event(QCoreApplication::translate("MainWindow", "Ignored discover from %1 because receiver is not ready.")
                                   .arg(sender.toString()));
                     continue;
                 }
-                log_event(QString("Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
+                log_event(QCoreApplication::translate("MainWindow", "Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
                 reply_to_discovery(sender, sender_port);
             }
         } else if (type == "announce") {
-            log_event(QString("Received announce from %1").arg(sender.toString()));
+            log_event(QCoreApplication::translate("MainWindow", "Received announce from %1").arg(sender.toString()));
             add_peer(sender, obj);
         } else if (type == "link_request") {
             if (!receiver_ready_) {
-                log_event(QString("Ignored link request from %1 because receiver is not ready.")
+                log_event(QCoreApplication::translate("MainWindow", "Ignored link request from %1 because receiver is not ready.")
                               .arg(sender.toString()));
                 continue;
             }
-            log_event(QString("Received link request from %1").arg(sender.toString()));
+            log_event(QCoreApplication::translate("MainWindow", "Received link request from %1").arg(sender.toString()));
             receive_link_request(sender, obj);
         } else if (type == "link_accept") {
-            log_event(QString("Received link accept from %1").arg(sender.toString()));
+            log_event(QCoreApplication::translate("MainWindow", "Received link accept from %1").arg(sender.toString()));
             receive_link_response(sender, obj, true);
         } else if (type == "link_reject") {
-            log_event(QString("Received link reject from %1").arg(sender.toString()));
+            log_event(QCoreApplication::translate("MainWindow", "Received link reject from %1").arg(sender.toString()));
             receive_link_response(sender, obj, false);
         }
     }
@@ -672,7 +685,7 @@ void MainWindow::reply_to_discovery(const QHostAddress& target, quint16 port) {
         {"port", static_cast<int>(kTransferPort)},
     }).toJson(QJsonDocument::Compact);
     discovery_->writeDatagram(message, target, port);
-    log_event(QString("Sent announce to %1:%2").arg(target.toString()).arg(port));
+    log_event(QCoreApplication::translate("MainWindow", "Sent announce to %1:%2").arg(target.toString()).arg(port));
 }
 
 void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
@@ -688,12 +701,12 @@ void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
 
     Peer peer{
         .id = id,
-        .name = obj.value("name").toString("Unknown"),
+        .name = obj.value("name").toString(QCoreApplication::translate("MainWindow", "Unknown")),
         .host = host,
         .port = port,
     };
     peers_.insert(id, peer);
-    log_event(QString("Peer added: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
+    log_event(QCoreApplication::translate("MainWindow", "Peer added: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     refresh_peer_list();
 }
 
@@ -725,8 +738,8 @@ void MainWindow::refresh_peer_list() {
         ++visible;
     }
     if (visible == 0) {
-        const auto text = peers_.isEmpty() ? QString("No machines yet. Refresh to search the LAN.")
-                                           : QString("No matching machines.");
+        const auto text = peers_.isEmpty() ? QCoreApplication::translate("MainWindow", "No machines yet. Refresh to search the LAN.")
+                                           : QCoreApplication::translate("MainWindow", "No matching machines.");
         auto* item = new QListWidgetItem();
         item->setFlags(Qt::NoItemFlags);
         item->setSizeHint(QSize(0, 86));
@@ -772,12 +785,12 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     text_box->addWidget(name);
     text_box->addWidget(meta);
 
-    auto* badge = new QLabel("online", card);
+    auto* badge = new QLabel(QCoreApplication::translate("MainWindow", "online"), card);
     badge->setObjectName("onlineBadge");
     badge->setAlignment(Qt::AlignCenter);
     badge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    auto* link = new QPushButton("Link", card);
+    auto* link = new QPushButton(QCoreApplication::translate("MainWindow", "Link"), card);
     link->setObjectName("linkButton");
     connect(link, &QPushButton::clicked, this, [this, id = peer.id] {
         request_link(id);
@@ -802,10 +815,10 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     name->setObjectName("transferName");
     name->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
 
-    auto* rate = make_metric_label("Speed", transfer_rate_text(snapshot), card);
+    auto* rate = make_metric_label(QCoreApplication::translate("MainWindow", "Speed"), transfer_rate_text(snapshot), card);
     rate->setFixedWidth(40);
     rate->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    auto* size = make_metric_label("Size", transfer_size_text(snapshot), card);
+    auto* size = make_metric_label(QCoreApplication::translate("MainWindow", "Size"), transfer_size_text(snapshot), card);
     size->setFixedWidth(62);
     size->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 
@@ -819,14 +832,14 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(4);
     auto* stop = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_MediaStop), "Stop transfer", card);
+        QApplication::style()->standardIcon(QStyle::SP_MediaStop), QCoreApplication::translate("MainWindow", "Stop transfer"), card);
     stop->setObjectName("taskStopButton");
     stop->setEnabled(can_stop_transfer(snapshot));
     connect(stop, &QToolButton::clicked, this, [this, key] {
         stop_transfer(key);
     });
     auto* remove = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), "Remove from list", card);
+        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), QCoreApplication::translate("MainWindow", "Remove from list"), card);
     remove->setObjectName("taskRemoveButton");
     connect(remove, &QToolButton::clicked, this, [this, key] {
         remove_transfer_card(key);
@@ -888,15 +901,15 @@ void MainWindow::stop_transfer(const QString& key) {
         return;
     }
     if (!can_stop_transfer(it.value())) {
-        show_log("This transfer is not running.");
+        show_log(QCoreApplication::translate("MainWindow", "This transfer is not running."));
         return;
     }
     if (sender_runner_ == nullptr) {
-        show_log("No active sender for this transfer.");
+        show_log(QCoreApplication::translate("MainWindow", "No active sender for this transfer."));
         return;
     }
     sender_runner_->cancel();
-    show_log("Stopping transfer...");
+    show_log(QCoreApplication::translate("MainWindow", "Stopping transfer..."));
 }
 
 void MainWindow::remove_transfer_card(const QString& key) {
@@ -918,8 +931,8 @@ void MainWindow::request_link(const QString& id) {
     pending_link_id_ = id;
     pending_link_code_ = make_link_code();
     const auto peer = peers_.value(id);
-    status_->setText(QString("Waiting for %1 to accept code %2...").arg(peer.name, pending_link_code_));
-    log_event(QString("Sending link request to %1 %2:%3 code=%4")
+    status_->setText(QCoreApplication::translate("MainWindow", "Waiting for %1 to accept code %2...").arg(peer.name, pending_link_code_));
+    log_event(QCoreApplication::translate("MainWindow", "Sending link request to %1 %2:%3 code=%4")
                   .arg(peer.name, peer.host)
                   .arg(peer.port)
                   .arg(pending_link_code_));
@@ -937,22 +950,22 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     }
     const auto peer = peers_.value(id);
     const auto code = obj.value("code").toString();
-    log_event(QString("Link request from %1 %2:%3 code=%4")
+    log_event(QCoreApplication::translate("MainWindow", "Link request from %1 %2:%3 code=%4")
                   .arg(peer.name, peer.host)
                   .arg(peer.port)
                   .arg(code));
     const auto answer = QMessageBox::question(
         this,
-        "Link request",
-        QString("%1 wants to link with this machine.\nCode: %2").arg(peer.name, code),
+        QCoreApplication::translate("MainWindow", "Link request"),
+        QCoreApplication::translate("MainWindow", "%1 wants to link with this machine.\nCode: %2").arg(peer.name, code),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::Yes);
     if (answer == QMessageBox::Yes) {
-        log_event(QString("Accepted link request from %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Accepted link request from %1").arg(peer.name));
         send_control(peer, "link_accept", QJsonObject{{"code", code}});
         set_linked_peer(peer);
     } else {
-        log_event(QString("Rejected link request from %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Rejected link request from %1").arg(peer.name));
         send_control(peer, "link_reject", QJsonObject{{"code", code}});
     }
 }
@@ -970,11 +983,11 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
     pending_link_id_.clear();
     pending_link_code_.clear();
     if (!accepted) {
-        status_->setText("Link request rejected.");
-        log_event("Link request rejected by peer.");
+        status_->setText(QCoreApplication::translate("MainWindow", "Link request rejected."));
+        log_event(QCoreApplication::translate("MainWindow", "Link request rejected by peer."));
         return;
     }
-    log_event(QString("Link accepted by %1").arg(peers_.value(id).name));
+    log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(peers_.value(id).name));
     set_linked_peer(peers_.value(id));
 }
 
@@ -991,7 +1004,7 @@ void MainWindow::send_control(const Peer& peer, const QString& type, const QJson
     }
     const auto payload = QJsonDocument(message).toJson(QJsonDocument::Compact);
     discovery_->writeDatagram(payload, QHostAddress(peer.host), kDiscoveryPort);
-    log_event(QString("Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
+    log_event(QCoreApplication::translate("MainWindow", "Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
 }
 
 void MainWindow::link_peer(QListWidgetItem* item) {
@@ -1003,18 +1016,18 @@ void MainWindow::link_peer(QListWidgetItem* item) {
 
 void MainWindow::set_linked_peer(const Peer& peer) {
     linked_peer_ = peer;
-    linked_label_->setText(QString("Linked to %1").arg(linked_peer_.name));
-    status_->setText(QString("Linked to %1.").arg(linked_peer_.name));
-    log_event(QString("Linked peer: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
+    linked_label_->setText(QCoreApplication::translate("MainWindow", "Linked to %1").arg(linked_peer_.name));
+    status_->setText(QCoreApplication::translate("MainWindow", "Linked to %1.").arg(linked_peer_.name));
+    log_event(QCoreApplication::translate("MainWindow", "Linked peer: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     stack_->setCurrentWidget(transfer_page_);
 }
 
 void MainWindow::send_paths(const QStringList& paths) {
     if (linked_peer_.id.isEmpty()) {
-        show_log("No linked machine.");
+        show_log(QCoreApplication::translate("MainWindow", "No linked machine."));
         return;
     }
-    log_event(QString("Dropped %1 path(s) for sending.").arg(paths.size()));
+    log_event(QCoreApplication::translate("MainWindow", "Dropped %1 path(s) for sending.").arg(paths.size()));
     for (const auto& path : paths) {
         start_sender(path);
     }
@@ -1022,8 +1035,8 @@ void MainWindow::send_paths(const QStringList& paths) {
 
 void MainWindow::start_sender(const QString& path) {
     if (sender_thread_.joinable()) {
-        show_log("A send is already running.");
-        log_event(QString("Send ignored while another send is running: %1").arg(path));
+        show_log(QCoreApplication::translate("MainWindow", "A send is already running."));
+        log_event(QCoreApplication::translate("MainWindow", "Send ignored while another send is running: %1").arg(path));
         return;
     }
 
@@ -1037,10 +1050,10 @@ void MainWindow::start_sender(const QString& path) {
     if (!validated) {
         const auto message = to_qstring(format_error(validated.error()));
         show_log(message);
-        log_event(QString("Sender config invalid for %1: %2").arg(path, message));
+        log_event(QCoreApplication::translate("MainWindow", "Sender config invalid for %1: %2").arg(path, message));
         return;
     }
-    log_event(QString("Starting send %1 -> %2:%3")
+    log_event(QCoreApplication::translate("MainWindow", "Starting send %1 -> %2:%3")
                   .arg(path, linked_peer_.host)
                   .arg(linked_peer_.port));
 
@@ -1054,14 +1067,14 @@ void MainWindow::start_sender(const QString& path) {
         auto result = sender_runner_->run(config, *events);
         QMetaObject::invokeMethod(this, [this, result = std::move(result), target = config.target] {
             if (!result) {
-                const auto message = QString("Connect or send to %1:%2 failed: %3")
+                const auto message = QCoreApplication::translate("MainWindow", "Connect or send to %1:%2 failed: %3")
                                          .arg(to_qstring(target.host))
                                          .arg(target.port)
                                          .arg(to_qstring(format_error(result.error())));
                 show_log(message);
                 log_event(message);
             } else {
-                log_event(QString("Send to %1:%2 completed.").arg(to_qstring(target.host)).arg(target.port));
+                log_event(QCoreApplication::translate("MainWindow", "Send to %1:%2 completed.").arg(to_qstring(target.host)).arg(target.port));
             }
             stop_sender();
         }, Qt::QueuedConnection);
@@ -1077,7 +1090,7 @@ void MainWindow::stop_sender() {
     }
     sender_runner_.reset();
     sender_events_.reset();
-    log_event("Sender stopped.");
+    log_event(QCoreApplication::translate("MainWindow", "Sender stopped."));
 }
 
 void MainWindow::merge_snapshots(TransferSnapshotStore store) {

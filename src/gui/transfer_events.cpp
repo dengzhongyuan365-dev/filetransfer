@@ -3,6 +3,8 @@
 #include "gui/qt_utils.h"
 #include "lan/common/error.h"
 
+#include <QCoreApplication>
+
 namespace lan::gui {
 
 GuiSenderEvents::GuiSenderEvents(std::function<void(TransferSnapshotStore)> on_change)
@@ -90,13 +92,15 @@ void GuiReceiverEvents::on_transfer_cancelled(const TransferCancelled& cancelled
 void GuiReceiverEvents::on_file_progress(const ReceiveFileProgress&) {}
 
 void GuiReceiverEvents::on_file_received(const ReceiveFileReport& report) {
-    on_log_(QString("received %1").arg(to_qstring(report.target_path)));
+    on_log_(QCoreApplication::translate("MainWindow", "received %1")
+                .arg(to_qstring(report.target_path)));
 }
 
 void GuiReceiverEvents::on_directory_progress(const ReceiveSyncProgress&) {}
 
 void GuiReceiverEvents::on_directory_synced(const ReceiveSyncReport& report) {
-    on_log_(QString("synced directory: %1 files").arg(report.manifest_files));
+    on_log_(QCoreApplication::translate("MainWindow", "synced directory: %1 files")
+                .arg(report.manifest_files));
 }
 
 void GuiReceiverEvents::on_client_error(const Error& error) {
