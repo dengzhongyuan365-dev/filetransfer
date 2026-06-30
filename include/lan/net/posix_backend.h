@@ -16,10 +16,12 @@ public:
 
     Result<bool> send_all(const char* data, std::size_t size) override;
     Result<bool> recv_exact(char* data, std::size_t size) override;
+    void close() override;
 
     const FileDescriptor& socket() const;
 
 private:
+    std::mutex mutex_;
     FileDescriptor socket_;
 };
 

@@ -18,6 +18,17 @@ Result<bool> PosixConnection::recv_exact(char* data, std::size_t size) {
     return lan::recv_exact(socket_, data, size);
 }
 
+void PosixConnection::close() {
+    int fd = -1;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (socket_) {
+        fd = socket_.get();
+    }
+    if (fd >= 0) {
+        (void)::shutdown(fd, SHUT_RDWR);
+    }
+}
+
 const FileDescriptor& PosixConnection::socket() const {
     return socket_;
 }

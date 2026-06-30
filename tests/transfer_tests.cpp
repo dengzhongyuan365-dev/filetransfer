@@ -122,6 +122,11 @@ public:
         return lan::Result<bool>::success(true);
     }
 
+    void close() override {
+        close_pipe(incoming_);
+        close_pipe(outgoing_);
+    }
+
 private:
     static void close_pipe(const std::shared_ptr<MemoryPipe>& pipe) {
         {
@@ -342,6 +347,11 @@ public:
         failed_kinds.push_back(failed.kind);
     }
 
+    void on_transfer_cancelled(const lan::TransferCancelled& cancelled) override {
+        cancelled_ids.push_back(cancelled.transfer_id);
+        cancelled_kinds.push_back(cancelled.kind);
+    }
+
     void on_file_received(const lan::ReceiveFileReport& report) override {
         file_received = true;
         file_report = report;
@@ -385,9 +395,11 @@ public:
     std::vector<std::uint64_t> progress_ids;
     std::vector<std::uint64_t> completed_ids;
     std::vector<std::uint64_t> failed_ids;
+    std::vector<std::uint64_t> cancelled_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
+    std::vector<lan::TransferKind> cancelled_kinds;
     std::vector<std::uint64_t> file_progress_bytes;
     std::vector<std::uint64_t> file_progress_totals;
     std::vector<std::uint64_t> directory_progress_processed;
@@ -1196,6 +1208,79 @@ TEST(ReceiverServerTest, EmitsFileProgressEvents) {
     EXPECT_EQ(events.progress_ids, expected_progress_ids);
     EXPECT_EQ(events.file_progress_bytes, expected_bytes);
     EXPECT_EQ(events.file_progress_totals, expected_totals);
+}
+
+TEST(ReceiverServerTest, StopsActiveFileTransferAndCleansPartFile) {
+    TempDir temp("receiver-server-active-stop-test");
+    const auto receive_dir = temp.path() / "receive";
+    std::filesystem::create_directories(receive_dir);
+
+    auto client_to_server = std::make_shared<MemoryPipe>();
+    auto server_to_client = std::make_shared<MemoryPipe>();
+    MemoryConnection client(server_to_client, client_to_server);
+    auto server_connection =
+        std::make_unique<MemoryConnection>(client_to_server, server_to_client);
+
+    auto listener =
+        std::make_unique<SingleConnectionListener>(std::move(server_connection));
+    FakeNetworkBackend backend(std::move(listener));
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+    receiver_config.once = true;
+
+    CapturingReceiverEvents events;
+    lan::ReceiverServer server(backend);
+
+    auto served_future = std::async(std::launch::async, [&] {
+        return server.run(receiver_config, events);
+    });
+
+    ASSERT_TRUE(events.wait_until_listening());
+
+    lan::Frame hello;
+    hello.type = lan::MessageType::hello;
+    hello.body = lan::bytes_from_string("file");
+    ASSERT_TRUE(lan::write_frame(client, hello));
+
+    lan::Frame begin;
+    begin.type = lan::MessageType::file_begin;
+    begin.body = lan::bytes_from_string(lan::encode_file_begin(lan::FileBeginMetadata{
+        .name = "cancelled.txt",
+        .size = 6,
+        .sha256 = "not-used-after-cancel",
+    }));
+    ASSERT_TRUE(lan::write_frame(client, begin));
+
+    auto begin_ack = lan::read_frame(client);
+    ASSERT_TRUE(begin_ack);
+    ASSERT_EQ(begin_ack.value().type, lan::MessageType::ack);
+
+    auto payload = lan::bytes_from_string("abc");
+    lan::Frame chunk;
+    chunk.type = lan::MessageType::chunk;
+    chunk.body = lan::encode_chunk_body(0, payload.data(), payload.size());
+    ASSERT_TRUE(lan::write_frame(client, chunk));
+
+    server.stop();
+
+    auto served = served_future.get();
+    ASSERT_TRUE(served) << served.error().message;
+    EXPECT_TRUE(served.value().stopped);
+    EXPECT_EQ(served.value().accepted_connections, 0);
+    EXPECT_EQ(served.value().failed_connections, 0);
+    EXPECT_FALSE(events.client_error);
+
+    const std::vector<lan::TransferKind> expected_kinds = {lan::TransferKind::file};
+    const std::vector<std::uint64_t> expected_ids = {1};
+    EXPECT_EQ(events.started_kinds, expected_kinds);
+    EXPECT_EQ(events.started_ids, expected_ids);
+    EXPECT_TRUE(events.completed_kinds.empty());
+    EXPECT_TRUE(events.failed_kinds.empty());
+    EXPECT_EQ(events.cancelled_kinds, expected_kinds);
+    EXPECT_EQ(events.cancelled_ids, expected_ids);
+    EXPECT_FALSE(std::filesystem::exists(receive_dir / "cancelled.txt"));
+    EXPECT_FALSE(std::filesystem::exists(receive_dir / "cancelled.txt.part"));
 }
 
 TEST(ReceiverServerTest, StopsWhileWaitingForConnection) {

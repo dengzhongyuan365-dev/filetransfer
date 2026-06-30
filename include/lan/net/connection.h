@@ -18,6 +18,7 @@ public:
 
     virtual Result<bool> send_all(const char* data, std::size_t size) = 0;
     virtual Result<bool> recv_exact(char* data, std::size_t size) = 0;
+    virtual void close() = 0;
 
 protected:
     Connection() = default;

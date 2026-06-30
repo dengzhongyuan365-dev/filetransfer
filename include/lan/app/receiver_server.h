@@ -47,12 +47,15 @@ private:
                                ReceiverServerEvents& events);
     void set_active_listener(Listener* listener);
     void clear_active_listener(Listener* listener);
+    void set_active_connection(Connection* connection);
+    void clear_active_connection(Connection* connection);
 
     NetworkBackend& backend_;
     std::atomic_bool stop_requested_ = false;
     std::atomic_uint64_t next_transfer_id_ = 1;
-    std::mutex listener_mutex_;
+    std::mutex active_io_mutex_;
     Listener* active_listener_ = nullptr;
+    Connection* active_connection_ = nullptr;
 };
 
 class ReceiverServerRunner {

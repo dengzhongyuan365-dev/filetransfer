@@ -39,6 +39,18 @@ TransferFailed make_receiver_failed(std::uint64_t transfer_id,
     };
 }
 
+TransferCancelled make_receiver_cancelled(std::uint64_t transfer_id,
+                                          const ReceiverConfig& config,
+                                          TransferKind kind) {
+    return TransferCancelled{
+        .transfer_id = transfer_id,
+        .direction = TransferDirection::receive,
+        .kind = kind,
+        .path = config.receive_dir,
+        .name = {},
+    };
+}
+
 TransferCompleted make_receiver_file_completed(std::uint64_t transfer_id,
                                                const ReceiveFileReport& report) {
     return TransferCompleted{
@@ -135,8 +147,14 @@ Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
             return Result<ReceiverServerReport>::failure(client.error());
         }
 
+        set_active_connection(client.value().get());
         auto handled = handle_client(config, *client.value(), events);
+        clear_active_connection(client.value().get());
         if (!handled) {
+            if (stop_requested_.load() && handled.error().code == ErrorCode::cancelled) {
+                report.stopped = true;
+                return Result<ReceiverServerReport>::success(report);
+            }
             ++report.failed_connections;
             events.on_client_error(handled.error());
             if (config.once) {
@@ -157,13 +175,18 @@ void ReceiverServer::stop() {
     stop_requested_.store(true);
 
     Listener* listener = nullptr;
+    Connection* connection = nullptr;
     {
-        std::lock_guard<std::mutex> lock(listener_mutex_);
+        std::lock_guard<std::mutex> lock(active_io_mutex_);
         listener = active_listener_;
+        connection = active_connection_;
     }
 
     if (listener != nullptr) {
         listener->close();
+    }
+    if (connection != nullptr) {
+        connection->close();
     }
 }
 
@@ -202,6 +225,11 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
                 events.on_directory_progress(progress);
             });
         if (!synced) {
+            if (stop_requested_.load()) {
+                events.on_transfer_cancelled(make_receiver_cancelled(transfer_id, config, kind));
+                return Result<bool>::failure(
+                    make_error(ErrorCode::cancelled, "receive transfer cancelled"));
+            }
             events.on_transfer_failed(make_receiver_failed(transfer_id, config, kind, synced.error()));
             return Result<bool>::failure(synced.error());
         }
@@ -216,8 +244,13 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
         config, connection, hello.value(), [transfer_id, &events](const ReceiveFileProgress& progress) {
             events.on_transfer_progress(make_receiver_file_progress(transfer_id, progress));
             events.on_file_progress(progress);
-        });
+    });
     if (!received) {
+        if (stop_requested_.load()) {
+            events.on_transfer_cancelled(make_receiver_cancelled(transfer_id, config, kind));
+            return Result<bool>::failure(
+                make_error(ErrorCode::cancelled, "receive transfer cancelled"));
+        }
         events.on_transfer_failed(make_receiver_failed(transfer_id, config, kind, received.error()));
         return Result<bool>::failure(received.error());
     }
@@ -228,14 +261,26 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
 }
 
 void ReceiverServer::set_active_listener(Listener* listener) {
-    std::lock_guard<std::mutex> lock(listener_mutex_);
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
     active_listener_ = listener;
 }
 
 void ReceiverServer::clear_active_listener(Listener* listener) {
-    std::lock_guard<std::mutex> lock(listener_mutex_);
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
     if (active_listener_ == listener) {
         active_listener_ = nullptr;
+    }
+}
+
+void ReceiverServer::set_active_connection(Connection* connection) {
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
+    active_connection_ = connection;
+}
+
+void ReceiverServer::clear_active_connection(Connection* connection) {
+    std::lock_guard<std::mutex> lock(active_io_mutex_);
+    if (active_connection_ == connection) {
+        active_connection_ = nullptr;
     }
 }
 
