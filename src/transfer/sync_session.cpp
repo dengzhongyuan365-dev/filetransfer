@@ -5,6 +5,7 @@
 #include <system_error>
 #include <utility>
 
+#include "lan/common/stopwatch.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
@@ -383,6 +384,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                                                  SendSyncProgressCallback on_progress) {
     (void)block_size;
 
+    Stopwatch transfer_timer;
     auto manifest = build_manifest(config.source_path);
     if (!manifest) {
         return Result<SendSyncReport>::failure(manifest.error());
@@ -407,6 +409,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
                 .delta_files = report.delta_files,
                 .delta_frames_sent = report.delta_frames_sent,
                 .block_size = report.block_size,
+                .elapsed_seconds = transfer_timer.elapsed_seconds(),
             });
         }
     };
@@ -450,6 +453,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         return Result<SendSyncReport>::failure(done.error());
     }
 
+    report.elapsed_seconds = transfer_timer.elapsed_seconds();
     return Result<SendSyncReport>::success(report);
 }
 
@@ -511,6 +515,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
             make_error(ErrorCode::protocol_error, "expected sync hello frame"));
     }
 
+    Stopwatch transfer_timer;
     std::uint64_t manifest_files = 0;
     auto plan = receive_manifest_and_send_plan(connection, config, block_size, manifest_files);
     if (!plan) {
@@ -531,6 +536,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
                 .delta_files = report.delta_files,
                 .files_written = report.files_written,
                 .block_size = report.block_size,
+                .elapsed_seconds = transfer_timer.elapsed_seconds(),
             });
         }
     };
@@ -574,6 +580,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
             make_error(ErrorCode::protocol_error, "expected sync done ack"));
     }
 
+    report.elapsed_seconds = transfer_timer.elapsed_seconds();
     return Result<ReceiveSyncReport>::success(report);
 }
 

@@ -44,7 +44,8 @@ public:
         std::cerr << '\r' << "syncing files " << progress.processed_files << " / "
                   << progress.manifest_files << "  skipped " << progress.skipped_files
                   << "  full " << progress.full_files << "  delta " << progress.delta_files
-                  << "  written " << progress.files_written;
+                  << "  written " << progress.files_written
+                  << "  elapsed " << progress.elapsed_seconds << " s";
         std::cerr.flush();
     }
 
@@ -57,6 +58,7 @@ public:
         std::cout << "  delta: " << synced.delta_files << '\n';
         std::cout << "  files written: " << synced.files_written << '\n';
         std::cout << "  block size: " << lan::format_size(synced.block_size) << '\n';
+        std::cout << "  elapsed: " << synced.elapsed_seconds << " s\n";
     }
 
     void on_client_error(const lan::Error& error) override {

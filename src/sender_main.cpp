@@ -21,7 +21,8 @@ void print_send_sync_progress(const lan::SendSyncProgress& progress) {
     std::cerr << '\r' << "syncing files " << progress.processed_files << " / "
               << progress.manifest_files << "  skipped " << progress.skipped_files
               << "  full " << progress.full_files << "  delta " << progress.delta_files
-              << "  delta frames " << progress.delta_frames_sent;
+              << "  delta frames " << progress.delta_frames_sent
+              << "  elapsed " << progress.elapsed_seconds << " s";
     std::cerr.flush();
 }
 
@@ -74,6 +75,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  delta: " << synced.value().delta_files << '\n';
         std::cout << "  delta frames sent: " << synced.value().delta_frames_sent << '\n';
         std::cout << "  block size: " << lan::format_size(synced.value().block_size) << '\n';
+        std::cout << "  elapsed: " << synced.value().elapsed_seconds << " s\n";
         return 0;
     }
 

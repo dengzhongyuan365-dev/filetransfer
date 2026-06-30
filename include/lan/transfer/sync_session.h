@@ -33,6 +33,7 @@ struct SendSyncReport {
     std::uint64_t delta_files = 0;
     std::uint64_t delta_frames_sent = 0;
     std::uint32_t block_size = 0;
+    double elapsed_seconds = 0.0;
 };
 
 struct SendSyncProgress {
@@ -43,6 +44,7 @@ struct SendSyncProgress {
     std::uint64_t delta_files = 0;
     std::uint64_t delta_frames_sent = 0;
     std::uint32_t block_size = 0;
+    double elapsed_seconds = 0.0;
 };
 
 struct ReceiveSyncReport {
@@ -52,6 +54,7 @@ struct ReceiveSyncReport {
     std::uint64_t delta_files = 0;
     std::uint64_t files_written = 0;
     std::uint32_t block_size = 0;
+    double elapsed_seconds = 0.0;
 };
 
 struct ReceiveSyncProgress {
@@ -62,6 +65,7 @@ struct ReceiveSyncProgress {
     std::uint64_t delta_files = 0;
     std::uint64_t files_written = 0;
     std::uint32_t block_size = 0;
+    double elapsed_seconds = 0.0;
 };
 
 using ReceiveSyncProgressCallback = std::function<void(const ReceiveSyncProgress&)>;

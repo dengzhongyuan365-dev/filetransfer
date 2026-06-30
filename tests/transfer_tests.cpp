@@ -610,6 +610,7 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_EQ(sender_result.value().full_files, 1);
     EXPECT_EQ(sender_result.value().delta_files, 1);
     EXPECT_EQ(sender_result.value().delta_frames_sent, 2);
+    EXPECT_GT(sender_result.value().elapsed_seconds, 0.0);
 
     const std::vector<std::uint64_t> expected_sender_processed = {0, 1, 2, 3};
     const std::vector<std::uint64_t> expected_sender_totals = {3, 3, 3, 3};
@@ -621,6 +622,7 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_EQ(receiver_result.value().full_files, 1);
     EXPECT_EQ(receiver_result.value().delta_files, 1);
     EXPECT_EQ(receiver_result.value().files_written, 2);
+    EXPECT_GT(receiver_result.value().elapsed_seconds, 0.0);
 
     auto manifest = lan::build_manifest(source.path(), 4096);
     ASSERT_TRUE(manifest);
