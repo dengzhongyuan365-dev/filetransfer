@@ -35,6 +35,12 @@ class DropPanel;
 class GuiReceiverEvents;
 class GuiSenderEvents;
 
+enum class CloseAction {
+    cancel,
+    minimizeToTray,
+    quit,
+};
+
 struct QueuedSend {
     QString path;
     QString snapshot_key;
@@ -57,6 +63,7 @@ private:
     void setup_tray();
     void toggle_window_visibility();
     void quit_from_tray();
+    CloseAction ask_close_action();
 
     void setup_discovery();
     QString load_or_create_node_id();
@@ -67,6 +74,7 @@ private:
     bool can_switch_peer() const;
     bool start_receiver();
     void stop_receiver();
+    void show_settings();
 
     void search_peers();
     void read_discovery();

@@ -26,6 +26,7 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QRandomGenerator>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -46,6 +47,7 @@
 #include <QUuid>
 #include <QVariant>
 #include <QVBoxLayout>
+#include <QCheckBox>
 
 #include <algorithm>
 #include <chrono>
@@ -139,6 +141,27 @@ qint64 now_ms() {
 
 QSettings app_settings() {
     return QSettings(QStringLiteral("brinstrom"), QStringLiteral("lan-file-transfer"));
+}
+
+QString saved_receive_dir() {
+    return app_settings().value(QStringLiteral("receiveDir"), default_receive_dir()).toString();
+}
+
+void save_receive_dir(const QString& dir) {
+    app_settings().setValue(QStringLiteral("receiveDir"), dir);
+}
+
+QString remembered_close_action() {
+    return app_settings().value(QStringLiteral("closeAction")).toString();
+}
+
+void save_close_action(const QString& action) {
+    auto settings = app_settings();
+    if (action.isEmpty()) {
+        settings.remove(QStringLiteral("closeAction"));
+        return;
+    }
+    settings.setValue(QStringLiteral("closeAction"), action);
 }
 
 void append_local_file_path(const QUrl& url, QStringList& paths, std::set<QString>& seen) {
@@ -259,6 +282,28 @@ MainWindow::~MainWindow() {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (!force_quit_ && tray_icon_ != nullptr && QSystemTrayIcon::isSystemTrayAvailable()) {
+        auto action = CloseAction::cancel;
+        const auto remembered = remembered_close_action();
+        if (remembered == QStringLiteral("tray")) {
+            action = CloseAction::minimizeToTray;
+        } else if (remembered == QStringLiteral("quit")) {
+            action = CloseAction::quit;
+        } else {
+            action = ask_close_action();
+        }
+
+        if (action == CloseAction::cancel) {
+            event->ignore();
+            return;
+        }
+        if (action == CloseAction::quit) {
+            force_quit_ = true;
+            stop_receiver();
+            stop_sender();
+            event->accept();
+            return;
+        }
+
         hide();
         event->ignore();
         if (!tray_message_shown_) {
@@ -311,7 +356,7 @@ QWidget* MainWindow::build_setup_page() {
     row->setContentsMargins(12, 10, 10, 10);
     row->setSpacing(10);
 
-    receive_dir_ = new QLabel(default_receive_dir(), page);
+    receive_dir_ = new QLabel(saved_receive_dir(), page);
     receive_dir_->setObjectName("pathLabel");
     receive_dir_->setWordWrap(true);
 
@@ -341,6 +386,7 @@ QWidget* MainWindow::build_setup_page() {
         }
     });
     connect(continue_button, &QPushButton::clicked, this, [this] {
+        save_receive_dir(receive_dir_->text());
         if (start_receiver()) {
             search_peers();
             stack_->setCurrentWidget(peer_page_);
@@ -357,6 +403,8 @@ QWidget* MainWindow::build_peer_page() {
 
     auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Nearby machines"), peer_page_);
     title->setObjectName("title");
+    auto* settings = new QPushButton(QCoreApplication::translate("MainWindow", "Settings"), peer_page_);
+    settings->setObjectName("secondaryButton");
     auto* search = new QPushButton(QCoreApplication::translate("MainWindow", "Refresh"), peer_page_);
     search->setObjectName("secondaryButton");
     back_to_transfer_ = new QPushButton(QCoreApplication::translate("MainWindow", "Back to Transfer"), peer_page_);
@@ -367,6 +415,7 @@ QWidget* MainWindow::build_peer_page() {
     header->setSpacing(12);
     header->addWidget(title, 1);
     header->addWidget(back_to_transfer_);
+    header->addWidget(settings);
     header->addWidget(search);
 
     peer_filter_ = new QLineEdit(peer_page_);
@@ -391,6 +440,9 @@ QWidget* MainWindow::build_peer_page() {
     connect(search, &QPushButton::clicked, this, [this] {
         search_peers();
     });
+    connect(settings, &QPushButton::clicked, this, [this] {
+        show_settings();
+    });
     connect(back_to_transfer_, &QPushButton::clicked, this, [this] {
         open_transfer_page();
     });
@@ -411,8 +463,6 @@ QWidget* MainWindow::build_transfer_page() {
 
     linked_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Not linked"), transfer_page_);
     linked_label_->setObjectName("title");
-    auto* history = new QPushButton(QCoreApplication::translate("MainWindow", "History"), transfer_page_);
-    history->setObjectName("secondaryButton");
     auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
     auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
@@ -420,7 +470,6 @@ QWidget* MainWindow::build_transfer_page() {
 
     auto* header = new QHBoxLayout();
     header->addWidget(linked_label_, 1);
-    header->addWidget(history);
     header->addWidget(disconnect);
     header->addWidget(back);
 
@@ -457,8 +506,16 @@ QWidget* MainWindow::build_transfer_page() {
     log_->setFixedHeight(96);
     log_->setPlaceholderText(QCoreApplication::translate("MainWindow", "Logs"));
 
+    auto* footer = new QHBoxLayout();
+    footer->setSpacing(8);
+    auto* history = new QPushButton(QCoreApplication::translate("MainWindow", "History"), transfer_page_);
+    history->setObjectName("secondaryButton");
+    footer->addStretch(1);
+    footer->addWidget(history);
+
     layout->addLayout(header);
     layout->addWidget(drop_panel_, 1);
+    layout->addLayout(footer);
     layout->addWidget(log_);
 
     connect(back, &QPushButton::clicked, this, [this] {
@@ -491,6 +548,11 @@ void MainWindow::apply_style() {
         }
         #title {
             font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0px;
+        }
+        #dialogTitle {
+            font-size: 17px;
             font-weight: 700;
             letter-spacing: 0px;
         }
@@ -779,6 +841,55 @@ void MainWindow::quit_from_tray() {
     close();
 }
 
+CloseAction MainWindow::ask_close_action() {
+    QDialog dialog(this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Choose action"));
+    dialog.setModal(true);
+    dialog.resize(360, 210);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(12);
+
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Please choose your action"), &dialog);
+    title->setAlignment(Qt::AlignCenter);
+
+    auto* minimize = new QRadioButton(QCoreApplication::translate("MainWindow", "Minimize to system tray"), &dialog);
+    auto* quit = new QRadioButton(QCoreApplication::translate("MainWindow", "Quit"), &dialog);
+    auto* remember = new QCheckBox(QCoreApplication::translate("MainWindow", "Do not ask again"), &dialog);
+    minimize->setChecked(true);
+
+    auto* buttons = new QHBoxLayout();
+    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
+    cancel->setObjectName("secondaryButton");
+    auto* ok = new QPushButton(QCoreApplication::translate("MainWindow", "OK"), &dialog);
+    ok->setObjectName("primaryButton");
+    buttons->addWidget(cancel);
+    buttons->addWidget(ok);
+
+    layout->addWidget(title);
+    layout->addWidget(minimize);
+    layout->addWidget(quit);
+    layout->addWidget(remember);
+    layout->addStretch(1);
+    layout->addLayout(buttons);
+
+    CloseAction action = CloseAction::cancel;
+    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(ok, &QPushButton::clicked, this, [&dialog, minimize, remember, &action] {
+        action = minimize->isChecked() ? CloseAction::minimizeToTray : CloseAction::quit;
+        if (remember->isChecked()) {
+            save_close_action(action == CloseAction::minimizeToTray ? QStringLiteral("tray") : QStringLiteral("quit"));
+        }
+        dialog.accept();
+    });
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return CloseAction::cancel;
+    }
+    return action;
+}
+
 void MainWindow::setup_discovery() {
     discovery_ = std::make_unique<QUdpSocket>();
     const auto bound = discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
@@ -967,6 +1078,122 @@ void MainWindow::stop_receiver() {
     receiver_events_.reset();
     receiver_ready_ = false;
     log_event(QCoreApplication::translate("MainWindow", "Receiver stopped."));
+}
+
+void MainWindow::show_settings() {
+    QDialog dialog(this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Settings"));
+    dialog.resize(360, 320);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(9);
+
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Settings"), &dialog);
+    title->setObjectName("dialogTitle");
+    auto* receive_label = new QLabel(QCoreApplication::translate("MainWindow", "Receiving folder"), &dialog);
+    receive_label->setObjectName("mutedText");
+
+    auto* path_box = new QFrame(&dialog);
+    path_box->setObjectName("pathBox");
+    auto* path_row = new QHBoxLayout(path_box);
+    path_row->setContentsMargins(10, 8, 8, 8);
+    path_row->setSpacing(8);
+
+    auto* path = new QLabel(receive_dir_ != nullptr ? receive_dir_->text() : saved_receive_dir(), path_box);
+    path->setObjectName("pathLabel");
+    path->setWordWrap(true);
+    auto* choose = new QPushButton(QCoreApplication::translate("MainWindow", "Choose"), path_box);
+    choose->setObjectName("secondaryButton");
+    path_row->addWidget(path, 1);
+    path_row->addWidget(choose);
+
+    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Changing this folder restarts the local receiver."), &dialog);
+    hint->setObjectName("mutedText");
+    hint->setWordWrap(true);
+
+    auto* close_label = new QLabel(QCoreApplication::translate("MainWindow", "Close button action"), &dialog);
+    close_label->setObjectName("mutedText");
+    auto* ask_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Ask every time"), &dialog);
+    auto* tray_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Minimize to system tray"), &dialog);
+    auto* quit_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Quit"), &dialog);
+    const auto close_action = remembered_close_action();
+    if (close_action == QStringLiteral("tray")) {
+        tray_on_close->setChecked(true);
+    } else if (close_action == QStringLiteral("quit")) {
+        quit_on_close->setChecked(true);
+    } else {
+        ask_on_close->setChecked(true);
+    }
+
+    auto* buttons = new QHBoxLayout();
+    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
+    cancel->setObjectName("secondaryButton");
+    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Save"), &dialog);
+    save->setObjectName("primaryButton");
+    buttons->addStretch(1);
+    buttons->addWidget(cancel);
+    buttons->addWidget(save);
+
+    layout->addWidget(title);
+    layout->addWidget(receive_label);
+    layout->addWidget(path_box);
+    layout->addWidget(hint);
+    layout->addSpacing(2);
+    layout->addWidget(close_label);
+    layout->addWidget(ask_on_close);
+    layout->addWidget(tray_on_close);
+    layout->addWidget(quit_on_close);
+    layout->addStretch(1);
+    layout->addLayout(buttons);
+
+    connect(choose, &QPushButton::clicked, this, [this, path] {
+        const auto dir = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("MainWindow", "Receiving folder"), path->text());
+        if (!dir.isEmpty()) {
+            path->setText(dir);
+        }
+    });
+    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(save, &QPushButton::clicked, this, [this, &dialog, path, ask_on_close, tray_on_close] {
+        const auto next_dir = path->text().trimmed();
+        if (next_dir.isEmpty()) {
+            QMessageBox::warning(this,
+                                 QCoreApplication::translate("MainWindow", "Settings"),
+                                 QCoreApplication::translate("MainWindow", "Receiving folder cannot be empty."));
+            return;
+        }
+
+        if (ask_on_close->isChecked()) {
+            save_close_action({});
+        } else if (tray_on_close->isChecked()) {
+            save_close_action(QStringLiteral("tray"));
+        } else {
+            save_close_action(QStringLiteral("quit"));
+        }
+
+        const auto old_dir = receive_dir_ != nullptr ? receive_dir_->text() : QString{};
+        if (next_dir == old_dir) {
+            dialog.accept();
+            return;
+        }
+
+        const auto was_ready = receiver_ready_;
+        stop_receiver();
+        if (receive_dir_ != nullptr) {
+            receive_dir_->setText(next_dir);
+        }
+        save_receive_dir(next_dir);
+        log_event(QCoreApplication::translate("MainWindow", "Receiving folder changed to %1").arg(next_dir));
+        if (was_ready && !start_receiver()) {
+            QMessageBox::warning(this,
+                                 QCoreApplication::translate("MainWindow", "Settings"),
+                                 QCoreApplication::translate("MainWindow", "Receiver failed to restart. Check the receiving folder."));
+            return;
+        }
+        dialog.accept();
+    });
+
+    dialog.exec();
 }
 
 void MainWindow::search_peers() {
@@ -1430,11 +1657,11 @@ void MainWindow::show_receive_history() {
 
     QDialog dialog(this);
     dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Receive history"));
-    dialog.resize(520, 520);
+    dialog.resize(380, 420);
 
     auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(14, 14, 14, 14);
-    layout->setSpacing(10);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
 
     auto* list = new QListWidget(&dialog);
     list->setFrameShape(QFrame::NoFrame);
@@ -1460,7 +1687,7 @@ void MainWindow::show_receive_history() {
             const auto amount = files > 0
                                     ? QCoreApplication::translate("MainWindow", "%1 file(s)").arg(files)
                                     : to_qstring(format_size(bytes));
-            auto text = QStringLiteral("%1\n%2 · %3 · %4 · %5\n%6")
+            auto text = QStringLiteral("%1\n%2, %3, %4, %5\n%6")
                             .arg(name,
                                  state,
                                  kind,
@@ -1472,7 +1699,7 @@ void MainWindow::show_receive_history() {
             }
             auto* item = new QListWidgetItem(text);
             item->setData(Qt::UserRole, open_dir);
-            item->setSizeHint(QSize(0, error.isEmpty() ? 72 : 92));
+            item->setSizeHint(QSize(0, error.isEmpty() ? 64 : 82));
             list->addItem(item);
         }
     }
