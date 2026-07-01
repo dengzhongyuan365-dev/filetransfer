@@ -21,6 +21,7 @@ class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class QPlainTextEdit;
+class QPushButton;
 class QStackedWidget;
 class QSystemTrayIcon;
 class QToolButton;
@@ -57,7 +58,9 @@ private:
     void quit_from_tray();
 
     void setup_discovery();
+    QString load_or_create_node_id();
     void load_remembered_peers();
+    QString find_peer_id_by_endpoint(const QString& host, std::uint16_t port) const;
     void remember_peer(const Peer& peer);
     void save_remembered_peers();
     bool can_switch_peer() const;
@@ -91,6 +94,7 @@ private:
     void receive_link_response(const QHostAddress& address, const QJsonObject& obj, bool accepted);
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
     void link_peer(QListWidgetItem* item);
+    void open_transfer_page();
     void set_linked_peer(const Peer& peer);
     void disconnect_peer();
     bool is_linked_peer(const Peer& peer) const;
@@ -116,6 +120,7 @@ private:
     QLabel* status_ = nullptr;
     QLineEdit* peer_filter_ = nullptr;
     QListWidget* peer_list_ = nullptr;
+    QPushButton* back_to_transfer_ = nullptr;
     QLabel* linked_label_ = nullptr;
     DropPanel* drop_panel_ = nullptr;
     QVBoxLayout* transfers_layout_ = nullptr;
