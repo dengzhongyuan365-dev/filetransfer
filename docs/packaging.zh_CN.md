@@ -165,3 +165,27 @@ lan-gui
 - 添加了新的 `.ts` 翻译文件，但没有加入 `qt_add_translation`。
 - 添加了新的可执行目标，但忘记写 `install(TARGETS ...)`。
 - 修改后没有重新构建就直接 `cpack`，导致包里是旧二进制或旧翻译。
+
+## 常见报错
+
+### Could NOT find OpenSSL
+
+如果出现类似下面的错误：
+
+```txt
+Could NOT find OpenSSL
+missing: OPENSSL_CRYPTO_LIBRARY OPENSSL_INCLUDE_DIR
+```
+
+说明当前机器缺少 OpenSSL 开发包。安装后重新打包：
+
+```sh
+sudo apt install libssl-dev
+./scripts/package_deb.sh
+```
+
+如果 OpenSSL 安装在非系统目录，可以指定路径：
+
+```sh
+OPENSSL_ROOT_DIR=/path/to/openssl ./scripts/package_deb.sh
+```

@@ -170,3 +170,28 @@ The application also tries the language-only fallback, so `zh_CN` falls back to
 - Adding a new executable target but forgetting the `install(TARGETS ...)` rule.
 - Running `cpack` before rebuilding, which can package stale binaries or stale
   translations.
+
+## Common Errors
+
+### Could NOT find OpenSSL
+
+If CMake prints an error like this:
+
+```txt
+Could NOT find OpenSSL
+missing: OPENSSL_CRYPTO_LIBRARY OPENSSL_INCLUDE_DIR
+```
+
+the machine is missing the OpenSSL development package. Install it and rerun the
+package script:
+
+```sh
+sudo apt install libssl-dev
+./scripts/package_deb.sh
+```
+
+If OpenSSL is installed in a custom location, pass it explicitly:
+
+```sh
+OPENSSL_ROOT_DIR=/path/to/openssl ./scripts/package_deb.sh
+```

@@ -21,10 +21,35 @@ require_command() {
     fi
 }
 
+require_openssl_dev() {
+    if [[ -n "${OPENSSL_ROOT_DIR:-}" ]]; then
+        return
+    fi
+
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists openssl; then
+        return
+    fi
+
+    if [[ -f /usr/include/openssl/sha.h ]] && \
+        (compgen -G '/usr/lib/*/libcrypto.so' >/dev/null || [[ -f /usr/lib/libcrypto.so ]]); then
+        return
+    fi
+
+    cat >&2 <<'EOF'
+[package-deb] missing OpenSSL development files.
+[package-deb] Debian/UOS/Ubuntu install command:
+[package-deb]   sudo apt install libssl-dev
+[package-deb] If OpenSSL is installed in a custom location, run with:
+[package-deb]   OPENSSL_ROOT_DIR=/path/to/openssl ./scripts/package_deb.sh
+EOF
+    exit 1
+}
+
 require_command cmake
 require_command cpack
 require_command ctest
 require_command dpkg-deb
+require_openssl_dev
 
 if [[ -z "$generator" ]]; then
     if command -v ninja >/dev/null 2>&1; then
@@ -42,7 +67,11 @@ if [[ "$clean_build" == "1" ]]; then
 fi
 
 log "configuring $build_type build with $generator"
-cmake -S . -B "$build_dir" -G "$generator" -DCMAKE_BUILD_TYPE="$build_type"
+cmake_args=(-DCMAKE_BUILD_TYPE="$build_type")
+if [[ -n "${OPENSSL_ROOT_DIR:-}" ]]; then
+    cmake_args+=(-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR")
+fi
+cmake -S . -B "$build_dir" -G "$generator" "${cmake_args[@]}"
 
 log "building"
 cmake --build "$build_dir"
