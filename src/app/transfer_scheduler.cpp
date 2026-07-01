@@ -270,6 +270,18 @@ bool TransferScheduler::has_pending_or_running_for_peer(const std::string& peer_
     return queued || running_count_for_peer_locked(peer_id) > 0;
 }
 
+SchedulerPeerStats TransferScheduler::peer_stats(const std::string& peer_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    SchedulerPeerStats stats;
+    for (const auto& item : queue_) {
+        if (item.peer_id == peer_id) {
+            ++stats.queued;
+        }
+    }
+    stats.running = running_count_for_peer_locked(peer_id);
+    return stats;
+}
+
 void TransferScheduler::start_next_locked(SchedulerEmissions& emissions) {
     bool started_any = false;
     while (!queue_.empty() &&

@@ -423,6 +423,9 @@ TEST(TransferSchedulerTest, QueuesAndCancelsOfflinePeerSend) {
     EXPECT_EQ(snapshots.back().peer_id, "peer-1");
     EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::pending);
     EXPECT_TRUE(scheduler.has_pending_or_running_for_peer("peer-1"));
+    auto stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 1);
+    EXPECT_EQ(stats.running, 0);
 
     scheduler.cancel_task(task_id);
 
@@ -430,6 +433,9 @@ TEST(TransferSchedulerTest, QueuesAndCancelsOfflinePeerSend) {
     EXPECT_EQ(snapshots.back().task_id, task_id);
     EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::cancelled);
     EXPECT_FALSE(scheduler.has_pending_or_running_for_peer("peer-1"));
+    stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 0);
+    EXPECT_EQ(stats.running, 0);
 }
 
 TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {
@@ -456,6 +462,9 @@ TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {
     const auto task_id = scheduler.enqueue_send("peer-1", missing_source);
     ASSERT_EQ(snapshots.size(), 1U);
     EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::pending);
+    auto stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 1);
+    EXPECT_EQ(stats.running, 0);
 
     scheduler.upsert_peer(lan::SchedulerPeer{
         .id = "peer-1",
@@ -471,6 +480,9 @@ TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {
     EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::failed);
     ASSERT_TRUE(snapshots.back().snapshot.error);
     EXPECT_FALSE(scheduler.has_pending_or_running_for_peer("peer-1"));
+    stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 0);
+    EXPECT_EQ(stats.running, 0);
 }
 
 struct MemoryPipe {

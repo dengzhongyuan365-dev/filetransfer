@@ -39,6 +39,11 @@ struct SchedulerSnapshot {
     TransferSnapshot snapshot;
 };
 
+struct SchedulerPeerStats {
+    int queued = 0;
+    int running = 0;
+};
+
 struct SchedulerCallbacks {
     std::function<void(SchedulerSnapshot)> on_snapshot;
     std::function<void(std::string)> on_log;
@@ -67,6 +72,7 @@ public:
     void pump();
 
     bool has_pending_or_running_for_peer(const std::string& peer_id) const;
+    SchedulerPeerStats peer_stats(const std::string& peer_id) const;
 
 private:
     struct QueuedSend {

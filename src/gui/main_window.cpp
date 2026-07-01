@@ -1627,7 +1627,23 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     text_box->setSpacing(3);
     auto* name = new QLabel(peer.name, card);
     name->setObjectName("peerName");
-    auto* meta = new QLabel(QString("%1:%2").arg(peer.host).arg(peer.port), card);
+    auto meta_text = QString("%1:%2").arg(peer.host).arg(peer.port);
+    if (scheduler_ != nullptr) {
+        const auto stats = scheduler_->peer_stats(to_string(peer.id));
+        if (stats.running > 0 || stats.queued > 0) {
+            meta_text += QStringLiteral(" - ");
+            if (stats.running > 0 && stats.queued > 0) {
+                meta_text += QCoreApplication::translate("MainWindow", "%1 running, %2 queued")
+                                 .arg(stats.running)
+                                 .arg(stats.queued);
+            } else if (stats.running > 0) {
+                meta_text += QCoreApplication::translate("MainWindow", "%1 running").arg(stats.running);
+            } else {
+                meta_text += QCoreApplication::translate("MainWindow", "%1 queued").arg(stats.queued);
+            }
+        }
+    }
+    auto* meta = new QLabel(meta_text, card);
     meta->setObjectName("peerMeta");
     text_box->addWidget(name);
     text_box->addWidget(meta);
@@ -2447,10 +2463,12 @@ void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
             transfer_snapshots_.remove(key);
             transfer_peer_ids_.remove(key);
         }
+        refresh_peer_list();
         return;
     }
     const auto peer_id = to_qstring(snapshot.peer_id);
     upsert_snapshot(snapshot.snapshot, peer_id);
+    refresh_peer_list();
 }
 
 void MainWindow::handle_scheduler_log(std::string line) {
@@ -2461,6 +2479,7 @@ void MainWindow::wake_scheduler() {
     if (scheduler_ != nullptr) {
         scheduler_->pump();
     }
+    refresh_peer_list();
 }
 
 void MainWindow::merge_snapshots(TransferSnapshotStore store, const QString& peer_id) {
