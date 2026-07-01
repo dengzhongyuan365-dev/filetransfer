@@ -86,16 +86,20 @@ private:
         bool completed = false;
     };
 
-    class SchedulerSenderEvents;
+    struct SchedulerEmissions {
+        std::vector<SchedulerSnapshot> snapshots;
+        std::vector<std::string> logs;
+    };
 
-    void start_next_locked();
-    bool start_sender_locked(const QueuedSend& item);
+    void start_next_locked(SchedulerEmissions& emissions);
+    bool start_sender_locked(const QueuedSend& item, SchedulerEmissions& emissions);
     void reap_completed_locked();
     void cancel_running_locked(SchedulerTaskId task_id);
-    void cancel_queued_locked(SchedulerTaskId task_id);
+    void cancel_queued_locked(SchedulerTaskId task_id, SchedulerEmissions& emissions);
     int running_count_for_peer_locked(const std::string& peer_id) const;
     void mark_completed(SchedulerTaskId task_id);
     SchedulerCallbacks callbacks() const;
+    void flush_emissions(SchedulerEmissions emissions);
     void emit_snapshot(SchedulerSnapshot snapshot);
     void emit_log(std::string line);
     void emit_wakeup();

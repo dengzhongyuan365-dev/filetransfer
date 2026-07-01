@@ -2062,6 +2062,7 @@ void MainWindow::remove_transfer_card(const QString& key) {
     if (it != transfer_snapshots_.end()) {
         if (it.value().state == TransferState::pending &&
             it.value().direction == TransferDirection::send) {
+            dismissed_transfer_keys_.insert(key);
             if (scheduler_ != nullptr) {
                 scheduler_->cancel_task(it.value().transfer_id);
             }
@@ -2440,6 +2441,14 @@ void MainWindow::sync_scheduler_peer(const Peer& peer) {
 }
 
 void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
+    const auto key = snapshot_key(snapshot.snapshot);
+    if (dismissed_transfer_keys_.contains(key)) {
+        if (snapshot.snapshot.state != TransferState::pending) {
+            transfer_snapshots_.remove(key);
+            transfer_peer_ids_.remove(key);
+        }
+        return;
+    }
     const auto peer_id = to_qstring(snapshot.peer_id);
     upsert_snapshot(snapshot.snapshot, peer_id);
 }
@@ -2465,6 +2474,7 @@ void MainWindow::merge_snapshots(TransferSnapshotStore store, const QString& pee
 void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id) {
     record_receive_history(snapshot);
     const auto key = snapshot_key(snapshot);
+    dismissed_transfer_keys_.remove(key);
     if (snapshot.direction == TransferDirection::send &&
         !peer_id.isEmpty() &&
         !transfer_peer_ids_.contains(key)) {

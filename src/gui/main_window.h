@@ -149,6 +149,7 @@ private:
     QMap<QString, QWidget*> transfer_cards_;
     QMap<QString, TransferSnapshot> transfer_snapshots_;
     QMap<QString, QString> transfer_peer_ids_;
+    QSet<QString> dismissed_transfer_keys_;
     QSet<QString> recorded_history_keys_;
     QString active_peer_id_;
     QMap<QString, QString> pending_link_codes_;
