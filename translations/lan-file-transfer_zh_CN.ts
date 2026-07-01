@@ -457,13 +457,13 @@ Code: %2</source>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1143"/>
-        <source>A send is already running.</source>
-        <translation>已有发送任务正在运行。</translation>
+        <source>Queued send: %1</source>
+        <translation>已排队发送：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1144"/>
-        <source>Send ignored while another send is running: %1</source>
-        <translation>另一个发送任务正在运行，已忽略：%1</translation>
+        <source>Removed queued send: %1</source>
+        <translation>已移除排队发送：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1158"/>

@@ -45,6 +45,7 @@
 #include <QVariant>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <future>
@@ -66,6 +67,28 @@ namespace {
 QString snapshot_key(const TransferSnapshot& snapshot) {
     const auto direction = snapshot.direction == TransferDirection::receive ? "receive" : "send";
     return QString("%1:%2").arg(direction).arg(snapshot.transfer_id);
+}
+
+QString send_snapshot_key(std::uint64_t transfer_id) {
+    return QString("send:%1").arg(transfer_id);
+}
+
+TransferSnapshot make_pending_send_snapshot(std::uint64_t transfer_id, const QString& path) {
+    const auto source_path = std::filesystem::path(to_string(path));
+    std::error_code ec;
+    TransferSnapshot snapshot;
+    snapshot.transfer_id = transfer_id;
+    snapshot.state = TransferState::pending;
+    snapshot.direction = TransferDirection::send;
+    snapshot.kind = std::filesystem::is_directory(source_path, ec)
+                        ? TransferKind::directory
+                        : TransferKind::file;
+    snapshot.path = source_path;
+    snapshot.name = source_path.filename().string();
+    if (snapshot.name.empty()) {
+        snapshot.name = to_string(path);
+    }
+    return snapshot;
 }
 
 QString state_text(TransferState state) {
@@ -1069,11 +1092,12 @@ QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
 }
 
 bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
-    return snapshot.state == TransferState::pending || snapshot.state == TransferState::running;
+    return snapshot.state == TransferState::running;
 }
 
 bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
-    return snapshot.state == TransferState::completed ||
+    return snapshot.state == TransferState::pending ||
+           snapshot.state == TransferState::completed ||
            snapshot.state == TransferState::failed ||
            snapshot.state == TransferState::cancelled;
 }
@@ -1138,11 +1162,20 @@ void MainWindow::stop_transfer(const QString& key) {
 
 void MainWindow::remove_transfer_card(const QString& key) {
     const auto it = transfer_snapshots_.find(key);
-    if (it != transfer_snapshots_.end() && !can_clear_transfer(it.value())) {
-        show_log(QCoreApplication::translate("MainWindow", "Stop the transfer before clearing it from the list."));
-        return;
+    if (it != transfer_snapshots_.end()) {
+        if (it.value().state == TransferState::pending &&
+            it.value().direction == TransferDirection::send) {
+            cancel_queued_send(key);
+        } else if (!can_clear_transfer(it.value())) {
+            show_log(QCoreApplication::translate("MainWindow", "Stop the transfer before clearing it from the list."));
+            return;
+        }
     }
 
+    remove_transfer_snapshot(key);
+}
+
+void MainWindow::remove_transfer_snapshot(const QString& key) {
     transfer_snapshots_.remove(key);
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {
@@ -1259,8 +1292,9 @@ void MainWindow::send_paths(const QStringList& paths) {
     }
     log_event(QCoreApplication::translate("MainWindow", "Queued %1 path(s) for sending.").arg(paths.size()));
     for (const auto& path : paths) {
-        start_sender(path);
+        enqueue_sender_path(path);
     }
+    start_next_sender();
 }
 
 void MainWindow::paste_paths_from_clipboard() {
@@ -1294,31 +1328,59 @@ void MainWindow::paste_paths_from_clipboard() {
     send_paths(paths);
 }
 
-void MainWindow::start_sender(const QString& path) {
+void MainWindow::enqueue_sender_path(const QString& path) {
+    const auto transfer_id = next_queued_send_id_++;
+    const auto key = send_snapshot_key(transfer_id);
+    sender_queue_.push_back(QueuedSend{.path = path, .snapshot_key = key});
+    upsert_snapshot(make_pending_send_snapshot(transfer_id, path));
+    log_event(QCoreApplication::translate("MainWindow", "Queued send: %1").arg(path));
+}
+
+void MainWindow::start_next_sender() {
     if (sender_thread_.joinable()) {
-        show_log(QCoreApplication::translate("MainWindow", "A send is already running."));
-        log_event(QCoreApplication::translate("MainWindow", "Send ignored while another send is running: %1").arg(path));
+        return;
+    }
+    if (sender_queue_.empty()) {
         return;
     }
 
+    auto item = sender_queue_.front();
+    sender_queue_.pop_front();
+    if (!start_sender(item)) {
+        start_next_sender();
+    }
+}
+
+bool MainWindow::start_sender(const QueuedSend& item) {
     SenderConfig config;
     config.target.host = to_string(linked_peer_.host);
     config.target.port = linked_peer_.port;
-    config.source_path = std::filesystem::path(to_string(path));
+    config.source_path = std::filesystem::path(to_string(item.path));
     config.resume = true;
 
     auto validated = validate_sender_config(std::move(config));
     if (!validated) {
         const auto message = to_qstring(format_error(validated.error()));
         show_log(message);
-        log_event(QCoreApplication::translate("MainWindow", "Sender config invalid for %1: %2").arg(path, message));
-        return;
+        log_event(QCoreApplication::translate("MainWindow", "Sender config invalid for %1: %2").arg(item.path, message));
+        auto snapshot = transfer_snapshots_.value(item.snapshot_key, make_pending_send_snapshot(0, item.path));
+        snapshot.state = TransferState::failed;
+        snapshot.error = validated.error();
+        snapshot.error_category = error_category(validated.error());
+        snapshot.retryable = is_retryable(validated.error());
+        snapshot.user_action_required = needs_user_action(validated.error());
+        transfer_snapshots_.remove(item.snapshot_key);
+        upsert_snapshot(snapshot);
+        return false;
     }
     log_event(QCoreApplication::translate("MainWindow", "Starting send %1 -> %2:%3")
-                  .arg(path, linked_peer_.host)
+                  .arg(item.path, linked_peer_.host)
                   .arg(linked_peer_.port));
+    remove_transfer_snapshot(item.snapshot_key);
 
-    sender_runner_ = std::make_unique<SenderTransferRunner>();
+    if (sender_runner_ == nullptr) {
+        sender_runner_ = std::make_unique<SenderTransferRunner>();
+    }
     auto events = std::make_shared<GuiSenderEvents>(
         [this](TransferSnapshotStore store) {
             merge_snapshots(std::move(store));
@@ -1341,21 +1403,40 @@ void MainWindow::start_sender(const QString& path) {
             } else {
                 log_event(QCoreApplication::translate("MainWindow", "Send to %1:%2 completed.").arg(to_qstring(target.host)).arg(target.port));
             }
-            stop_sender();
+            finish_sender_thread();
+            start_next_sender();
         }, Qt::QueuedConnection);
     });
+    return true;
 }
 
-void MainWindow::stop_sender() {
-    if (sender_runner_ != nullptr) {
-        sender_runner_->cancel();
-    }
+void MainWindow::finish_sender_thread() {
     if (sender_thread_.joinable()) {
         sender_thread_.join();
     }
-    sender_runner_.reset();
     sender_events_.reset();
     log_event(QCoreApplication::translate("MainWindow", "Sender stopped."));
+}
+
+bool MainWindow::cancel_queued_send(const QString& key) {
+    const auto it = std::find_if(sender_queue_.begin(), sender_queue_.end(), [&key](const QueuedSend& item) {
+        return item.snapshot_key == key;
+    });
+    if (it == sender_queue_.end()) {
+        return false;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Removed queued send: %1").arg(it->path));
+    sender_queue_.erase(it);
+    return true;
+}
+
+void MainWindow::stop_sender() {
+    sender_queue_.clear();
+    if (sender_runner_ != nullptr) {
+        sender_runner_->cancel();
+    }
+    finish_sender_thread();
+    sender_runner_.reset();
 }
 
 void MainWindow::merge_snapshots(TransferSnapshotStore store) {

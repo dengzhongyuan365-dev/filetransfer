@@ -6,6 +6,8 @@
 #include <QString>
 #include <QWidget>
 
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <thread>
 
@@ -30,6 +32,11 @@ namespace lan::gui {
 class DropPanel;
 class GuiReceiverEvents;
 class GuiSenderEvents;
+
+struct QueuedSend {
+    QString path;
+    QString snapshot_key;
+};
 
 class MainWindow final : public QWidget {
 public:
@@ -73,6 +80,7 @@ private:
     void open_transfer_dir(const QString& key);
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
+    void remove_transfer_snapshot(const QString& key);
 
     void request_link(const QString& id);
     void receive_link_request(const QHostAddress& address, const QJsonObject& obj);
@@ -83,7 +91,11 @@ private:
 
     void send_paths(const QStringList& paths);
     void paste_paths_from_clipboard();
-    void start_sender(const QString& path);
+    void enqueue_sender_path(const QString& path);
+    void start_next_sender();
+    bool start_sender(const QueuedSend& item);
+    void finish_sender_thread();
+    bool cancel_queued_send(const QString& key);
     void stop_sender();
 
     void merge_snapshots(TransferSnapshotStore store);
@@ -121,6 +133,8 @@ private:
     std::unique_ptr<SenderTransferRunner> sender_runner_;
     std::shared_ptr<GuiSenderEvents> sender_events_;
     std::thread sender_thread_;
+    std::deque<QueuedSend> sender_queue_;
+    std::uint64_t next_queued_send_id_ = 1ULL << 62;
 };
 
 }  // namespace lan::gui
