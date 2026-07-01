@@ -10,11 +10,14 @@ Install the normal C++/Qt build dependencies first:
 
 ```sh
 sudo apt install \
-  build-essential cmake ninja-build pkg-config \
+  build-essential cmake pkg-config \
   libssl-dev \
   qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
   dpkg-dev
 ```
+
+`ninja-build` is optional. If `ninja` is installed, the packaging script uses
+Ninja automatically. Otherwise it falls back to CMake `Unix Makefiles`.
 
 `qt6-tools-dev-tools` is important because it provides `lupdate` and `lrelease`.
 Without it, the `.ts` source file may exist, but the package will not contain the
@@ -36,10 +39,17 @@ Internally, it is equivalent to running:
 
 ```sh
 rm -rf build
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 cpack --config build/CPackConfig.cmake
+```
+
+To force Ninja, install it and set the generator explicitly:
+
+```sh
+sudo apt install ninja-build
+CMAKE_GENERATOR=Ninja scripts/package_deb.sh
 ```
 
 The generated package should be named like:

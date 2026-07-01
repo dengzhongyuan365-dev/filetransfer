@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${BUILD_DIR:-build}"
 build_type="${BUILD_TYPE:-Release}"
-generator="${CMAKE_GENERATOR:-Ninja}"
+generator="${CMAKE_GENERATOR:-}"
 run_tests="${RUN_TESTS:-1}"
 clean_build="${CLEAN_BUILD:-1}"
 
@@ -26,7 +26,13 @@ require_command cpack
 require_command ctest
 require_command dpkg-deb
 
-if [[ "$generator" == "Ninja" ]]; then
+if [[ -z "$generator" ]]; then
+    if command -v ninja >/dev/null 2>&1; then
+        generator="Ninja"
+    else
+        generator="Unix Makefiles"
+    fi
+elif [[ "$generator" == "Ninja" ]]; then
     require_command ninja
 fi
 

@@ -9,11 +9,14 @@
 
 ```sh
 sudo apt install \
-  build-essential cmake ninja-build pkg-config \
+  build-essential cmake pkg-config \
   libssl-dev \
   qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
   dpkg-dev
 ```
+
+`ninja-build` 不是硬性依赖。如果系统已安装 `ninja`，打包脚本会自动使用 Ninja；
+如果没有安装，会自动退回 CMake 的 `Unix Makefiles`。
 
 `qt6-tools-dev-tools` 很重要，因为它提供 `lupdate` 和 `lrelease`。
 如果缺少它，源码里的 `.ts` 翻译文件可能存在，但最终包里不会生成并安装 `.qm` 翻译文件。
@@ -33,10 +36,17 @@ scripts/package_deb.sh
 
 ```sh
 rm -rf build
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 cpack --config build/CPackConfig.cmake
+```
+
+如果想强制使用 Ninja，可以先安装：
+
+```sh
+sudo apt install ninja-build
+CMAKE_GENERATOR=Ninja scripts/package_deb.sh
 ```
 
 生成的包名类似：
