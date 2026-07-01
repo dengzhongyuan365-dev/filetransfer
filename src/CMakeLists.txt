@@ -30,6 +30,7 @@ add_library(lan_core
     app/receiver_config.cpp
     app/receiver_server.cpp
     app/transfer_event.cpp
+    app/transfer_scheduler.cpp
     app/transfer_snapshot.cpp
 )
 

@@ -19,6 +19,7 @@
 #include "lan/app/receiver_server.h"
 #include "lan/app/sender_config.h"
 #include "lan/app/sender_transfer.h"
+#include "lan/app/transfer_scheduler.h"
 #include "lan/app/transfer_snapshot.h"
 #include "lan/common/error.h"
 #include "lan/fs/file_hash.h"
@@ -391,6 +392,85 @@ TEST(SnapshottingTransferEventsTest, CanBeExtendedByCallingBaseHandlers) {
     ASSERT_TRUE(snapshot->error);
     EXPECT_EQ(snapshot->error->code, lan::ErrorCode::network_error);
     EXPECT_TRUE(snapshot->retryable);
+}
+
+TEST(TransferSchedulerTest, QueuesAndCancelsOfflinePeerSend) {
+    TempDir temp("transfer-scheduler-cancel");
+    const auto source = temp.path() / "song.txt";
+    write_text(source, "audio");
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = false,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", source);
+
+    ASSERT_EQ(snapshots.size(), 1U);
+    EXPECT_EQ(snapshots.back().task_id, task_id);
+    EXPECT_EQ(snapshots.back().peer_id, "peer-1");
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::pending);
+    EXPECT_TRUE(scheduler.has_pending_or_running_for_peer("peer-1"));
+
+    scheduler.cancel_task(task_id);
+
+    ASSERT_EQ(snapshots.size(), 2U);
+    EXPECT_EQ(snapshots.back().task_id, task_id);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::cancelled);
+    EXPECT_FALSE(scheduler.has_pending_or_running_for_peer("peer-1"));
+}
+
+TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {
+    TempDir temp("transfer-scheduler-online");
+    const auto missing_source = temp.path() / "missing.txt";
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = false,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", missing_source);
+    ASSERT_EQ(snapshots.size(), 1U);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::pending);
+
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = true,
+        .linked = true,
+    });
+
+    ASSERT_EQ(snapshots.size(), 2U);
+    EXPECT_EQ(snapshots.back().task_id, task_id);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::failed);
+    ASSERT_TRUE(snapshots.back().snapshot.error);
+    EXPECT_FALSE(scheduler.has_pending_or_running_for_peer("peer-1"));
 }
 
 struct MemoryPipe {

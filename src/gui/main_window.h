@@ -8,13 +8,11 @@
 #include <QWidget>
 
 #include <cstdint>
-#include <deque>
 #include <memory>
-#include <thread>
 
 #include "gui/types.h"
 #include "lan/app/receiver_server.h"
-#include "lan/app/sender_transfer.h"
+#include "lan/app/transfer_scheduler.h"
 #include "lan/app/transfer_snapshot.h"
 
 class QLabel;
@@ -33,18 +31,11 @@ namespace lan::gui {
 
 class DropPanel;
 class GuiReceiverEvents;
-class GuiSenderEvents;
 
 enum class CloseAction {
     cancel,
     minimizeToTray,
     quit,
-};
-
-struct QueuedSend {
-    QString path;
-    QString snapshot_key;
-    QString peer_id;
 };
 
 class MainWindow final : public QWidget {
@@ -62,6 +53,7 @@ private:
     QWidget* build_transfer_page();
     void apply_style();
     void setup_tray();
+    void setup_scheduler();
     void toggle_window_visibility();
     void quit_from_tray();
     CloseAction ask_close_action();
@@ -126,15 +118,11 @@ private:
 
     void send_paths(const QStringList& paths);
     void paste_paths_from_clipboard();
-    void enqueue_sender_path(const QString& path, const QString& peer_id);
-    void start_next_sender();
-    bool start_sender(const QueuedSend& item);
-    void finish_sender_thread();
-    bool cancel_queued_send(const QString& key);
-    bool has_queued_send_for_peer(const QString& peer_id) const;
-    void remove_queued_sends_for_peer(const QString& peer_id);
-    void cancel_running_sender();
     void stop_sender();
+    void sync_scheduler_peer(const Peer& peer);
+    void handle_scheduler_snapshot(SchedulerSnapshot snapshot);
+    void handle_scheduler_log(std::string line);
+    void wake_scheduler();
 
     void merge_snapshots(TransferSnapshotStore store, const QString& peer_id = {});
     void upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id = {});
@@ -170,12 +158,7 @@ private:
     bool tray_message_shown_ = false;
     std::unique_ptr<ReceiverServerRunner> receiver_runner_;
     std::unique_ptr<GuiReceiverEvents> receiver_events_;
-    std::unique_ptr<SenderTransferRunner> sender_runner_;
-    std::shared_ptr<GuiSenderEvents> sender_events_;
-    std::thread sender_thread_;
-    std::deque<QueuedSend> sender_queue_;
-    QString running_sender_peer_id_;
-    std::uint64_t next_queued_send_id_ = 1ULL << 62;
+    std::unique_ptr<TransferScheduler> scheduler_;
 };
 
 }  // namespace lan::gui
