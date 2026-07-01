@@ -32,6 +32,15 @@ bool is_safe_relative_path(const std::filesystem::path& path) {
     return true;
 }
 
+std::filesystem::path safe_root_name(const std::filesystem::path& root) {
+    const auto filename = root.filename();
+    if (!filename.empty() && is_safe_relative_path(filename)) {
+        return filename;
+    }
+
+    return {};
+}
+
 std::uint64_t file_mtime_ns(const std::filesystem::path& path) {
     std::error_code ec;
     const auto file_time = std::filesystem::last_write_time(path, ec);
@@ -119,6 +128,7 @@ Result<Manifest> build_manifest(const std::filesystem::path& root,
     if (ec) {
         manifest.root = root.lexically_normal();
     }
+    manifest.root_name = safe_root_name(manifest.root);
 
     std::filesystem::recursive_directory_iterator it(
         root, std::filesystem::directory_options::skip_permission_denied, ec);

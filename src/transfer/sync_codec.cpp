@@ -9,6 +9,8 @@ namespace lan {
 
 namespace {
 
+constexpr std::uint32_t manifest_v2_magic = 0x4c4d3201U;
+
 Error make_error(ErrorCode code, std::string message) {
     return Error{code, std::move(message)};
 }
@@ -146,6 +148,25 @@ void append_manifest_entry(std::vector<std::byte>& output, const ManifestEntry& 
     append_u32(output, entry.mode);
 }
 
+Result<std::filesystem::path> read_safe_path(Reader& reader, std::string_view description) {
+    auto path = reader.read_string();
+    if (!path) {
+        return Result<std::filesystem::path>::failure(path.error());
+    }
+
+    if (path.value().empty()) {
+        return Result<std::filesystem::path>::success({});
+    }
+
+    std::filesystem::path relative(path.value());
+    if (!is_safe_relative_path(relative)) {
+        return Result<std::filesystem::path>::failure(
+            make_error(ErrorCode::protocol_error, "unsafe " + std::string(description)));
+    }
+
+    return Result<std::filesystem::path>::success(relative.lexically_normal());
+}
+
 Result<ManifestEntry> read_manifest_entry(Reader& reader) {
     auto path = reader.read_string();
     if (!path) {
@@ -235,6 +256,8 @@ Result<bool> require_done(const Reader& reader) {
 
 std::vector<std::byte> encode_manifest(const Manifest& manifest) {
     std::vector<std::byte> output;
+    append_u32(output, manifest_v2_magic);
+    append_string(output, manifest.root_name.generic_string());
     append_u32(output, static_cast<std::uint32_t>(manifest.files.size()));
     for (const auto& entry : manifest.files) {
         append_manifest_entry(output, entry);
@@ -250,6 +273,18 @@ Result<Manifest> decode_manifest(const std::vector<std::byte>& body) {
     }
 
     Manifest manifest;
+    if (count.value() == manifest_v2_magic) {
+        auto root_name = read_safe_path(reader, "manifest root name");
+        if (!root_name) {
+            return Result<Manifest>::failure(root_name.error());
+        }
+        manifest.root_name = std::move(root_name).value();
+        count = reader.read_u32();
+        if (!count) {
+            return Result<Manifest>::failure(count.error());
+        }
+    }
+
     manifest.files.reserve(count.value());
     for (std::uint32_t i = 0; i < count.value(); ++i) {
         auto entry = read_manifest_entry(reader);

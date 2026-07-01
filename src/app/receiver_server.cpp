@@ -85,12 +85,13 @@ TransferCompleted make_receiver_file_completed(std::uint64_t transfer_id,
 TransferCompleted make_receiver_directory_completed(std::uint64_t transfer_id,
                                                     const ReceiverConfig& config,
                                                     const ReceiveSyncReport& report) {
+    const auto target_root = report.target_root.empty() ? config.receive_dir : report.target_root;
     return TransferCompleted{
         .transfer_id = transfer_id,
         .direction = TransferDirection::receive,
         .kind = TransferKind::directory,
-        .path = config.receive_dir,
-        .name = config.receive_dir.filename().string(),
+        .path = target_root,
+        .name = target_root.filename().string(),
         .total_files = report.manifest_files,
         .skipped_files = report.skipped_files,
         .full_files = report.full_files,

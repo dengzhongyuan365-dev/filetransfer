@@ -57,6 +57,7 @@ struct SendSyncProgress {
 };
 
 struct ReceiveSyncReport {
+    std::filesystem::path target_root;
     std::uint64_t manifest_files = 0;
     std::uint64_t skipped_files = 0;
     std::uint64_t full_files = 0;

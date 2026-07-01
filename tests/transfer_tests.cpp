@@ -1228,6 +1228,7 @@ TEST(ManifestTest, RecursivelyScansRegularFiles) {
 
     auto manifest = lan::build_manifest(temp.path(), 4096);
     ASSERT_TRUE(manifest);
+    EXPECT_EQ(manifest.value().root_name, temp.path().filename());
     ASSERT_EQ(manifest.value().files.size(), 2);
     EXPECT_EQ(manifest.value().files[0].relative_path.generic_string(), "a.txt");
     EXPECT_EQ(manifest.value().files[1].relative_path.generic_string(), "sub/b.txt");
@@ -1237,6 +1238,7 @@ TEST(ManifestTest, RecursivelyScansRegularFiles) {
 
 TEST(SyncCodecTest, RoundTripsManifestSyncPlanAndDeltaPlan) {
     lan::Manifest manifest;
+    manifest.root_name = "source-dir";
     manifest.files.push_back(lan::ManifestEntry{
         .relative_path = "sub/a.txt",
         .size = 3,
@@ -1247,6 +1249,7 @@ TEST(SyncCodecTest, RoundTripsManifestSyncPlanAndDeltaPlan) {
 
     auto decoded_manifest = lan::decode_manifest(lan::encode_manifest(manifest));
     ASSERT_TRUE(decoded_manifest);
+    EXPECT_EQ(decoded_manifest.value().root_name.generic_string(), "source-dir");
     ASSERT_EQ(decoded_manifest.value().files.size(), 1);
     EXPECT_EQ(decoded_manifest.value().files[0].relative_path.generic_string(), "sub/a.txt");
 
@@ -1421,14 +1424,15 @@ TEST(SyncPlanAndExecutorTest, HandlesSkipFullAndDelta) {
 TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     TempDir source("sync-session-source-test");
     TempDir receive("sync-session-receive-test");
+    const auto receive_root = receive.path() / source.path().filename();
 
     write_text(source.path() / "same.txt", "same\n");
-    write_text(receive.path() / "same.txt", "same\n");
+    write_text(receive_root / "same.txt", "same\n");
     write_text(source.path() / "sub" / "new.txt", "new nested\n");
     write_text(source.path() / "changed.txt", "xxxx-bbbb-cccc-yyyy-eeee\n");
-    write_text(receive.path() / "changed.txt", "aaaa-bbbb-cccc-dddd-eeee\n");
-    copy_mtime(source.path() / "same.txt", receive.path() / "same.txt");
-    make_source_newer_than_target(source.path() / "changed.txt", receive.path() / "changed.txt");
+    write_text(receive_root / "changed.txt", "aaaa-bbbb-cccc-dddd-eeee\n");
+    copy_mtime(source.path() / "same.txt", receive_root / "same.txt");
+    make_source_newer_than_target(source.path() / "changed.txt", receive_root / "changed.txt");
 
     lan::SenderConfig sender_config;
     sender_config.source_path = source.path();
@@ -1507,6 +1511,7 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     EXPECT_EQ(receiver_result.value().full_files, 1);
     EXPECT_EQ(receiver_result.value().delta_files, 1);
     EXPECT_EQ(receiver_result.value().files_written, 2);
+    EXPECT_EQ(receiver_result.value().target_root, receive_root);
     EXPECT_EQ(receiver_result.value().delta_payload_bytes_received,
               sender_result.value().delta_payload_bytes_sent);
     EXPECT_GT(receiver_result.value().elapsed_seconds, 0.0);
@@ -1523,11 +1528,12 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
     ASSERT_TRUE(manifest);
     for (const auto& entry : manifest.value().files) {
         auto src_hash = lan::hash_file(source.path() / entry.relative_path);
-        auto dst_hash = lan::hash_file(receive.path() / entry.relative_path);
+        auto dst_hash = lan::hash_file(receive_root / entry.relative_path);
         ASSERT_TRUE(src_hash);
         ASSERT_TRUE(dst_hash);
         EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
     }
+    EXPECT_FALSE(std::filesystem::exists(receive.path() / "sub" / "new.txt"));
 }
 
 TEST(SyncSessionTest, RejectsUnexpectedHelloThroughConnectionInterface) {
@@ -1685,11 +1691,12 @@ TEST(SenderTransferRunnerTest, ReportsSkippedFileCompletionStatus) {
 TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     TempDir source("sender-transfer-sync-source-test");
     TempDir receive("sender-transfer-sync-receive-test");
+    const auto receive_root = receive.path() / source.path().filename();
 
     write_text(source.path() / "same.txt", "same\n");
-    write_text(receive.path() / "same.txt", "same\n");
+    write_text(receive_root / "same.txt", "same\n");
     write_text(source.path() / "new.txt", "new\n");
-    copy_mtime(source.path() / "same.txt", receive.path() / "same.txt");
+    copy_mtime(source.path() / "same.txt", receive_root / "same.txt");
 
     lan::SenderConfig sender_config;
     sender_config.target.host = "memory";
@@ -1727,7 +1734,8 @@ TEST(SenderTransferRunnerTest, SyncsDirectoryThroughInjectedNetworkBackend) {
     EXPECT_EQ(transferred.value().directory.manifest_files, 2);
     EXPECT_EQ(transferred.value().directory.skipped_files, 1);
     EXPECT_EQ(transferred.value().directory.full_files, 1);
-    EXPECT_EQ(read_text(receive.path() / "new.txt"), "new\n");
+    EXPECT_EQ(read_text(receive_root / "new.txt"), "new\n");
+    EXPECT_FALSE(std::filesystem::exists(receive.path() / "new.txt"));
 
     const std::vector<lan::TransferKind> expected_started = {lan::TransferKind::directory};
     const std::vector<lan::TransferKind> expected_completed = {lan::TransferKind::directory};
@@ -1865,10 +1873,12 @@ TEST(SenderTransferRunnerTest, ReportsLifecycleCancellation) {
 TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     TempDir source("receiver-server-source-test");
     TempDir receive("receiver-server-receive-test");
+    const auto receive_root = receive.path() / source.path().filename();
 
     write_text(source.path() / "same.txt", "same\n");
-    write_text(receive.path() / "same.txt", "same\n");
+    write_text(receive_root / "same.txt", "same\n");
     write_text(source.path() / "new.txt", "new\n");
+    copy_mtime(source.path() / "same.txt", receive_root / "same.txt");
 
     auto client_to_server = std::make_shared<MemoryPipe>();
     auto server_to_client = std::make_shared<MemoryPipe>();
@@ -1916,6 +1926,9 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_EQ(served.value().failed_connections, 0);
     EXPECT_EQ(events.sync_report.skipped_files, 1);
     EXPECT_EQ(events.sync_report.full_files, 1);
+    EXPECT_EQ(events.sync_report.target_root, receive_root);
+    EXPECT_EQ(read_text(receive_root / "new.txt"), "new\n");
+    EXPECT_FALSE(std::filesystem::exists(receive.path() / "new.txt"));
 
     ASSERT_FALSE(events.directory_progress_processed.empty());
     EXPECT_EQ(events.directory_progress_processed.front(), 0);
@@ -1937,7 +1950,7 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
               events.directory_progress_current_ops.end());
 
     auto src_hash = lan::hash_file(source.path() / "new.txt");
-    auto dst_hash = lan::hash_file(receive.path() / "new.txt");
+    auto dst_hash = lan::hash_file(receive_root / "new.txt");
     ASSERT_TRUE(src_hash);
     ASSERT_TRUE(dst_hash);
     EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);

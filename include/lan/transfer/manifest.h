@@ -21,6 +21,7 @@ struct ManifestEntry {
 
 struct Manifest {
     std::filesystem::path root;
+    std::filesystem::path root_name;
     std::vector<ManifestEntry> files;
 };
 

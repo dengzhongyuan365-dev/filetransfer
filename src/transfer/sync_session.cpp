@@ -544,7 +544,20 @@ Result<SyncPlan> receive_manifest_and_send_plan(Connection& connection,
         return Result<SyncPlan>::failure(manifest_ack.error());
     }
 
-    auto plan = build_sync_plan(manifest.value(), config.receive_dir, block_size);
+    auto receive_root = config.receive_dir;
+    if (!manifest.value().root_name.empty()) {
+        receive_root /= manifest.value().root_name;
+        std::error_code ec;
+        std::filesystem::create_directories(receive_root, ec);
+        if (ec) {
+            return Result<SyncPlan>::failure(
+                make_error(ErrorCode::io_error,
+                           "failed to create receive root " + quote_path(receive_root) +
+                               ": " + ec.message()));
+        }
+    }
+
+    auto plan = build_sync_plan(manifest.value(), receive_root, block_size);
     if (!plan) {
         return Result<SyncPlan>::failure(plan.error());
     }
@@ -891,6 +904,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
     }
 
     ReceiveSyncReport report;
+    report.target_root = plan.value().receive_root;
     report.manifest_files = manifest_files;
     report.block_size = plan.value().block_size;
     std::uint64_t processed_files = 0;
@@ -939,7 +953,7 @@ Result<ReceiveSyncReport> sync_receiver_from_connection(
         publish_progress();
         auto applied = apply_delta_stream_to_target(
             connection,
-            config.receive_dir,
+            plan.value().receive_root,
             entry,
             [&](std::uint64_t bytes, std::uint64_t total, std::uint64_t ops) {
                 current_file_bytes = bytes;
