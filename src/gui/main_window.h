@@ -82,6 +82,7 @@ private:
     void set_linked_peer(const Peer& peer);
 
     void send_paths(const QStringList& paths);
+    void paste_paths_from_clipboard();
     void start_sender(const QString& path);
     void stop_sender();
 

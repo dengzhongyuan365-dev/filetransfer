@@ -3,13 +3,17 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QBoxLayout>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
 #include <QFrame>
 #include <QHostAddress>
 #include <QIcon>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -17,6 +21,7 @@
 #include <QMenu>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -25,7 +30,9 @@
 #include <QScrollBar>
 #include <QSize>
 #include <QSizePolicy>
+#include <QShortcut>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QSystemTrayIcon>
 #include <QThread>
@@ -35,12 +42,14 @@
 #include <QUdpSocket>
 #include <QUrl>
 #include <QUuid>
+#include <QVariant>
 #include <QVBoxLayout>
 
 #include <chrono>
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <set>
 #include <utility>
 
 #include "gui/drop_panel.h"
@@ -78,6 +87,60 @@ QString state_text(TransferState state) {
 QString make_link_code() {
     const auto value = QRandomGenerator::global()->bounded(100000, 1000000);
     return QString::number(value);
+}
+
+void append_local_file_path(const QUrl& url, QStringList& paths, std::set<QString>& seen) {
+    if (!url.isLocalFile()) {
+        return;
+    }
+    const auto path = url.toLocalFile();
+    if (path.isEmpty()) {
+        return;
+    }
+    if (seen.insert(path).second) {
+        paths.push_back(path);
+    }
+}
+
+QStringList local_file_paths_from_mime(const QMimeData* mime) {
+    QStringList paths;
+    std::set<QString> seen;
+    if (mime == nullptr) {
+        return paths;
+    }
+
+    for (const auto& url : mime->urls()) {
+        append_local_file_path(url, paths, seen);
+    }
+
+    if (mime->hasFormat(QStringLiteral("x-special/gnome-copied-files"))) {
+        const auto lines = QString::fromUtf8(mime->data(QStringLiteral("x-special/gnome-copied-files")))
+                               .split('\n', Qt::SkipEmptyParts);
+        for (int i = 1; i < lines.size(); ++i) {
+            append_local_file_path(QUrl(lines.at(i).trimmed()), paths, seen);
+        }
+    }
+
+    return paths;
+}
+
+QImage image_from_mime(const QMimeData* mime) {
+    if (mime == nullptr || !mime->hasImage()) {
+        return {};
+    }
+    const auto data = mime->imageData();
+    if (data.canConvert<QImage>()) {
+        return data.value<QImage>();
+    }
+    return {};
+}
+
+QString clipboard_image_dir() {
+    auto root = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (root.isEmpty()) {
+        root = QDir::tempPath() + QStringLiteral("/lan-file-transfer");
+    }
+    return QDir(root).filePath(QStringLiteral("clipboard"));
 }
 
 QIcon application_icon() {
@@ -312,7 +375,7 @@ QWidget* MainWindow::build_transfer_page() {
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);
 
-    empty_transfer_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Drop files or folders here\nSend to the linked machine"), transfer_list);
+    empty_transfer_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Drop or paste files and folders here\nSend to the linked machine"), transfer_list);
     empty_transfer_label_->setObjectName("emptyTransfer");
     empty_transfer_label_->setAlignment(Qt::AlignCenter);
     empty_transfer_label_->setMinimumHeight(320);
@@ -334,6 +397,11 @@ QWidget* MainWindow::build_transfer_page() {
 
     connect(back, &QPushButton::clicked, this, [this] {
         stack_->setCurrentWidget(peer_page_);
+    });
+    auto* paste_shortcut = new QShortcut(QKeySequence::Paste, transfer_page_);
+    paste_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(paste_shortcut, &QShortcut::activated, this, [this] {
+        paste_paths_from_clipboard();
     });
     drop_panel_->on_drop = [this](const QStringList& paths) {
         send_paths(paths);
@@ -1189,10 +1257,41 @@ void MainWindow::send_paths(const QStringList& paths) {
         show_log(QCoreApplication::translate("MainWindow", "No linked machine."));
         return;
     }
-    log_event(QCoreApplication::translate("MainWindow", "Dropped %1 path(s) for sending.").arg(paths.size()));
+    log_event(QCoreApplication::translate("MainWindow", "Queued %1 path(s) for sending.").arg(paths.size()));
     for (const auto& path : paths) {
         start_sender(path);
     }
+}
+
+void MainWindow::paste_paths_from_clipboard() {
+    const auto* mime = QApplication::clipboard()->mimeData();
+    auto paths = local_file_paths_from_mime(mime);
+    if (paths.empty()) {
+        const auto image = image_from_mime(mime);
+        if (!image.isNull()) {
+            QDir dir(clipboard_image_dir());
+            if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+                show_log(QCoreApplication::translate("MainWindow", "Failed to create clipboard image folder: %1").arg(dir.path()));
+                return;
+            }
+
+            const auto file_name = QStringLiteral("clipboard-image-%1.png")
+                                       .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
+            const auto path = dir.filePath(file_name);
+            if (!image.save(path, "PNG")) {
+                show_log(QCoreApplication::translate("MainWindow", "Failed to save clipboard image: %1").arg(path));
+                return;
+            }
+            paths.push_back(path);
+            log_event(QCoreApplication::translate("MainWindow", "Saved clipboard image: %1").arg(path));
+        }
+    }
+    if (paths.empty()) {
+        show_log(QCoreApplication::translate("MainWindow", "Clipboard does not contain local files, folders, or images."));
+        return;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Pasted %1 path(s) from clipboard.").arg(paths.size()));
+    send_paths(paths);
 }
 
 void MainWindow::start_sender(const QString& path) {

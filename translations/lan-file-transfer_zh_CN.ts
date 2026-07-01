@@ -93,9 +93,9 @@
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="313"/>
-        <source>Drop files or folders here
+        <source>Drop or paste files and folders here
 Send to the linked machine</source>
-        <translation>将文件或文件夹拖到这里
+        <translation>将文件或文件夹拖到这里，或复制后按 Ctrl+V
 发送到已连接设备</translation>
     </message>
     <message>
@@ -427,8 +427,33 @@ Code: %2</source>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1135"/>
-        <source>Dropped %1 path(s) for sending.</source>
-        <translation>已拖入 %1 个路径准备发送。</translation>
+        <source>Queued %1 path(s) for sending.</source>
+        <translation>已加入 %1 个路径准备发送。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
+        <source>Failed to create clipboard image folder: %1</source>
+        <translation>创建剪贴板图片目录失败：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
+        <source>Failed to save clipboard image: %1</source>
+        <translation>保存剪贴板图片失败：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
+        <source>Saved clipboard image: %1</source>
+        <translation>已保存剪贴板图片：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
+        <source>Clipboard does not contain local files, folders, or images.</source>
+        <translation>剪贴板中没有本地文件、文件夹或图片。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1135"/>
+        <source>Pasted %1 path(s) from clipboard.</source>
+        <translation>已从剪贴板粘贴 %1 个路径。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1143"/>
