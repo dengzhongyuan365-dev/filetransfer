@@ -77,6 +77,7 @@ private:
     void show_settings();
 
     void search_peers();
+    void add_manual_peer_from_filter();
     void read_discovery();
     void reply_to_discovery(const QHostAddress& target, quint16 port);
     void add_peer(const QHostAddress& address, const QJsonObject& obj);

@@ -1,5 +1,6 @@
 #include "gui/main_window.h"
 
+#include <QAbstractSocket>
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QBoxLayout>
@@ -19,10 +20,12 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
 #include <QMenu>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QNetworkInterface>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -36,6 +39,7 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QStyle>
 #include <QSystemTrayIcon>
 #include <QThread>
@@ -137,6 +141,124 @@ QString make_link_code() {
 
 qint64 now_ms() {
     return QDateTime::currentMSecsSinceEpoch();
+}
+
+QList<QHostAddress> discovery_targets() {
+    QList<QHostAddress> targets;
+    QSet<QString> seen;
+    const auto add_target = [&targets, &seen](const QHostAddress& address) {
+        if (address.isNull() || address.protocol() != QAbstractSocket::IPv4Protocol) {
+            return;
+        }
+        const auto key = address.toString();
+        if (seen.contains(key)) {
+            return;
+        }
+        seen.insert(key);
+        targets.push_back(address);
+    };
+
+    add_target(QHostAddress(QHostAddress::Broadcast));
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const auto& interface : interfaces) {
+        const auto flags = interface.flags();
+        if (!flags.testFlag(QNetworkInterface::IsUp) ||
+            !flags.testFlag(QNetworkInterface::IsRunning) ||
+            !flags.testFlag(QNetworkInterface::CanBroadcast) ||
+            flags.testFlag(QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+        for (const auto& entry : interface.addressEntries()) {
+            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) {
+                continue;
+            }
+            add_target(entry.broadcast());
+        }
+    }
+    return targets;
+}
+
+bool is_private_ipv4(quint32 address) {
+    const auto first = (address >> 24) & 0xffU;
+    const auto second = (address >> 16) & 0xffU;
+    return first == 10U ||
+           (first == 172U && second >= 16U && second <= 31U) ||
+           (first == 192U && second == 168U);
+}
+
+QList<QHostAddress> extended_discovery_targets() {
+    QList<QHostAddress> targets;
+    QSet<QString> seen;
+    const auto add_target = [&targets, &seen](quint32 address) {
+        const auto host = address & 0xffU;
+        if (host == 0U || host == 255U) {
+            return;
+        }
+        const auto target = QHostAddress(address);
+        const auto key = target.toString();
+        if (seen.contains(key)) {
+            return;
+        }
+        seen.insert(key);
+        targets.push_back(target);
+    };
+
+    const auto interfaces = QNetworkInterface::allInterfaces();
+    for (const auto& interface : interfaces) {
+        const auto flags = interface.flags();
+        if (!flags.testFlag(QNetworkInterface::IsUp) ||
+            !flags.testFlag(QNetworkInterface::IsRunning) ||
+            flags.testFlag(QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+        for (const auto& entry : interface.addressEntries()) {
+            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) {
+                continue;
+            }
+            const auto local = entry.ip().toIPv4Address();
+            if (!is_private_ipv4(local)) {
+                continue;
+            }
+
+            const auto prefix = local & 0xffff0000U;
+            const auto local_subnet = static_cast<int>((local >> 8) & 0xffU);
+            const auto begin_subnet = std::max(0, local_subnet - 16);
+            const auto end_subnet = std::min(255, local_subnet + 16);
+            for (int subnet = begin_subnet; subnet <= end_subnet; ++subnet) {
+                for (quint32 host = 1; host <= 254; ++host) {
+                    add_target(prefix | (static_cast<quint32>(subnet) << 8) | host);
+                }
+            }
+        }
+    }
+    return targets;
+}
+
+bool parse_manual_peer_endpoint(const QString& text, QString& host, std::uint16_t& port) {
+    auto value = text.trimmed();
+    if (value.isEmpty()) {
+        return false;
+    }
+    std::uint16_t parsed_port = kTransferPort;
+    const auto colon = value.lastIndexOf(':');
+    if (colon > 0 && value.indexOf(':') == colon) {
+        bool ok = false;
+        const auto port_value = value.mid(colon + 1).toUInt(&ok);
+        if (!ok || port_value == 0 || port_value > 65535) {
+            return false;
+        }
+        parsed_port = static_cast<std::uint16_t>(port_value);
+        value = value.left(colon);
+    }
+
+    const auto address = QHostAddress(value);
+    if (address.isNull() || address.protocol() != QAbstractSocket::IPv4Protocol) {
+        return false;
+    }
+
+    host = address.toString();
+    port = parsed_port;
+    return true;
 }
 
 QSettings app_settings() {
@@ -448,6 +570,9 @@ QWidget* MainWindow::build_peer_page() {
     });
     connect(peer_filter_, &QLineEdit::textChanged, this, [this] {
         refresh_peer_list();
+    });
+    connect(peer_filter_, &QLineEdit::returnPressed, this, [this] {
+        add_manual_peer_from_filter();
     });
     connect(peer_list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
         link_peer(item);
@@ -1202,7 +1327,6 @@ void MainWindow::search_peers() {
     }
     refresh_peer_list();
     status_->setText(QCoreApplication::translate("MainWindow", "Searching..."));
-    log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1").arg(kDiscoveryPort));
     const auto message = QJsonDocument(QJsonObject{
         {"protocol", kProtocol},
         {"type", "discover"},
@@ -1210,7 +1334,22 @@ void MainWindow::search_peers() {
         {"name", machine_name()},
         {"port", static_cast<int>(kTransferPort)},
     }).toJson(QJsonDocument::Compact);
-    discovery_->writeDatagram(message, QHostAddress::Broadcast, kDiscoveryPort);
+    const auto targets = discovery_targets();
+    QStringList target_labels;
+    for (const auto& target : targets) {
+        discovery_->writeDatagram(message, target, kDiscoveryPort);
+        target_labels.push_back(target.toString());
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1 to %2")
+                  .arg(kDiscoveryPort)
+                  .arg(target_labels.join(QStringLiteral(", "))));
+    const auto extended_targets = extended_discovery_targets();
+    for (const auto& target : extended_targets) {
+        discovery_->writeDatagram(message, target, kDiscoveryPort);
+    }
+    if (!extended_targets.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(extended_targets.size()));
+    }
     QTimer::singleShot(1200, this, [this] {
         if (peers_.isEmpty()) {
             status_->setText(QCoreApplication::translate("MainWindow", "No machines found."));
@@ -1220,6 +1359,31 @@ void MainWindow::search_peers() {
             log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(peers_.size()));
         }
     });
+}
+
+void MainWindow::add_manual_peer_from_filter() {
+    QString host;
+    std::uint16_t port = kTransferPort;
+    if (!parse_manual_peer_endpoint(peer_filter_->text(), host, port)) {
+        show_log(QCoreApplication::translate("MainWindow", "Enter an IPv4 address in the search box, for example 10.8.7.203."));
+        return;
+    }
+
+    auto id = find_peer_id_by_endpoint(host, port);
+    if (id.isEmpty()) {
+        id = QStringLiteral("manual:%1:%2").arg(host).arg(port);
+    }
+    auto peer = peers_.value(id);
+    peer.id = id;
+    peer.name = host;
+    peer.host = host;
+    peer.port = port;
+    peer.online = true;
+    peer.last_seen_ms = now_ms();
+    peers_.insert(id, peer);
+    status_->setText(QCoreApplication::translate("MainWindow", "Manual machine added."));
+    log_event(QCoreApplication::translate("MainWindow", "Manual peer added: %1:%2").arg(host).arg(port));
+    refresh_peer_list();
 }
 
 void MainWindow::read_discovery() {
