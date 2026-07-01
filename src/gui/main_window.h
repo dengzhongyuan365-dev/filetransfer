@@ -57,6 +57,10 @@ private:
     void quit_from_tray();
 
     void setup_discovery();
+    void load_remembered_peers();
+    void remember_peer(const Peer& peer);
+    void save_remembered_peers();
+    bool can_switch_peer() const;
     bool start_receiver();
     void stop_receiver();
 
@@ -88,6 +92,8 @@ private:
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
     void link_peer(QListWidgetItem* item);
     void set_linked_peer(const Peer& peer);
+    void disconnect_peer();
+    bool is_linked_peer(const Peer& peer) const;
 
     void send_paths(const QStringList& paths);
     void paste_paths_from_clipboard();

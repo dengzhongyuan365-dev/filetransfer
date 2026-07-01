@@ -15,6 +15,9 @@ struct Peer {
     QString name;
     QString host;
     std::uint16_t port = kTransferPort;
+    bool online = true;
+    qint64 last_seen_ms = 0;
+    qint64 last_linked_ms = 0;
 };
 
 }  // namespace lan::gui

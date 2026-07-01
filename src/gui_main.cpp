@@ -30,6 +30,8 @@ bool load_translation(QTranslator& translator, const QString& name) {
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("brinstrom"));
+    QCoreApplication::setApplicationName(QStringLiteral("lan-file-transfer"));
 
     QTranslator translator;
     const QString locale = QLocale::system().name();

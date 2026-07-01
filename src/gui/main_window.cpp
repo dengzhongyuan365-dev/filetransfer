@@ -31,6 +31,7 @@
 #include <QSize>
 #include <QSizePolicy>
 #include <QShortcut>
+#include <QSettings>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStyle>
@@ -63,6 +64,8 @@
 
 namespace lan::gui {
 namespace {
+
+constexpr int kMaxRememberedPeers = 10;
 
 QString snapshot_key(const TransferSnapshot& snapshot) {
     const auto direction = snapshot.direction == TransferDirection::receive ? "receive" : "send";
@@ -110,6 +113,14 @@ QString state_text(TransferState state) {
 QString make_link_code() {
     const auto value = QRandomGenerator::global()->bounded(100000, 1000000);
     return QString::number(value);
+}
+
+qint64 now_ms() {
+    return QDateTime::currentMSecsSinceEpoch();
+}
+
+QSettings app_settings() {
+    return QSettings(QStringLiteral("brinstrom"), QStringLiteral("lan-file-transfer"));
 }
 
 void append_local_file_path(const QUrl& url, QStringList& paths, std::set<QString>& seen) {
@@ -218,6 +229,7 @@ MainWindow::MainWindow() : node_id_(QUuid::createUuid().toString(QUuid::WithoutB
     setMinimumSize(380, 560);
     setObjectName("app");
     build_ui();
+    load_remembered_peers();
     setup_tray();
     setup_discovery();
 }
@@ -376,9 +388,12 @@ QWidget* MainWindow::build_transfer_page() {
     linked_label_->setObjectName("title");
     auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
+    auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
+    disconnect->setObjectName("secondaryButton");
 
     auto* header = new QHBoxLayout();
     header->addWidget(linked_label_, 1);
+    header->addWidget(disconnect);
     header->addWidget(back);
 
     drop_panel_ = new DropPanel(transfer_page_);
@@ -420,6 +435,9 @@ QWidget* MainWindow::build_transfer_page() {
 
     connect(back, &QPushButton::clicked, this, [this] {
         stack_->setCurrentWidget(peer_page_);
+    });
+    connect(disconnect, &QPushButton::clicked, this, [this] {
+        disconnect_peer();
     });
     auto* paste_shortcut = new QShortcut(QKeySequence::Paste, transfer_page_);
     paste_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
@@ -504,12 +522,20 @@ void MainWindow::apply_style() {
         #transferMetric {
             line-height: 16px;
         }
-        #onlineBadge, #stateBadge {
+        #onlineBadge, #linkedBadge, #offlineBadge, #stateBadge {
             color: #087443;
             background: #e7f8ef;
             border-radius: 7px;
             padding: 3px 4px;
             font-size: 12px;
+        }
+        #linkedBadge {
+            color: #1d4ed8;
+            background: #eaf1ff;
+        }
+        #offlineBadge {
+            color: #6b7280;
+            background: #eef2f7;
         }
         #emptyTransfer {
             color: #8a93a3;
@@ -717,6 +743,67 @@ void MainWindow::setup_discovery() {
     });
 }
 
+void MainWindow::load_remembered_peers() {
+    auto settings = app_settings();
+    const auto size = settings.beginReadArray(QStringLiteral("peers"));
+    for (int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
+        Peer peer{
+            .id = settings.value(QStringLiteral("id")).toString(),
+            .name = settings.value(QStringLiteral("name"), QCoreApplication::translate("MainWindow", "Unknown")).toString(),
+            .host = settings.value(QStringLiteral("host")).toString(),
+            .port = static_cast<std::uint16_t>(settings.value(QStringLiteral("port"), kTransferPort).toUInt()),
+            .online = false,
+            .last_seen_ms = settings.value(QStringLiteral("lastSeen"), 0).toLongLong(),
+            .last_linked_ms = settings.value(QStringLiteral("lastLinked"), 0).toLongLong(),
+        };
+        if (!peer.id.isEmpty() && !peer.host.isEmpty()) {
+            peers_.insert(peer.id, peer);
+        }
+    }
+    settings.endArray();
+    refresh_peer_list();
+}
+
+void MainWindow::remember_peer(const Peer& peer) {
+    auto remembered = peer;
+    remembered.last_linked_ms = now_ms();
+    remembered.online = true;
+    peers_.insert(remembered.id, remembered);
+    save_remembered_peers();
+    refresh_peer_list();
+}
+
+void MainWindow::save_remembered_peers() {
+    auto peers = peers_.values();
+    peers.erase(std::remove_if(peers.begin(), peers.end(), [](const Peer& peer) {
+        return peer.last_linked_ms <= 0;
+    }), peers.end());
+    std::sort(peers.begin(), peers.end(), [](const Peer& left, const Peer& right) {
+        return left.last_linked_ms > right.last_linked_ms;
+    });
+    if (peers.size() > kMaxRememberedPeers) {
+        peers.erase(peers.begin() + kMaxRememberedPeers, peers.end());
+    }
+
+    auto settings = app_settings();
+    settings.beginWriteArray(QStringLiteral("peers"), peers.size());
+    for (int i = 0; i < peers.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue(QStringLiteral("id"), peers.at(i).id);
+        settings.setValue(QStringLiteral("name"), peers.at(i).name);
+        settings.setValue(QStringLiteral("host"), peers.at(i).host);
+        settings.setValue(QStringLiteral("port"), static_cast<int>(peers.at(i).port));
+        settings.setValue(QStringLiteral("lastSeen"), peers.at(i).last_seen_ms);
+        settings.setValue(QStringLiteral("lastLinked"), peers.at(i).last_linked_ms);
+    }
+    settings.endArray();
+}
+
+bool MainWindow::can_switch_peer() const {
+    return sender_queue_.empty() && !sender_thread_.joinable();
+}
+
 bool MainWindow::start_receiver() {
     receiver_ready_ = false;
     log_event(QCoreApplication::translate("MainWindow", "Starting receiver in %1").arg(receive_dir_->text()));
@@ -795,7 +882,9 @@ void MainWindow::stop_receiver() {
 }
 
 void MainWindow::search_peers() {
-    peers_.clear();
+    for (auto it = peers_.begin(); it != peers_.end(); ++it) {
+        it.value().online = false;
+    }
     refresh_peer_list();
     status_->setText(QCoreApplication::translate("MainWindow", "Searching..."));
     log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1").arg(kDiscoveryPort));
@@ -885,18 +974,22 @@ void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
     const auto host = address.toString();
     const auto port = static_cast<std::uint16_t>(obj.value("port").toInt(kTransferPort));
     const auto id = obj.value("id").toString(host + ":" + QString::number(port));
-    if (peers_.contains(id)) {
-        return;
-    }
+    const auto existing = peers_.value(id);
 
     Peer peer{
         .id = id,
         .name = obj.value("name").toString(QCoreApplication::translate("MainWindow", "Unknown")),
         .host = host,
         .port = port,
+        .online = true,
+        .last_seen_ms = now_ms(),
+        .last_linked_ms = existing.last_linked_ms,
     };
     peers_.insert(id, peer);
-    log_event(QCoreApplication::translate("MainWindow", "Peer added: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
+    log_event(QCoreApplication::translate("MainWindow", "Peer available: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
+    if (peer.last_linked_ms > 0) {
+        save_remembered_peers();
+    }
     refresh_peer_list();
 }
 
@@ -916,7 +1009,20 @@ void MainWindow::refresh_peer_list() {
     }
     peer_list_->clear();
     int visible = 0;
-    for (const auto& peer : peers_) {
+    auto peers = peers_.values();
+    std::sort(peers.begin(), peers.end(), [this](const Peer& left, const Peer& right) {
+        if (is_linked_peer(left) != is_linked_peer(right)) {
+            return is_linked_peer(left);
+        }
+        if (left.online != right.online) {
+            return left.online;
+        }
+        if (left.last_linked_ms != right.last_linked_ms) {
+            return left.last_linked_ms > right.last_linked_ms;
+        }
+        return left.name.localeAwareCompare(right.name) < 0;
+    });
+    for (const auto& peer : peers) {
         if (!peer_matches_filter(peer)) {
             continue;
         }
@@ -975,13 +1081,20 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     text_box->addWidget(name);
     text_box->addWidget(meta);
 
-    auto* badge = new QLabel(QCoreApplication::translate("MainWindow", "online"), card);
-    badge->setObjectName("onlineBadge");
+    const auto linked = is_linked_peer(peer);
+    auto* badge = new QLabel(linked ? QCoreApplication::translate("MainWindow", "linked")
+                                    : peer.online ? QCoreApplication::translate("MainWindow", "online")
+                                                  : QCoreApplication::translate("MainWindow", "offline"),
+                             card);
+    badge->setObjectName(linked ? "linkedBadge" : peer.online ? "onlineBadge" : "offlineBadge");
     badge->setAlignment(Qt::AlignCenter);
     badge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    auto* link = new QPushButton(QCoreApplication::translate("MainWindow", "Link"), card);
+    auto* link = new QPushButton(linked ? QCoreApplication::translate("MainWindow", "Disconnect")
+                                        : QCoreApplication::translate("MainWindow", "Link"),
+                                 card);
     link->setObjectName("linkButton");
+    link->setEnabled(peer.online || linked);
     connect(link, &QPushButton::clicked, this, [this, id = peer.id] {
         request_link(id);
     });
@@ -1191,9 +1304,29 @@ void MainWindow::request_link(const QString& id) {
     if (!peers_.contains(id)) {
         return;
     }
+    const auto peer = peers_.value(id);
+    if (is_linked_peer(peer)) {
+        disconnect_peer();
+        return;
+    }
+    if (!peer.online) {
+        show_log(QCoreApplication::translate("MainWindow", "This machine is offline. Refresh and try again."));
+        return;
+    }
+    if (!can_switch_peer()) {
+        const auto answer = QMessageBox::question(
+            this,
+            QCoreApplication::translate("MainWindow", "Switch linked machine"),
+            QCoreApplication::translate("MainWindow", "There are active or queued sends. Stop and clear them before switching?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+        stop_sender();
+    }
     pending_link_id_ = id;
     pending_link_code_ = make_link_code();
-    const auto peer = peers_.value(id);
     status_->setText(QCoreApplication::translate("MainWindow", "Waiting for %1 to accept code %2...").arg(peer.name, pending_link_code_));
     log_event(QCoreApplication::translate("MainWindow", "Sending link request to %1 %2:%3 code=%4")
                   .arg(peer.name, peer.host)
@@ -1279,10 +1412,44 @@ void MainWindow::link_peer(QListWidgetItem* item) {
 
 void MainWindow::set_linked_peer(const Peer& peer) {
     linked_peer_ = peer;
+    remember_peer(linked_peer_);
     linked_label_->setText(QCoreApplication::translate("MainWindow", "Linked to %1").arg(linked_peer_.name));
     status_->setText(QCoreApplication::translate("MainWindow", "Linked to %1.").arg(linked_peer_.name));
     log_event(QCoreApplication::translate("MainWindow", "Linked peer: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     stack_->setCurrentWidget(transfer_page_);
+}
+
+void MainWindow::disconnect_peer() {
+    if (linked_peer_.id.isEmpty()) {
+        stack_->setCurrentWidget(peer_page_);
+        return;
+    }
+    if (!can_switch_peer()) {
+        const auto answer = QMessageBox::question(
+            this,
+            QCoreApplication::translate("MainWindow", "Disconnect machine"),
+            QCoreApplication::translate("MainWindow", "There are active or queued sends. Stop and disconnect?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+        stop_sender();
+    }
+
+    const auto name = linked_peer_.name;
+    linked_peer_ = Peer{};
+    pending_link_id_.clear();
+    pending_link_code_.clear();
+    linked_label_->setText(QCoreApplication::translate("MainWindow", "Not linked"));
+    status_->setText(QCoreApplication::translate("MainWindow", "Disconnected."));
+    log_event(QCoreApplication::translate("MainWindow", "Disconnected from %1").arg(name));
+    refresh_peer_list();
+    stack_->setCurrentWidget(peer_page_);
+}
+
+bool MainWindow::is_linked_peer(const Peer& peer) const {
+    return !linked_peer_.id.isEmpty() && linked_peer_.id == peer.id;
 }
 
 void MainWindow::send_paths(const QStringList& paths) {
