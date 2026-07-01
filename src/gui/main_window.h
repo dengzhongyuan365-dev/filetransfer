@@ -44,6 +44,7 @@ enum class CloseAction {
 struct QueuedSend {
     QString path;
     QString snapshot_key;
+    QString peer_id;
 };
 
 class MainWindow final : public QWidget {
@@ -71,7 +72,6 @@ private:
     QString find_peer_id_by_endpoint(const QString& host, std::uint16_t port) const;
     void remember_peer(const Peer& peer);
     void save_remembered_peers();
-    bool can_switch_peer() const;
     bool start_receiver();
     void stop_receiver();
     void show_settings();
@@ -103,6 +103,9 @@ private:
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
     void remove_transfer_snapshot(const QString& key);
+    bool transfer_belongs_to_active_peer(const QString& key) const;
+    void clear_transfer_cards();
+    void refresh_transfer_list();
 
     void request_link(const QString& id);
     void receive_link_request(const QHostAddress& address, const QJsonObject& obj);
@@ -111,21 +114,30 @@ private:
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
     void link_peer(QListWidgetItem* item);
     void open_transfer_page();
-    void set_linked_peer(const Peer& peer);
+    void set_linked_peer(const Peer& peer, bool activate);
+    void set_active_peer(const QString& id);
     void disconnect_peer(bool notify_peer = true, bool confirm_active_sends = true);
+    void disconnect_peer(const QString& id, bool notify_peer = true, bool confirm_active_sends = true);
     bool is_linked_peer(const Peer& peer) const;
+    bool has_active_peer() const;
+    Peer active_peer() const;
+    int linked_peer_count() const;
+    void update_linked_header();
 
     void send_paths(const QStringList& paths);
     void paste_paths_from_clipboard();
-    void enqueue_sender_path(const QString& path);
+    void enqueue_sender_path(const QString& path, const QString& peer_id);
     void start_next_sender();
     bool start_sender(const QueuedSend& item);
     void finish_sender_thread();
     bool cancel_queued_send(const QString& key);
+    bool has_queued_send_for_peer(const QString& peer_id) const;
+    void remove_queued_sends_for_peer(const QString& peer_id);
+    void cancel_running_sender();
     void stop_sender();
 
-    void merge_snapshots(TransferSnapshotStore store);
-    void upsert_snapshot(const TransferSnapshot& snapshot);
+    void merge_snapshots(TransferSnapshotStore store, const QString& peer_id = {});
+    void upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id = {});
     void show_log(QString text);
     void log_event(QString text);
 
@@ -148,10 +160,10 @@ private:
     QMap<QString, Peer> peers_;
     QMap<QString, QWidget*> transfer_cards_;
     QMap<QString, TransferSnapshot> transfer_snapshots_;
+    QMap<QString, QString> transfer_peer_ids_;
     QSet<QString> recorded_history_keys_;
-    Peer linked_peer_;
-    QString pending_link_id_;
-    QString pending_link_code_;
+    QString active_peer_id_;
+    QMap<QString, QString> pending_link_codes_;
     QString node_id_;
     bool receiver_ready_ = false;
     bool force_quit_ = false;
@@ -162,6 +174,7 @@ private:
     std::shared_ptr<GuiSenderEvents> sender_events_;
     std::thread sender_thread_;
     std::deque<QueuedSend> sender_queue_;
+    QString running_sender_peer_id_;
     std::uint64_t next_queued_send_id_ = 1ULL << 62;
 };
 
