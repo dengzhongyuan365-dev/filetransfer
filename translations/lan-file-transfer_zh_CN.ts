@@ -31,7 +31,7 @@
     <message>
         <location filename="../src/gui/main_window.cpp" line="226"/>
         <location filename="../src/gui/main_window.cpp" line="248"/>
-        <location filename="../src/gui/main_window.cpp" line="712"/>
+        <location filename="../src/gui/main_window.cpp" line="714"/>
         <source>LAN File Transfer</source>
         <translation>局域网文件传输</translation>
     </message>
@@ -88,7 +88,7 @@
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="394"/>
-        <location filename="../src/gui/main_window.cpp" line="1506"/>
+        <location filename="../src/gui/main_window.cpp" line="1542"/>
         <source>Not linked</source>
         <translation>未连接</translation>
     </message>
@@ -99,6 +99,7 @@
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="398"/>
+        <location filename="../src/gui/main_window.cpp" line="1146"/>
         <source>Disconnect</source>
         <translation>断开</translation>
     </message>
@@ -115,148 +116,153 @@ Send to the linked machine</source>
         <translation>日志</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="694"/>
+        <location filename="../src/gui/main_window.cpp" line="696"/>
         <source>Show</source>
         <translation>显示</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="695"/>
+        <location filename="../src/gui/main_window.cpp" line="697"/>
         <source>Hide</source>
         <translation>隐藏</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="697"/>
+        <location filename="../src/gui/main_window.cpp" line="699"/>
         <source>Quit</source>
         <translation>退出</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="742"/>
+        <location filename="../src/gui/main_window.cpp" line="744"/>
         <source>UDP discovery listening on %1</source>
         <translation>UDP 发现监听在 %1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="744"/>
+        <location filename="../src/gui/main_window.cpp" line="746"/>
         <source>UDP discovery bind failed on %1: %2</source>
         <translation>UDP 发现绑定 %1 失败：%2</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="852"/>
+        <location filename="../src/gui/main_window.cpp" line="854"/>
         <source>Starting receiver in %1</source>
         <translation>正在启动接收端，目录：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="864"/>
+        <location filename="../src/gui/main_window.cpp" line="866"/>
         <source>Receiver config invalid: %1</source>
         <translation>接收端配置无效：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="891"/>
+        <location filename="../src/gui/main_window.cpp" line="893"/>
         <source>Receiver thread failed to start: %1</source>
         <translation>接收线程启动失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="902"/>
+        <location filename="../src/gui/main_window.cpp" line="904"/>
         <source>Receiver listen failed: %1</source>
         <translation>接收端监听失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="905"/>
+        <location filename="../src/gui/main_window.cpp" line="907"/>
         <source>Receiver failed to start listening.</source>
         <translation>接收端启动监听失败。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="906"/>
+        <location filename="../src/gui/main_window.cpp" line="908"/>
         <source>Receiver failed to start listening within 2s.</source>
         <translation>接收端 2 秒内未能开始监听。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="909"/>
+        <location filename="../src/gui/main_window.cpp" line="911"/>
         <source>Receiver listening on TCP %1.</source>
         <translation>接收端正在监听 TCP %1。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="911"/>
+        <location filename="../src/gui/main_window.cpp" line="913"/>
         <source>Receiver listening on 0.0.0.0:%1</source>
         <translation>接收端正在监听 0.0.0.0:%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="924"/>
+        <location filename="../src/gui/main_window.cpp" line="926"/>
         <source>Receiver stopped.</source>
         <translation>接收端已停止。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="932"/>
+        <location filename="../src/gui/main_window.cpp" line="934"/>
         <source>Searching...</source>
         <translation>正在搜索...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="933"/>
+        <location filename="../src/gui/main_window.cpp" line="935"/>
         <source>Broadcast discover on UDP %1</source>
         <translation>通过 UDP %1 广播发现请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="944"/>
+        <location filename="../src/gui/main_window.cpp" line="946"/>
         <source>No machines found.</source>
         <translation>未找到设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="945"/>
+        <location filename="../src/gui/main_window.cpp" line="947"/>
         <source>Discovery finished: no machines found.</source>
         <translation>发现结束：未找到设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="947"/>
+        <location filename="../src/gui/main_window.cpp" line="949"/>
         <source>%1 machine(s) found.</source>
         <translation>找到 %1 台设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="948"/>
+        <location filename="../src/gui/main_window.cpp" line="950"/>
         <source>Discovery finished: %1 machine(s) found.</source>
         <translation>发现结束：找到 %1 台设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="973"/>
+        <location filename="../src/gui/main_window.cpp" line="975"/>
         <source>Ignored discover from %1 because receiver is not ready.</source>
         <translation>已忽略来自 %1 的发现请求，因为接收端尚未就绪。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="977"/>
+        <location filename="../src/gui/main_window.cpp" line="979"/>
         <source>Received discover from %1:%2</source>
         <translation>收到来自 %1:%2 的发现请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="981"/>
+        <location filename="../src/gui/main_window.cpp" line="983"/>
         <source>Received announce from %1</source>
         <translation>收到来自 %1 的设备广播</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="985"/>
+        <location filename="../src/gui/main_window.cpp" line="987"/>
         <source>Ignored link request from %1 because receiver is not ready.</source>
         <translation>已忽略来自 %1 的连接请求，因为接收端尚未就绪。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="989"/>
+        <location filename="../src/gui/main_window.cpp" line="991"/>
         <source>Received link request from %1</source>
         <translation>收到来自 %1 的连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="992"/>
+        <location filename="../src/gui/main_window.cpp" line="994"/>
         <source>Received link accept from %1</source>
         <translation>收到来自 %1 的连接接受</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="995"/>
+        <location filename="../src/gui/main_window.cpp" line="997"/>
         <source>Received link reject from %1</source>
         <translation>收到来自 %1 的连接拒绝</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1010"/>
+        <location filename="../src/gui/main_window.cpp" line="1000"/>
+        <source>Received link disconnect from %1</source>
+        <translation>收到来自 %1 的断开连接请求</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1015"/>
         <source>Sent announce to %1:%2</source>
         <translation>已向 %1:%2 发送设备广播</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="770"/>
-        <location filename="../src/gui/main_window.cpp" line="1032"/>
+        <location filename="../src/gui/main_window.cpp" line="772"/>
+        <location filename="../src/gui/main_window.cpp" line="1037"/>
         <source>Unknown</source>
         <translation>未知</translation>
     </message>
@@ -265,295 +271,300 @@ Send to the linked machine</source>
         <translation type="vanished">已添加设备：%1 %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1088"/>
+        <location filename="../src/gui/main_window.cpp" line="1093"/>
         <source>No machines yet. Refresh to search the LAN.</source>
         <translation>还没有设备。点击刷新搜索局域网。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1089"/>
+        <location filename="../src/gui/main_window.cpp" line="1094"/>
         <source>No matching machines.</source>
         <translation>没有匹配的设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1137"/>
+        <location filename="../src/gui/main_window.cpp" line="1154"/>
         <source>online</source>
         <translation>在线</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1145"/>
+        <location filename="../src/gui/main_window.cpp" line="1164"/>
         <source>Link</source>
         <translation>连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1172"/>
+        <location filename="../src/gui/main_window.cpp" line="1191"/>
         <source>Speed</source>
         <translation>速率</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1175"/>
+        <location filename="../src/gui/main_window.cpp" line="1194"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1196"/>
+        <location filename="../src/gui/main_window.cpp" line="1215"/>
         <source>Stop transfer</source>
         <translation>停止传输</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1189"/>
+        <location filename="../src/gui/main_window.cpp" line="1208"/>
         <source>Open containing folder</source>
         <translation>打开所在目录</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1203"/>
+        <location filename="../src/gui/main_window.cpp" line="1222"/>
         <source>Clear from list</source>
         <translation>清除列表记录</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1249"/>
+        <location filename="../src/gui/main_window.cpp" line="1268"/>
         <source>%1 file(s)</source>
         <translation>%1 个文件</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1307"/>
+        <location filename="../src/gui/main_window.cpp" line="1326"/>
         <source>This transfer is not running.</source>
         <translation>这个传输任务没有运行。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1320"/>
+        <location filename="../src/gui/main_window.cpp" line="1339"/>
         <source>No active sender for this transfer.</source>
         <translation>这个传输任务没有活动的发送端。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1312"/>
+        <location filename="../src/gui/main_window.cpp" line="1331"/>
         <source>No active receiver for this transfer.</source>
         <translation>这个传输任务没有活动的接收端。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1324"/>
+        <location filename="../src/gui/main_window.cpp" line="1343"/>
         <source>Stopping transfer...</source>
         <translation>正在停止传输...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1315"/>
+        <location filename="../src/gui/main_window.cpp" line="1334"/>
         <source>Stopping receive transfer...</source>
         <translation>正在停止接收任务...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1040"/>
+        <location filename="../src/gui/main_window.cpp" line="1045"/>
         <source>Peer available: %1 %2:%3</source>
         <translation>设备可用：%1 %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1136"/>
+        <location filename="../src/gui/main_window.cpp" line="1145"/>
         <source>linked</source>
         <translation>已连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1138"/>
+        <location filename="../src/gui/main_window.cpp" line="1155"/>
         <source>offline</source>
         <translation>离线</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1144"/>
+        <location filename="../src/gui/main_window.cpp" line="1163"/>
         <source>Open</source>
         <translation>打开</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1289"/>
+        <location filename="../src/gui/main_window.cpp" line="1308"/>
         <source>No local receive folder for this transfer.</source>
         <translation>这个传输任务没有本机接收目录。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1295"/>
+        <location filename="../src/gui/main_window.cpp" line="1314"/>
         <source>Failed to open folder: %1</source>
         <translation>打开目录失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1298"/>
+        <location filename="../src/gui/main_window.cpp" line="1317"/>
         <source>Opened folder: %1</source>
         <translation>已打开目录：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1334"/>
+        <location filename="../src/gui/main_window.cpp" line="1353"/>
         <source>Stop the transfer before clearing it from the list.</source>
         <translation>请先停止传输，再清除列表记录。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1364"/>
+        <location filename="../src/gui/main_window.cpp" line="1383"/>
         <source>This machine is offline. Refresh and try again.</source>
         <translation>这台设备离线。请刷新后重试。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1370"/>
+        <location filename="../src/gui/main_window.cpp" line="1389"/>
         <source>Switch linked machine</source>
         <translation>切换已连接设备</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1371"/>
+        <location filename="../src/gui/main_window.cpp" line="1390"/>
         <source>There are active or queued sends. Stop and clear them before switching?</source>
         <translation>当前有正在发送或排队的任务。切换前要停止并清空它们吗？</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1381"/>
+        <location filename="../src/gui/main_window.cpp" line="1400"/>
         <source>Waiting for %1 to accept code %2...</source>
         <translation>正在等待 %1 接受验证码 %2...</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1382"/>
+        <location filename="../src/gui/main_window.cpp" line="1401"/>
         <source>Sending link request to %1 %2:%3 code=%4</source>
         <translation>正在向 %1 %2:%3 发送连接请求，验证码=%4</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1400"/>
+        <location filename="../src/gui/main_window.cpp" line="1419"/>
         <source>Link request from %1 %2:%3 code=%4</source>
         <translation>来自 %1 %2:%3 的连接请求，验证码=%4</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1406"/>
+        <location filename="../src/gui/main_window.cpp" line="1425"/>
         <source>Link request</source>
         <translation>连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1407"/>
+        <location filename="../src/gui/main_window.cpp" line="1426"/>
         <source>%1 wants to link with this machine.
 Code: %2</source>
         <translation>%1 想要连接这台机器。
 验证码：%2</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1411"/>
+        <location filename="../src/gui/main_window.cpp" line="1430"/>
         <source>Accepted link request from %1</source>
         <translation>已接受来自 %1 的连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1415"/>
+        <location filename="../src/gui/main_window.cpp" line="1434"/>
         <source>Rejected link request from %1</source>
         <translation>已拒绝来自 %1 的连接请求</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1433"/>
+        <location filename="../src/gui/main_window.cpp" line="1452"/>
         <source>Link request rejected.</source>
         <translation>连接请求已被拒绝。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1434"/>
+        <location filename="../src/gui/main_window.cpp" line="1453"/>
         <source>Link request rejected by peer.</source>
         <translation>连接请求被对端拒绝。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1437"/>
+        <location filename="../src/gui/main_window.cpp" line="1456"/>
         <source>Link accepted by %1</source>
         <translation>%1 已接受连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1454"/>
+        <location filename="../src/gui/main_window.cpp" line="1469"/>
+        <source>%1 disconnected.</source>
+        <translation>%1 已断开连接。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1486"/>
         <source>Sent control &apos;%1&apos; to %2:%3</source>
         <translation>已向 %2:%3 发送控制消息 &apos;%1&apos;</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1475"/>
+        <location filename="../src/gui/main_window.cpp" line="1507"/>
         <source>Linked to %1</source>
         <translation>已连接到 %1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1476"/>
+        <location filename="../src/gui/main_window.cpp" line="1508"/>
         <source>Linked to %1.</source>
         <translation>已连接到 %1。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1480"/>
+        <location filename="../src/gui/main_window.cpp" line="1512"/>
         <source>Linked peer: %1 %2:%3</source>
         <translation>已连接设备：%1 %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1492"/>
+        <location filename="../src/gui/main_window.cpp" line="1524"/>
         <source>Disconnect machine</source>
         <translation>断开设备</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1493"/>
+        <location filename="../src/gui/main_window.cpp" line="1525"/>
         <source>There are active or queued sends. Stop and disconnect?</source>
         <translation>当前有正在发送或排队的任务。要停止并断开吗？</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1507"/>
+        <location filename="../src/gui/main_window.cpp" line="1543"/>
         <source>Disconnected.</source>
         <translation>已断开。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1511"/>
+        <location filename="../src/gui/main_window.cpp" line="1547"/>
         <source>Disconnected from %1</source>
         <translation>已断开与 %1 的连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1466"/>
-        <location filename="../src/gui/main_window.cpp" line="1522"/>
+        <location filename="../src/gui/main_window.cpp" line="1498"/>
+        <location filename="../src/gui/main_window.cpp" line="1558"/>
         <source>No linked machine.</source>
         <translation>没有已连接的设备。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1525"/>
+        <location filename="../src/gui/main_window.cpp" line="1561"/>
         <source>Queued %1 path(s) for sending.</source>
         <translation>已加入 %1 个路径准备发送。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1540"/>
+        <location filename="../src/gui/main_window.cpp" line="1576"/>
         <source>Failed to create clipboard image folder: %1</source>
         <translation>创建剪贴板图片目录失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1548"/>
+        <location filename="../src/gui/main_window.cpp" line="1584"/>
         <source>Failed to save clipboard image: %1</source>
         <translation>保存剪贴板图片失败：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1552"/>
+        <location filename="../src/gui/main_window.cpp" line="1588"/>
         <source>Saved clipboard image: %1</source>
         <translation>已保存剪贴板图片：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1556"/>
+        <location filename="../src/gui/main_window.cpp" line="1592"/>
         <source>Clipboard does not contain local files, folders, or images.</source>
         <translation>剪贴板中没有本地文件、文件夹或图片。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1559"/>
+        <location filename="../src/gui/main_window.cpp" line="1595"/>
         <source>Pasted %1 path(s) from clipboard.</source>
         <translation>已从剪贴板粘贴 %1 个路径。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1568"/>
+        <location filename="../src/gui/main_window.cpp" line="1604"/>
         <source>Queued send: %1</source>
         <translation>已排队发送：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1660"/>
+        <location filename="../src/gui/main_window.cpp" line="1696"/>
         <source>Removed queued send: %1</source>
         <translation>已移除排队发送：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1597"/>
+        <location filename="../src/gui/main_window.cpp" line="1633"/>
         <source>Sender config invalid for %1: %2</source>
         <translation>%1 的发送配置无效：%2</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1608"/>
+        <location filename="../src/gui/main_window.cpp" line="1644"/>
         <source>Starting send %1 -&gt; %2:%3</source>
         <translation>开始发送 %1 -&gt; %2:%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1629"/>
+        <location filename="../src/gui/main_window.cpp" line="1665"/>
         <source>Connect or send to %1:%2 failed: %3</source>
         <translation>连接或发送到 %1:%2 失败：%3</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1636"/>
+        <location filename="../src/gui/main_window.cpp" line="1672"/>
         <source>Send to %1:%2 completed.</source>
         <translation>发送到 %1:%2 已完成。</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1650"/>
+        <location filename="../src/gui/main_window.cpp" line="1686"/>
         <source>Sender stopped.</source>
         <translation>发送端已停止。</translation>
     </message>

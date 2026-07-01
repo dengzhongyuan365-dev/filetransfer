@@ -539,6 +539,8 @@ void MainWindow::apply_style() {
         #linkedBadge {
             color: #1d4ed8;
             background: #eaf1ff;
+            border: none;
+            min-height: 0px;
         }
         #offlineBadge {
             color: #6b7280;
@@ -994,6 +996,9 @@ void MainWindow::read_discovery() {
         } else if (type == "link_reject") {
             log_event(QCoreApplication::translate("MainWindow", "Received link reject from %1").arg(sender.toString()));
             receive_link_response(sender, obj, false);
+        } else if (type == "link_disconnect") {
+            log_event(QCoreApplication::translate("MainWindow", "Received link disconnect from %1").arg(sender.toString()));
+            receive_link_disconnect(sender, obj);
         }
     }
 }
@@ -1133,13 +1138,27 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     text_box->addWidget(meta);
 
     const auto linked = is_linked_peer(peer);
-    auto* badge = new QLabel(linked ? QCoreApplication::translate("MainWindow", "linked")
-                                    : peer.online ? QCoreApplication::translate("MainWindow", "online")
-                                                  : QCoreApplication::translate("MainWindow", "offline"),
-                             card);
-    badge->setObjectName(linked ? "linkedBadge" : peer.online ? "onlineBadge" : "offlineBadge");
-    badge->setAlignment(Qt::AlignCenter);
-    badge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    QWidget* badge = nullptr;
+    if (linked) {
+        auto* button = new QToolButton(card);
+        button->setObjectName("linkedBadge");
+        button->setText(QCoreApplication::translate("MainWindow", "linked"));
+        button->setToolTip(QCoreApplication::translate("MainWindow", "Disconnect"));
+        button->setAutoRaise(false);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        connect(button, &QToolButton::clicked, this, [this] {
+            disconnect_peer();
+        });
+        badge = button;
+    } else {
+        auto* label = new QLabel(peer.online ? QCoreApplication::translate("MainWindow", "online")
+                                             : QCoreApplication::translate("MainWindow", "offline"),
+                                 card);
+        label->setObjectName(peer.online ? "onlineBadge" : "offlineBadge");
+        label->setAlignment(Qt::AlignCenter);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        badge = label;
+    }
 
     auto* link = new QPushButton(linked ? QCoreApplication::translate("MainWindow", "Open")
                                         : QCoreApplication::translate("MainWindow", "Link"),
@@ -1438,6 +1457,19 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
     set_linked_peer(peers_.value(id));
 }
 
+void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj) {
+    if (obj.value("id").toString() == node_id_) {
+        return;
+    }
+    add_peer(address, obj);
+    const auto id = obj.value("id").toString();
+    if (linked_peer_.id.isEmpty() || linked_peer_.id != id) {
+        return;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(linked_peer_.name));
+    disconnect_peer(false, false);
+}
+
 void MainWindow::send_control(const Peer& peer, const QString& type, const QJsonObject& fields) {
     QJsonObject message{
         {"protocol", kProtocol},
@@ -1481,24 +1513,32 @@ void MainWindow::set_linked_peer(const Peer& peer) {
     stack_->setCurrentWidget(transfer_page_);
 }
 
-void MainWindow::disconnect_peer() {
+void MainWindow::disconnect_peer(bool notify_peer, bool confirm_active_sends) {
     if (linked_peer_.id.isEmpty()) {
         stack_->setCurrentWidget(peer_page_);
         return;
     }
     if (!can_switch_peer()) {
-        const auto answer = QMessageBox::question(
-            this,
-            QCoreApplication::translate("MainWindow", "Disconnect machine"),
-            QCoreApplication::translate("MainWindow", "There are active or queued sends. Stop and disconnect?"),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No);
-        if (answer != QMessageBox::Yes) {
-            return;
+        if (!confirm_active_sends) {
+            stop_sender();
+        } else {
+            const auto answer = QMessageBox::question(
+                this,
+                QCoreApplication::translate("MainWindow", "Disconnect machine"),
+                QCoreApplication::translate("MainWindow", "There are active or queued sends. Stop and disconnect?"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+            if (answer != QMessageBox::Yes) {
+                return;
+            }
+            stop_sender();
         }
-        stop_sender();
     }
 
+    const auto peer = linked_peer_;
+    if (notify_peer && !peer.id.isEmpty() && peer.online) {
+        send_control(peer, "link_disconnect");
+    }
     const auto name = linked_peer_.name;
     linked_peer_ = Peer{};
     pending_link_id_.clear();

@@ -92,11 +92,12 @@ private:
     void request_link(const QString& id);
     void receive_link_request(const QHostAddress& address, const QJsonObject& obj);
     void receive_link_response(const QHostAddress& address, const QJsonObject& obj, bool accepted);
+    void receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj);
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
     void link_peer(QListWidgetItem* item);
     void open_transfer_page();
     void set_linked_peer(const Peer& peer);
-    void disconnect_peer();
+    void disconnect_peer(bool notify_peer = true, bool confirm_active_sends = true);
     bool is_linked_peer(const Peer& peer) const;
 
     void send_paths(const QStringList& paths);
