@@ -152,6 +152,14 @@ scripts/package_deb.sh
 
 - [协议文档](docs/protocol.md)
 
+技术优化路线见：
+
+- [技术路线文档](docs/technical-roadmap.md)
+
+开发过程复盘见：
+
+- [开发日志](docs/development-log.zh_CN.md)
+
 ## 技术设计现状
 
 ### 网络层
