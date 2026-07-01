@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QHostAddress>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 #include <QWidget>
 
@@ -80,11 +81,16 @@ private:
     QToolButton* make_task_tool_button(const QIcon& icon, const QString& tooltip, QWidget* parent);
     QString transfer_rate_text(const TransferSnapshot& snapshot) const;
     QString transfer_size_text(const TransferSnapshot& snapshot) const;
+    QString transfer_detail_text(const TransferSnapshot& snapshot) const;
     bool can_stop_transfer(const TransferSnapshot& snapshot) const;
     bool can_clear_transfer(const TransferSnapshot& snapshot) const;
     bool can_open_transfer_dir(const TransferSnapshot& snapshot) const;
+    bool can_resume_transfer(const TransferSnapshot& snapshot) const;
     QString transfer_open_dir(const TransferSnapshot& snapshot) const;
     void open_transfer_dir(const QString& key);
+    void show_receive_history();
+    void record_receive_history(const TransferSnapshot& snapshot);
+    void resume_transfer(const QString& key);
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
     void remove_transfer_snapshot(const QString& key);
@@ -133,6 +139,7 @@ private:
     QMap<QString, Peer> peers_;
     QMap<QString, QWidget*> transfer_cards_;
     QMap<QString, TransferSnapshot> transfer_snapshots_;
+    QSet<QString> recorded_history_keys_;
     Peer linked_peer_;
     QString pending_link_id_;
     QString pending_link_code_;

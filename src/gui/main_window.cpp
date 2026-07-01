@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDialog>
 #include <QDir>
 #include <QFileDialog>
 #include <QFrame>
@@ -66,6 +67,7 @@ namespace lan::gui {
 namespace {
 
 constexpr int kMaxRememberedPeers = 10;
+constexpr int kMaxReceiveHistory = 100;
 
 QString snapshot_key(const TransferSnapshot& snapshot) {
     const auto direction = snapshot.direction == TransferDirection::receive ? "receive" : "send";
@@ -108,6 +110,22 @@ QString state_text(TransferState state) {
             return QCoreApplication::translate("MainWindow", "cancelled");
     }
     return to_qstring(std::string(transfer_state_name(state)));
+}
+
+QString kind_text(TransferKind kind) {
+    switch (kind) {
+        case TransferKind::file:
+            return QCoreApplication::translate("MainWindow", "file");
+        case TransferKind::directory:
+            return QCoreApplication::translate("MainWindow", "folder");
+    }
+    return {};
+}
+
+bool is_terminal_state(TransferState state) {
+    return state == TransferState::completed ||
+           state == TransferState::failed ||
+           state == TransferState::cancelled;
 }
 
 QString make_link_code() {
@@ -393,6 +411,8 @@ QWidget* MainWindow::build_transfer_page() {
 
     linked_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Not linked"), transfer_page_);
     linked_label_->setObjectName("title");
+    auto* history = new QPushButton(QCoreApplication::translate("MainWindow", "History"), transfer_page_);
+    history->setObjectName("secondaryButton");
     auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
     auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
@@ -400,6 +420,7 @@ QWidget* MainWindow::build_transfer_page() {
 
     auto* header = new QHBoxLayout();
     header->addWidget(linked_label_, 1);
+    header->addWidget(history);
     header->addWidget(disconnect);
     header->addWidget(back);
 
@@ -442,6 +463,9 @@ QWidget* MainWindow::build_transfer_page() {
 
     connect(back, &QPushButton::clicked, this, [this] {
         stack_->setCurrentWidget(peer_page_);
+    });
+    connect(history, &QPushButton::clicked, this, [this] {
+        show_receive_history();
     });
     connect(disconnect, &QPushButton::clicked, this, [this] {
         disconnect_peer();
@@ -524,6 +548,10 @@ void MainWindow::apply_style() {
         }
         #peerMeta, #transferMeta, #transferMetric {
             color: #717b8b;
+            font-size: 12px;
+        }
+        #transferDetail {
+            color: #5f6978;
             font-size: 12px;
         }
         #transferMetric {
@@ -629,7 +657,7 @@ void MainWindow::apply_style() {
             border-color: #e2e7ef;
             color: #9aa3b2;
         }
-        #taskOpenButton, #taskStopButton, #taskRemoveButton {
+        #taskResumeButton, #taskOpenButton, #taskStopButton, #taskRemoveButton {
             min-width: 24px;
             max-width: 24px;
             min-height: 24px;
@@ -651,6 +679,21 @@ void MainWindow::apply_style() {
             color: #1e40af;
         }
         #taskOpenButton:disabled {
+            color: #a6adb8;
+            background: #f3f4f6;
+        }
+        #taskResumeButton {
+            color: #087443;
+        }
+        #taskResumeButton:hover {
+            background: #e7f8ef;
+            color: #06643a;
+        }
+        #taskResumeButton:pressed {
+            background: #d4f1e1;
+            color: #055730;
+        }
+        #taskResumeButton:disabled {
             color: #a6adb8;
             background: #f3f4f6;
         }
@@ -1188,6 +1231,16 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     name->setObjectName("transferName");
     name->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
 
+    auto* detail = new ElidedLabel(transfer_detail_text(snapshot), card);
+    detail->setObjectName("transferDetail");
+    detail->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto* text_box = new QVBoxLayout();
+    text_box->setContentsMargins(0, 0, 0, 0);
+    text_box->setSpacing(2);
+    text_box->addWidget(name);
+    text_box->addWidget(detail);
+
     auto* rate = make_metric_label(QCoreApplication::translate("MainWindow", "Speed"), transfer_rate_text(snapshot), card);
     rate->setFixedWidth(40);
     rate->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
@@ -1204,6 +1257,13 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     auto* actions = new QHBoxLayout();
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(4);
+    auto* resume = make_task_tool_button(
+        QApplication::style()->standardIcon(QStyle::SP_ArrowForward), QCoreApplication::translate("MainWindow", "Resume transfer"), card);
+    resume->setObjectName("taskResumeButton");
+    resume->setEnabled(can_resume_transfer(snapshot));
+    connect(resume, &QToolButton::clicked, this, [this, key] {
+        resume_transfer(key);
+    });
     auto* open = make_task_tool_button(
         QApplication::style()->standardIcon(QStyle::SP_DirOpenIcon), QCoreApplication::translate("MainWindow", "Open containing folder"), card);
     open->setObjectName("taskOpenButton");
@@ -1225,12 +1285,13 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     connect(remove, &QToolButton::clicked, this, [this, key] {
         remove_transfer_card(key);
     });
+    actions->addWidget(resume);
     actions->addWidget(open);
     actions->addWidget(stop);
     actions->addWidget(remove);
     actions->setSizeConstraint(QLayout::SetFixedSize);
 
-    row->addWidget(name, 1);
+    row->addLayout(text_box, 1);
     row->addWidget(rate, 0);
     row->addWidget(size, 0);
     row->addWidget(state, 0);
@@ -1274,6 +1335,40 @@ QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
     return to_qstring(format_size(snapshot.total_bytes));
 }
 
+QString MainWindow::transfer_detail_text(const TransferSnapshot& snapshot) const {
+    if (snapshot.state == TransferState::pending && snapshot.direction == TransferDirection::send) {
+        return QCoreApplication::translate("MainWindow", "Queued. Resume is enabled if a partial file exists.");
+    }
+    if ((snapshot.state == TransferState::failed || snapshot.state == TransferState::cancelled) &&
+        snapshot.direction == TransferDirection::send) {
+        return can_resume_transfer(snapshot)
+                   ? QCoreApplication::translate("MainWindow", "Can continue with resume.")
+                   : QCoreApplication::translate("MainWindow", "Cannot continue. Check the source file or linked machine.");
+    }
+    if (snapshot.completion_status == TransferCompletionStatus::skipped) {
+        return QCoreApplication::translate("MainWindow", "Skipped because target already matches.");
+    }
+    if (snapshot.resumed_from > 0) {
+        return QCoreApplication::translate("MainWindow", "Resumed from %1")
+            .arg(to_qstring(format_size(snapshot.resumed_from)));
+    }
+    if (snapshot.kind == TransferKind::directory &&
+        (snapshot.skipped_files > 0 || snapshot.delta_files > 0 || snapshot.full_files > 0)) {
+        return QCoreApplication::translate("MainWindow", "Skipped %1, Delta %2, Full %3, Payload %4")
+            .arg(snapshot.skipped_files)
+            .arg(snapshot.delta_files)
+            .arg(snapshot.full_files)
+            .arg(to_qstring(format_size(snapshot.payload_bytes)));
+    }
+    if (snapshot.error.has_value()) {
+        return to_qstring(format_error(*snapshot.error));
+    }
+    if (snapshot.direction == TransferDirection::send) {
+        return QCoreApplication::translate("MainWindow", "Resume is enabled for interrupted transfers.");
+    }
+    return QCoreApplication::translate("MainWindow", "Saved in the receiving folder.");
+}
+
 bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
     return snapshot.state == TransferState::running;
 }
@@ -1288,6 +1383,18 @@ bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
 bool MainWindow::can_open_transfer_dir(const TransferSnapshot& snapshot) const {
     return snapshot.direction == TransferDirection::receive &&
            !transfer_open_dir(snapshot).isEmpty();
+}
+
+bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
+    if (snapshot.direction != TransferDirection::send ||
+        (snapshot.state != TransferState::failed && snapshot.state != TransferState::cancelled) ||
+        linked_peer_.id.isEmpty() ||
+        snapshot.path.empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    return std::filesystem::exists(snapshot.path, ec);
 }
 
 QString MainWindow::transfer_open_dir(const TransferSnapshot& snapshot) const {
@@ -1315,6 +1422,157 @@ void MainWindow::open_transfer_dir(const QString& key) {
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Opened folder: %1").arg(dir));
+}
+
+void MainWindow::show_receive_history() {
+    auto settings = app_settings();
+    const auto history = settings.value(QStringLiteral("receiveHistory")).toList();
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Receive history"));
+    dialog.resize(520, 520);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(10);
+
+    auto* list = new QListWidget(&dialog);
+    list->setFrameShape(QFrame::NoFrame);
+    list->setWordWrap(true);
+    list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+
+    if (history.isEmpty()) {
+        auto* item = new QListWidgetItem(QCoreApplication::translate("MainWindow", "No receive history yet."));
+        item->setFlags(Qt::NoItemFlags);
+        list->addItem(item);
+    } else {
+        for (const auto& value : history) {
+            const auto map = value.toMap();
+            const auto finished_at = QDateTime::fromMSecsSinceEpoch(map.value(QStringLiteral("finishedAt")).toLongLong());
+            const auto state = state_text(static_cast<TransferState>(map.value(QStringLiteral("state")).toInt()));
+            const auto kind = kind_text(static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt()));
+            const auto name = map.value(QStringLiteral("name")).toString();
+            const auto path = map.value(QStringLiteral("path")).toString();
+            const auto open_dir = map.value(QStringLiteral("openDir")).toString();
+            const auto bytes = map.value(QStringLiteral("bytes")).toULongLong();
+            const auto files = map.value(QStringLiteral("files")).toULongLong();
+            const auto error = map.value(QStringLiteral("error")).toString();
+            const auto amount = files > 0
+                                    ? QCoreApplication::translate("MainWindow", "%1 file(s)").arg(files)
+                                    : to_qstring(format_size(bytes));
+            auto text = QStringLiteral("%1\n%2 · %3 · %4 · %5\n%6")
+                            .arg(name,
+                                 state,
+                                 kind,
+                                 amount,
+                                 finished_at.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                                 path);
+            if (!error.isEmpty()) {
+                text += QStringLiteral("\n%1").arg(error);
+            }
+            auto* item = new QListWidgetItem(text);
+            item->setData(Qt::UserRole, open_dir);
+            item->setSizeHint(QSize(0, error.isEmpty() ? 72 : 92));
+            list->addItem(item);
+        }
+    }
+
+    auto* buttons = new QHBoxLayout();
+    auto* open = new QPushButton(QCoreApplication::translate("MainWindow", "Open folder"), &dialog);
+    open->setObjectName("secondaryButton");
+    auto* clear = new QPushButton(QCoreApplication::translate("MainWindow", "Clear history"), &dialog);
+    clear->setObjectName("secondaryButton");
+    auto* close = new QPushButton(QCoreApplication::translate("MainWindow", "Close"), &dialog);
+    close->setObjectName("primaryButton");
+    open->setEnabled(!history.isEmpty());
+    clear->setEnabled(!history.isEmpty());
+    buttons->addWidget(open);
+    buttons->addWidget(clear);
+    buttons->addStretch(1);
+    buttons->addWidget(close);
+
+    layout->addWidget(list, 1);
+    layout->addLayout(buttons);
+
+    const auto open_selected = [this, list] {
+        auto* item = list->currentItem();
+        if (item == nullptr) {
+            return;
+        }
+        const auto dir = item->data(Qt::UserRole).toString();
+        if (dir.isEmpty()) {
+            show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this history item."));
+            return;
+        }
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
+            show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
+        }
+    };
+
+    connect(open, &QPushButton::clicked, this, open_selected);
+    connect(list, &QListWidget::itemDoubleClicked, this, open_selected);
+    connect(clear, &QPushButton::clicked, this, [&dialog, this] {
+        auto settings = app_settings();
+        settings.remove(QStringLiteral("receiveHistory"));
+        recorded_history_keys_.clear();
+        log_event(QCoreApplication::translate("MainWindow", "Receive history cleared."));
+        dialog.accept();
+    });
+    connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    dialog.exec();
+}
+
+void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {
+    if (snapshot.direction != TransferDirection::receive || !is_terminal_state(snapshot.state)) {
+        return;
+    }
+
+    const auto key = snapshot_key(snapshot);
+    if (recorded_history_keys_.contains(key)) {
+        return;
+    }
+    recorded_history_keys_.insert(key);
+
+    QVariantMap entry;
+    entry.insert(QStringLiteral("finishedAt"), QDateTime::currentMSecsSinceEpoch());
+    entry.insert(QStringLiteral("state"), static_cast<int>(snapshot.state));
+    entry.insert(QStringLiteral("kind"), static_cast<int>(snapshot.kind));
+    entry.insert(QStringLiteral("name"), QString::fromStdString(snapshot.name));
+    entry.insert(QStringLiteral("path"), to_qstring(snapshot.path));
+    entry.insert(QStringLiteral("openDir"), transfer_open_dir(snapshot));
+    entry.insert(QStringLiteral("bytes"), QVariant::fromValue<qulonglong>(snapshot.total_bytes));
+    entry.insert(QStringLiteral("files"), QVariant::fromValue<qulonglong>(
+                                           snapshot.total_files > 0 ? snapshot.total_files : snapshot.processed_files));
+    if (snapshot.error.has_value()) {
+        entry.insert(QStringLiteral("error"), to_qstring(format_error(*snapshot.error)));
+    }
+
+    auto settings = app_settings();
+    auto history = settings.value(QStringLiteral("receiveHistory")).toList();
+    history.prepend(entry);
+    while (history.size() > kMaxReceiveHistory) {
+        history.removeLast();
+    }
+    settings.setValue(QStringLiteral("receiveHistory"), history);
+}
+
+void MainWindow::resume_transfer(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end()) {
+        return;
+    }
+    const auto snapshot = it.value();
+    if (!can_resume_transfer(snapshot)) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be resumed."));
+        return;
+    }
+
+    const auto path = to_qstring(snapshot.path);
+    log_event(QCoreApplication::translate("MainWindow", "Resuming transfer: %1").arg(path));
+    remove_transfer_snapshot(key);
+    enqueue_sender_path(path);
+    start_next_sender();
 }
 
 void MainWindow::stop_transfer(const QString& key) {
@@ -1723,6 +1981,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot) {
     if (empty_transfer_label_ != nullptr) {
         empty_transfer_label_->hide();
     }
+    record_receive_history(snapshot);
     const auto key = snapshot_key(snapshot);
     transfer_snapshots_.insert(key, snapshot);
     if (transfer_cards_.contains(key)) {
