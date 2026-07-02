@@ -69,6 +69,7 @@ if(Qt6_FOUND)
         gui/main_window.cpp
         gui/qt_utils.cpp
         gui/target_dialogs.cpp
+        gui/transfer_card.cpp
         gui/transfer_events.cpp
         gui/transfer_list_model.cpp
         gui_main.cpp

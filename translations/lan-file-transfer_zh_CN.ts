@@ -1077,4 +1077,52 @@ Code: %2</source>
         <translation>请选择一台已连接设备。</translation>
     </message>
 </context>
+<context>
+    <name>TransferCard</name>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="38"/>
+        <source>Resume queued transfer</source>
+        <translation>恢复排队任务</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="41"/>
+        <source>Change target machine</source>
+        <translation>更换目标设备</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="43"/>
+        <source>Resume transfer</source>
+        <translation>继续传输</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="48"/>
+        <source>Pause queued transfer</source>
+        <translation>暂停排队任务</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="49"/>
+        <source>Stop transfer</source>
+        <translation>停止传输</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="80"/>
+        <source>Speed</source>
+        <translation>速度</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="83"/>
+        <source>Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="111"/>
+        <source>Open containing folder</source>
+        <translation>打开所在目录</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/transfer_card.cpp" line="135"/>
+        <source>Clear from list</source>
+        <translation>从列表清除</translation>
+    </message>
+</context>
 </TS>

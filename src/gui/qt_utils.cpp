@@ -2,6 +2,11 @@
 
 #include <QDir>
 #include <QHostInfo>
+#include <QPainter>
+#include <QSize>
+#include <QSizePolicy>
+
+#include <utility>
 
 namespace lan::gui {
 
@@ -24,6 +29,21 @@ QString default_receive_dir() {
 QString machine_name() {
     const auto name = QHostInfo::localHostName();
     return name.isEmpty() ? "unknown" : name;
+}
+
+ElidedLabel::ElidedLabel(QString text, QWidget* parent) : QLabel(parent), full_text_(std::move(text)) {
+    setToolTip(full_text_);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+}
+
+QSize ElidedLabel::minimumSizeHint() const {
+    return QSize(16, QLabel::minimumSizeHint().height());
+}
+
+void ElidedLabel::paintEvent(QPaintEvent*) {
+    QPainter painter(this);
+    const auto text = fontMetrics().elidedText(full_text_, Qt::ElideMiddle, width());
+    painter.drawText(rect(), alignment() | Qt::TextSingleLine, text);
 }
 
 }  // namespace lan::gui

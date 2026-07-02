@@ -24,7 +24,6 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
-#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -62,6 +61,7 @@
 #include "gui/drop_panel.h"
 #include "gui/qt_utils.h"
 #include "gui/target_dialogs.h"
+#include "gui/transfer_card.h"
 #include "gui/transfer_events.h"
 #include "lan/app/receiver_config.h"
 #include "lan/common/error.h"
@@ -258,28 +258,6 @@ QIcon application_icon() {
     }
     return QApplication::style()->standardIcon(QStyle::SP_ComputerIcon);
 }
-
-class ElidedLabel final : public QLabel {
-public:
-    explicit ElidedLabel(QString text, QWidget* parent = nullptr) : QLabel(parent), full_text_(std::move(text)) {
-        setToolTip(full_text_);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    }
-
-    QSize minimumSizeHint() const override {
-        return QSize(16, QLabel::minimumSizeHint().height());
-    }
-
-protected:
-    void paintEvent(QPaintEvent*) override {
-        QPainter painter(this);
-        const auto text = fontMetrics().elidedText(full_text_, Qt::ElideMiddle, width());
-        painter.drawText(rect(), alignment() | Qt::TextSingleLine, text);
-    }
-
-private:
-    QString full_text_;
-};
 
 }  // namespace
 
@@ -1572,124 +1550,55 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
 
 QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     const auto key = transfer_snapshot_key(snapshot);
-    auto* card = new QFrame(transfer_page_);
-    card->setObjectName("transferCard");
-    auto* row = new QHBoxLayout(card);
-    row->setContentsMargins(8, 9, 8, 9);
-    row->setSpacing(4);
-
-    auto* name = new ElidedLabel(QString::fromStdString(snapshot.name), card);
-    name->setObjectName("transferName");
-    name->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-
-    auto* detail = new ElidedLabel(transfer_detail_text(snapshot), card);
-    detail->setObjectName("transferDetail");
-    detail->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-
-    auto* text_box = new QVBoxLayout();
-    text_box->setContentsMargins(0, 0, 0, 0);
-    text_box->setSpacing(2);
-    text_box->addWidget(name);
-    text_box->addWidget(detail);
-
-    auto* rate = make_metric_label(QCoreApplication::translate("MainWindow", "Speed"), transfer_rate_text(snapshot), card);
-    rate->setFixedWidth(40);
-    rate->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    auto* size = make_metric_label(QCoreApplication::translate("MainWindow", "Size"), transfer_size_text(snapshot), card);
-    size->setFixedWidth(62);
-    size->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-
-    auto* state = new QLabel(state_text(snapshot.state), card);
-    state->setObjectName("stateBadge");
-    state->setAlignment(Qt::AlignCenter);
-    state->setFixedWidth(76);
-    state->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-
-    auto* actions = new QHBoxLayout();
-    actions->setContentsMargins(0, 0, 0, 0);
-    actions->setSpacing(4);
     const auto can_change_target = can_change_transfer_target(snapshot);
     const auto can_resume_queue = can_resume_queued_transfer(snapshot);
-    auto* resume = make_task_tool_button(
-        QApplication::style()->standardIcon(can_change_target ? QStyle::SP_ComputerIcon : QStyle::SP_ArrowForward),
-        can_resume_queue ? QCoreApplication::translate("MainWindow", "Resume queued transfer")
-                         : (can_change_target ? QCoreApplication::translate("MainWindow", "Change target machine")
-                                              : QCoreApplication::translate("MainWindow", "Resume transfer")),
-        card);
-    resume->setObjectName("taskResumeButton");
-    resume->setEnabled(can_resume_queue || can_change_target || can_resume_transfer(snapshot));
-    connect(resume, &QToolButton::clicked, this, [this, key] {
-        TransferSnapshot snapshot;
-        if (transfer_model_.try_snapshot(key, &snapshot) && can_resume_queued_transfer(snapshot)) {
-            resume_queued_transfer(key);
-            return;
-        }
-        if (transfer_model_.try_snapshot(key, &snapshot) && can_change_transfer_target(snapshot)) {
-            change_transfer_target(key);
-            return;
-        }
-        resume_transfer(key);
-    });
-    auto* open = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DirOpenIcon), QCoreApplication::translate("MainWindow", "Open containing folder"), card);
-    open->setObjectName("taskOpenButton");
-    open->setEnabled(can_open_transfer_dir(snapshot));
-    connect(open, &QToolButton::clicked, this, [this, key] {
-        open_transfer_dir(key);
-    });
     const auto can_pause = can_pause_transfer(snapshot);
-    auto* stop = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_MediaStop),
-        can_pause ? QCoreApplication::translate("MainWindow", "Pause queued transfer")
-                  : QCoreApplication::translate("MainWindow", "Stop transfer"),
-        card);
-    stop->setObjectName("taskStopButton");
-    stop->setEnabled(can_pause || can_stop_transfer(snapshot));
-    connect(stop, &QToolButton::clicked, this, [this, key] {
-        TransferSnapshot snapshot;
-        if (transfer_model_.try_snapshot(key, &snapshot) && can_pause_transfer(snapshot)) {
-            pause_transfer(key);
-            return;
-        }
-        stop_transfer(key);
-    });
-    auto* remove = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton), QCoreApplication::translate("MainWindow", "Clear from list"), card);
-    remove->setObjectName("taskRemoveButton");
-    remove->setEnabled(can_clear_transfer(snapshot));
-    connect(remove, &QToolButton::clicked, this, [this, key] {
-        remove_transfer_card(key);
-    });
-    actions->addWidget(resume);
-    actions->addWidget(open);
-    actions->addWidget(stop);
-    actions->addWidget(remove);
-    actions->setSizeConstraint(QLayout::SetFixedSize);
-
-    row->addLayout(text_box, 1);
-    row->addWidget(rate, 0);
-    row->addWidget(size, 0);
-    row->addWidget(state, 0);
-    row->addLayout(actions);
-    return card;
-}
-
-QLabel* MainWindow::make_metric_label(const QString& title, const QString& value, QWidget* parent) {
-    auto* label = new QLabel(QString("%1\n%2").arg(title, value), parent);
-    label->setObjectName("transferMetric");
-    label->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-    return label;
-}
-
-QToolButton* MainWindow::make_task_tool_button(const QIcon& icon,
-                                               const QString& tooltip,
-                                               QWidget* parent) {
-    auto* button = new QToolButton(parent);
-    button->setIcon(icon);
-    button->setIconSize(QSize(12, 12));
-    button->setToolTip(tooltip);
-    button->setFixedSize(24, 24);
-    return button;
+    return new TransferCard(
+        snapshot,
+        TransferCardText{
+            .detail = transfer_detail_text(snapshot),
+            .speed = transfer_rate_text(snapshot),
+            .size = transfer_size_text(snapshot),
+            .state = state_text(snapshot.state),
+        },
+        TransferCardActions{
+            .resume_enabled = can_resume_queue || can_change_target || can_resume_transfer(snapshot),
+            .open_enabled = can_open_transfer_dir(snapshot),
+            .stop_enabled = can_pause || can_stop_transfer(snapshot),
+            .remove_enabled = can_clear_transfer(snapshot),
+            .resume_queued = can_resume_queue,
+            .change_target = can_change_target,
+            .pause = can_pause,
+        },
+        TransferCardCallbacks{
+            .on_resume = [this, key] {
+                TransferSnapshot snapshot;
+                if (transfer_model_.try_snapshot(key, &snapshot) && can_resume_queued_transfer(snapshot)) {
+                    resume_queued_transfer(key);
+                    return;
+                }
+                if (transfer_model_.try_snapshot(key, &snapshot) && can_change_transfer_target(snapshot)) {
+                    change_transfer_target(key);
+                    return;
+                }
+                resume_transfer(key);
+            },
+            .on_open = [this, key] {
+                open_transfer_dir(key);
+            },
+            .on_stop = [this, key] {
+                TransferSnapshot snapshot;
+                if (transfer_model_.try_snapshot(key, &snapshot) && can_pause_transfer(snapshot)) {
+                    pause_transfer(key);
+                    return;
+                }
+                stop_transfer(key);
+            },
+            .on_remove = [this, key] {
+                remove_transfer_card(key);
+            },
+        },
+        transfer_page_);
 }
 
 QString MainWindow::transfer_rate_text(const TransferSnapshot& snapshot) const {

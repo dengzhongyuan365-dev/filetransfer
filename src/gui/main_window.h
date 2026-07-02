@@ -82,8 +82,6 @@ private:
     QWidget* make_empty_peer_card(const QString& text);
     QWidget* make_peer_card(const Peer& peer);
     QWidget* make_transfer_card(const TransferSnapshot& snapshot);
-    QLabel* make_metric_label(const QString& title, const QString& value, QWidget* parent);
-    QToolButton* make_task_tool_button(const QIcon& icon, const QString& tooltip, QWidget* parent);
     QString transfer_rate_text(const TransferSnapshot& snapshot) const;
     QString transfer_size_text(const TransferSnapshot& snapshot) const;
     QString transfer_detail_text(const TransferSnapshot& snapshot) const;
