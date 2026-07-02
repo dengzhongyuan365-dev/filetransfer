@@ -14,6 +14,7 @@ struct Peer {
     QString id;
     QString name;
     QString host;
+    QString trust_token;
     std::uint16_t port = kTransferPort;
     bool online = true;
     bool linked = false;

@@ -234,30 +234,31 @@ graph TD
 
 ### 5.2 设备信任模型
 
-设备信任用于减少重复弹窗。它不是完整的密码学身份认证，而是基于本机保存的设备稳定 ID 的轻量信任：
+设备信任用于减少重复弹窗。它不是完整的密码学身份认证，而是基于本机保存的设备稳定 ID 和配对信任令牌的轻量信任：
 
 - 首次连接仍然需要验证码弹窗确认。
-- 用户接受连接后，本机把对端 `node_id` 标记为 trusted。
-- 发起方收到接受后，也把对端标记为 trusted。
-- 下次同一个 `node_id` 发起连接时，接收方自动接受，不再弹窗。
+- 用户接受连接后，本机生成 `trustToken`，把对端 `node_id` 和 token 一起标记为 trusted。
+- 发起方收到接受后，也保存同一个 `trustToken`。
+- 下次同一个 `node_id` 发起连接时，请求里会带上 `trustToken`。
+- 接收方只有在 `node_id` 和 `trustToken` 都匹配时才自动接受，不再弹窗。
 - 用户可以在设备列表点击“已信任”状态取消信任。
 - 取消信任不会强制断开当前连接，只影响下一次连接请求。
 
-信任信息随 remembered peer 一起保存到 `QSettings`，字段包括 `trusted` 和 `trustedAt`。如果手动添加的设备后来通过发现拿到了真实 `node_id`，`DeviceManager` 会按 endpoint 合并设备，并保留已有信任状态。
+信任信息随 remembered peer 一起保存到 `QSettings`，字段包括 `trusted`、`trustedAt` 和 `trustToken`。如果手动添加的设备后来通过发现拿到了真实 `node_id`，`DeviceManager` 会按 endpoint 合并设备，并保留已有信任状态和 token。
 
 ```mermaid
 sequenceDiagram
     participant A as Machine A
     participant B as Machine B
     A->>B: link_request with code
-    B->>B: check trusted by node_id
+    B->>B: check trusted by node_id and trustToken
     alt First link
         B->>B: show confirm dialog
-        B->>B: save trusted peer
-        B->>A: link_accept
-        A->>A: save trusted peer
+        B->>B: generate and save trustToken
+        B->>A: link_accept with trustToken
+        A->>A: save trusted peer and trustToken
     else Already trusted
-        B->>A: link_accept automatically
+        B->>A: link_accept automatically with trustToken
     end
     A->>B: file transfer tasks
 ```

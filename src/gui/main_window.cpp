@@ -122,6 +122,10 @@ QString make_link_code() {
     return QString::number(value);
 }
 
+QString make_trust_token() {
+    return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
 qint64 now_ms() {
     return QDateTime::currentMSecsSinceEpoch();
 }
@@ -1242,6 +1246,7 @@ void MainWindow::load_remembered_peers() {
             .id = settings.value(QStringLiteral("id")).toString(),
             .name = settings.value(QStringLiteral("name"), QCoreApplication::translate("MainWindow", "Unknown")).toString(),
             .host = settings.value(QStringLiteral("host")).toString(),
+            .trust_token = settings.value(QStringLiteral("trustToken")).toString(),
             .port = static_cast<std::uint16_t>(settings.value(QStringLiteral("port"), kTransferPort).toUInt()),
             .online = false,
             .linked = false,
@@ -1296,6 +1301,7 @@ void MainWindow::save_remembered_peers() {
         settings.setValue(QStringLiteral("id"), peers.at(i).id);
         settings.setValue(QStringLiteral("name"), peers.at(i).name);
         settings.setValue(QStringLiteral("host"), peers.at(i).host);
+        settings.setValue(QStringLiteral("trustToken"), peers.at(i).trust_token);
         settings.setValue(QStringLiteral("port"), static_cast<int>(peers.at(i).port));
         settings.setValue(QStringLiteral("trusted"), peers.at(i).trusted);
         settings.setValue(QStringLiteral("lastSeen"), peers.at(i).last_seen_ms);
@@ -2307,7 +2313,11 @@ void MainWindow::request_link(const QString& id) {
                   .arg(peer.name, peer.host)
                   .arg(peer.port)
                   .arg(code));
-    send_control(peer, "link_request", QJsonObject{{"code", code}});
+    QJsonObject fields{{"code", code}};
+    if (peer.trusted && !peer.trust_token.isEmpty()) {
+        fields.insert(QStringLiteral("trustToken"), peer.trust_token);
+    }
+    send_control(peer, "link_request", fields);
 }
 
 void MainWindow::receive_link_request(const QHostAddress& address, const QJsonObject& obj) {
@@ -2321,13 +2331,14 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     }
     const auto peer = devices_.peer(id);
     const auto code = obj.value("code").toString();
+    const auto trust_token = obj.value("trustToken").toString();
     log_event(QCoreApplication::translate("MainWindow", "Link request from %1 %2:%3 code=%4")
                   .arg(peer.name, peer.host)
                   .arg(peer.port)
                   .arg(code));
-    if (devices_.is_trusted_peer(peer)) {
+    if (devices_.can_auto_accept_peer(peer, trust_token)) {
         log_event(QCoreApplication::translate("MainWindow", "Auto accepted trusted peer: %1").arg(peer.name));
-        send_control(peer, "link_accept", QJsonObject{{"code", code}, {"trusted", true}});
+        send_control(peer, "link_accept", QJsonObject{{"code", code}, {"trusted", true}, {"trustToken", peer.trust_token}});
         set_linked_peer(peer, !has_active_peer());
         return;
     }
@@ -2339,8 +2350,9 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
         QMessageBox::Yes);
     if (answer == QMessageBox::Yes) {
         log_event(QCoreApplication::translate("MainWindow", "Accepted link request from %1").arg(peer.name));
-        send_control(peer, "link_accept", QJsonObject{{"code", code}});
-        const auto trusted = trust_peer(peer.id);
+        const auto token = make_trust_token();
+        const auto trusted = trust_peer(peer.id, token);
+        send_control(trusted, "link_accept", QJsonObject{{"code", code}, {"trusted", true}, {"trustToken", token}});
         set_linked_peer(trusted, !has_active_peer());
     } else {
         log_event(QCoreApplication::translate("MainWindow", "Rejected link request from %1").arg(peer.name));
@@ -2365,7 +2377,7 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(devices_.peer(id).name));
-    const auto trusted = trust_peer(id);
+    const auto trusted = trust_peer(id, obj.value("trustToken").toString());
     set_linked_peer(trusted, true);
 }
 
@@ -2390,8 +2402,8 @@ void MainWindow::send_control(const Peer& peer, const QString& type, const QJson
     log_event(QCoreApplication::translate("MainWindow", "Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
 }
 
-Peer MainWindow::trust_peer(const QString& id) {
-    auto peer = devices_.trust_peer(id, now_ms());
+Peer MainWindow::trust_peer(const QString& id, const QString& trust_token) {
+    auto peer = devices_.trust_peer(id, now_ms(), trust_token);
     if (peer.id.isEmpty()) {
         return peer;
     }

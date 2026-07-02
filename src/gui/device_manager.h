@@ -46,7 +46,8 @@ public:
     QStringList linked_peer_ids() const;
     bool is_linked_peer(const Peer& peer) const;
     bool is_trusted_peer(const Peer& peer) const;
-    Peer trust_peer(const QString& id, qint64 now_ms);
+    bool can_auto_accept_peer(const Peer& peer, const QString& trust_token) const;
+    Peer trust_peer(const QString& id, qint64 now_ms, const QString& trust_token = {});
     bool untrust_peer(const QString& id, Peer* updated_peer = nullptr);
 
     QStringList send_target_peer_ids() const;
