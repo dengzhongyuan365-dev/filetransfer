@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -17,17 +18,30 @@
 
 namespace lan::gui {
 
-std::optional<SettingsDialogState> edit_settings(QWidget* parent, const SettingsDialogState& state) {
+std::optional<SettingsDialogState> edit_settings(QWidget* parent,
+                                                 const SettingsDialogState& state,
+                                                 std::function<void(QWidget*)> show_debug_logs) {
     QDialog dialog(parent);
     dialog.setWindowTitle(QCoreApplication::translate("SettingsDialog", "Settings"));
-    dialog.resize(360, 450);
+    dialog.resize(360, 500);
+    dialog.setMinimumSize(340, 430);
 
     auto* layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(14, 14, 14, 14);
-    layout->setSpacing(9);
+    layout->setSpacing(10);
 
     auto* title = new QLabel(QCoreApplication::translate("SettingsDialog", "Settings"), &dialog);
     title->setObjectName("dialogTitle");
+
+    auto* scroll = new QScrollArea(&dialog);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* content = new QWidget(scroll);
+    auto* content_layout = new QVBoxLayout(content);
+    content_layout->setContentsMargins(0, 0, 8, 0);
+    content_layout->setSpacing(8);
+
     auto* receive_label = new QLabel(QCoreApplication::translate("SettingsDialog", "Receiving folder"), &dialog);
     receive_label->setObjectName("mutedText");
 
@@ -64,9 +78,15 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
     auto* max_global_sends = new QSpinBox(&dialog);
     max_global_sends->setRange(1, 8);
     max_global_sends->setValue(state.max_global_sends);
+    max_global_sends->setAlignment(Qt::AlignCenter);
+    max_global_sends->setMinimumWidth(96);
+    max_global_sends->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto* max_peer_sends = new QSpinBox(&dialog);
     max_peer_sends->setRange(1, 4);
     max_peer_sends->setValue(state.max_peer_sends);
+    max_peer_sends->setAlignment(Qt::AlignCenter);
+    max_peer_sends->setMinimumWidth(96);
+    max_peer_sends->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     auto* global_row = new QHBoxLayout();
     global_row->setSpacing(8);
@@ -99,6 +119,17 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
             break;
     }
 
+    auto* debug_row = new QHBoxLayout();
+    debug_row->setSpacing(8);
+    auto* debug_label = new QLabel(QCoreApplication::translate("SettingsDialog", "Debug"), &dialog);
+    debug_label->setObjectName("mutedText");
+    auto* debug_logs = new QPushButton(QCoreApplication::translate("SettingsDialog", "Logs"), &dialog);
+    debug_logs->setObjectName("secondaryButton");
+    debug_logs->setMinimumWidth(86);
+    debug_logs->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    debug_row->addWidget(debug_label, 1);
+    debug_row->addWidget(debug_logs);
+
     auto* buttons = new QHBoxLayout();
     auto* cancel = new QPushButton(QCoreApplication::translate("SettingsDialog", "Cancel"), &dialog);
     cancel->setObjectName("secondaryButton");
@@ -108,24 +139,29 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
     buttons->addWidget(cancel);
     buttons->addWidget(save);
 
+    content_layout->addWidget(receive_label);
+    content_layout->addWidget(path_box);
+    content_layout->addWidget(hint);
+    content_layout->addSpacing(2);
+    content_layout->addWidget(discovery_label);
+    content_layout->addWidget(discovery_networks);
+    content_layout->addWidget(discovery_hint);
+    content_layout->addSpacing(2);
+    content_layout->addWidget(scheduler_label);
+    content_layout->addLayout(global_row);
+    content_layout->addLayout(peer_row);
+    content_layout->addSpacing(2);
+    content_layout->addWidget(close_label);
+    content_layout->addWidget(ask_on_close);
+    content_layout->addWidget(tray_on_close);
+    content_layout->addWidget(quit_on_close);
+    content_layout->addSpacing(2);
+    content_layout->addLayout(debug_row);
+    content_layout->addStretch(1);
+    scroll->setWidget(content);
+
     layout->addWidget(title);
-    layout->addWidget(receive_label);
-    layout->addWidget(path_box);
-    layout->addWidget(hint);
-    layout->addSpacing(2);
-    layout->addWidget(discovery_label);
-    layout->addWidget(discovery_networks);
-    layout->addWidget(discovery_hint);
-    layout->addSpacing(2);
-    layout->addWidget(scheduler_label);
-    layout->addLayout(global_row);
-    layout->addLayout(peer_row);
-    layout->addSpacing(2);
-    layout->addWidget(close_label);
-    layout->addWidget(ask_on_close);
-    layout->addWidget(tray_on_close);
-    layout->addWidget(quit_on_close);
-    layout->addStretch(1);
+    layout->addWidget(scroll, 1);
     layout->addLayout(buttons);
 
     SettingsDialogState result = state;
@@ -136,6 +172,11 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
         }
     });
     QObject::connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    QObject::connect(debug_logs, &QPushButton::clicked, &dialog, [show_debug_logs, &dialog] {
+        if (show_debug_logs) {
+            show_debug_logs(&dialog);
+        }
+    });
     QObject::connect(save, &QPushButton::clicked, &dialog, [&dialog, &result, path, discovery_networks, ask_on_close, tray_on_close, max_global_sends, max_peer_sends] {
         const auto next_dir = path->text().trimmed();
         if (next_dir.isEmpty()) {

@@ -114,6 +114,10 @@
         <translation>准备搜索设备。</translation>
     </message>
     <message>
+        <source>Linked %1</source>
+        <translation>已连接 %1 台</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="604"/>
         <location filename="../src/gui/main_window.cpp" line="2344"/>
         <source>Not linked</source>
@@ -748,6 +752,14 @@ Send to selected machine(s)</source>
         <translation>关闭</translation>
     </message>
     <message>
+        <source>Debug logs</source>
+        <translation>调试日志</translation>
+    </message>
+    <message>
+        <source>No logs yet.</source>
+        <translation>暂无日志。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1942"/>
         <source>No local receive folder for this history item.</source>
         <translation>这条历史没有可打开的本地接收目录。</translation>
@@ -920,6 +932,10 @@ Code: %2</source>
         <location filename="../src/gui/main_window.cpp" line="2354"/>
         <source>%1 targets (%2 linked)</source>
         <translation>%1 个目标（已连接 %2 台）</translation>
+    </message>
+    <message>
+        <source>%1 send targets</source>
+        <translation>%1 个发送目标</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="2359"/>
@@ -1174,6 +1190,14 @@ Code: %2</source>
         <location filename="../src/gui/settings_dialog.cpp" line="76"/>
         <source>Quit</source>
         <translation>退出</translation>
+    </message>
+    <message>
+        <source>Debug</source>
+        <translation>调试</translation>
+    </message>
+    <message>
+        <source>Logs</source>
+        <translation>日志</translation>
     </message>
     <message>
         <location filename="../src/gui/settings_dialog.cpp" line="90"/>

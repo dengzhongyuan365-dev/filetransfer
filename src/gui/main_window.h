@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QWidget>
 
 #include <cstdint>
@@ -48,6 +49,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
 private:
     void build_ui();
@@ -70,6 +72,7 @@ private:
     bool start_receiver();
     void stop_receiver();
     void show_settings();
+    void show_debug_logs(QWidget* parent = nullptr);
 
     void search_peers();
     void send_discovery_probe(bool extended);
@@ -152,11 +155,12 @@ private:
     QListWidget* peer_list_ = nullptr;
     QPushButton* back_to_transfer_ = nullptr;
     QPushButton* target_button_ = nullptr;
+    QLabel* linked_count_label_ = nullptr;
     ElidedLabel* linked_label_ = nullptr;
     DropPanel* drop_panel_ = nullptr;
     QVBoxLayout* transfers_layout_ = nullptr;
     QLabel* empty_transfer_label_ = nullptr;
-    QPlainTextEdit* log_ = nullptr;
+    QPlainTextEdit* debug_log_view_ = nullptr;
     QSystemTrayIcon* tray_icon_ = nullptr;
 
     std::unique_ptr<DiscoveryController> discovery_;
@@ -165,11 +169,13 @@ private:
     TransferListModel transfer_model_;
     QSet<QString> recorded_history_keys_;
     QSet<QString> copied_clipboard_image_keys_;
+    QStringList log_lines_;
     QMap<QString, QString> pending_link_codes_;
     QString node_id_;
     bool receiver_ready_ = false;
     bool force_quit_ = false;
     bool tray_message_shown_ = false;
+    bool applying_style_ = false;
     std::unique_ptr<ReceiverServerRunner> receiver_runner_;
     std::unique_ptr<GuiReceiverEvents> receiver_events_;
     std::unique_ptr<TransferScheduler> scheduler_;

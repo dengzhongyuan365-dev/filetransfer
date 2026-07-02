@@ -3,6 +3,7 @@
 #include <QString>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 namespace lan::gui {
@@ -21,6 +22,8 @@ struct SettingsDialogState {
     SettingsCloseAction close_action = SettingsCloseAction::ask;
 };
 
-std::optional<SettingsDialogState> edit_settings(QWidget* parent, const SettingsDialogState& state);
+std::optional<SettingsDialogState> edit_settings(QWidget* parent,
+                                                 const SettingsDialogState& state,
+                                                 std::function<void(QWidget*)> show_debug_logs = {});
 
 }  // namespace lan::gui

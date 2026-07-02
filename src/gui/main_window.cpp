@@ -11,6 +11,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDir>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
@@ -26,6 +27,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPalette>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -379,6 +381,14 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     event->accept();
 }
 
+void MainWindow::changeEvent(QEvent* event) {
+    QWidget::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange ||
+        event->type() == QEvent::ApplicationPaletteChange) {
+        apply_style();
+    }
+}
+
 void MainWindow::build_ui() {
     stack_ = new QStackedWidget(this);
     stack_->addWidget(build_setup_page());
@@ -461,6 +471,9 @@ QWidget* MainWindow::build_peer_page() {
 
     auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Nearby machines"), peer_page_);
     title->setObjectName("title");
+    linked_count_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Not linked"), peer_page_);
+    linked_count_label_->setObjectName("linkedCountBadge");
+    linked_count_label_->setAlignment(Qt::AlignCenter);
     auto* settings = new QPushButton(QCoreApplication::translate("MainWindow", "Settings"), peer_page_);
     settings->setObjectName("secondaryButton");
     auto* search = new QPushButton(QCoreApplication::translate("MainWindow", "Refresh"), peer_page_);
@@ -489,11 +502,15 @@ QWidget* MainWindow::build_peer_page() {
 
     status_ = new QLabel(QCoreApplication::translate("MainWindow", "Ready to find machines."), peer_page_);
     status_->setObjectName("mutedText");
+    auto* footer = new QHBoxLayout();
+    footer->setSpacing(8);
+    footer->addWidget(status_, 1);
+    footer->addWidget(linked_count_label_, 0, Qt::AlignRight);
 
     layout->addLayout(header);
     layout->addWidget(peer_filter_);
     layout->addWidget(peer_list_, 1);
-    layout->addWidget(status_);
+    layout->addLayout(footer);
 
     connect(search, &QPushButton::clicked, this, [this] {
         search_peers();
@@ -526,24 +543,25 @@ QWidget* MainWindow::build_transfer_page() {
     linked_label_->setObjectName("title");
     auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
+    back->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
     disconnect->setObjectName("secondaryButton");
+    disconnect->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    auto* header = new QVBoxLayout();
+    auto* header = new QHBoxLayout();
     header->setSpacing(8);
-    auto* title_row = new QHBoxLayout();
-    title_row->setSpacing(8);
-    title_row->addWidget(linked_label_, 1);
-    auto* action_row = new QHBoxLayout();
-    action_row->setSpacing(8);
-    action_row->addStretch(1);
-    action_row->addWidget(disconnect);
-    action_row->addWidget(back);
-    header->addLayout(title_row);
-    header->addLayout(action_row);
+    header->addWidget(linked_label_, 1);
+    header->addWidget(disconnect, 0, Qt::AlignRight);
+    header->addWidget(back, 0, Qt::AlignRight);
 
-    drop_panel_ = new DropPanel(transfer_page_);
-    drop_panel_->setMinimumHeight(360);
+    auto* transfer_frame = new QFrame(transfer_page_);
+    transfer_frame->setObjectName("transferPanel");
+    transfer_frame->setMinimumHeight(380);
+    auto* transfer_frame_layout = new QVBoxLayout(transfer_frame);
+    transfer_frame_layout->setContentsMargins(8, 8, 8, 8);
+    transfer_frame_layout->setSpacing(0);
+
+    drop_panel_ = new DropPanel(transfer_frame);
     auto* drop_layout = new QVBoxLayout(drop_panel_);
     drop_layout->setContentsMargins(0, 0, 0, 0);
     drop_layout->setSpacing(0);
@@ -555,6 +573,7 @@ QWidget* MainWindow::build_transfer_page() {
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     auto* transfer_list = new QWidget(scroll);
+    transfer_list->setObjectName("transferListSurface");
     transfers_layout_ = new QVBoxLayout(transfer_list);
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);
@@ -567,13 +586,7 @@ QWidget* MainWindow::build_transfer_page() {
     transfers_layout_->addStretch(1);
     scroll->setWidget(transfer_list);
     drop_layout->addWidget(scroll);
-
-    log_ = new QPlainTextEdit(transfer_page_);
-    log_->setObjectName("logView");
-    log_->setReadOnly(true);
-    log_->setMaximumBlockCount(120);
-    log_->setFixedHeight(96);
-    log_->setPlaceholderText(QCoreApplication::translate("MainWindow", "Logs"));
+    transfer_frame_layout->addWidget(drop_panel_);
 
     auto* footer = new QHBoxLayout();
     footer->setSpacing(8);
@@ -586,9 +599,8 @@ QWidget* MainWindow::build_transfer_page() {
     footer->addWidget(history);
 
     layout->addLayout(header);
-    layout->addWidget(drop_panel_, 1);
+    layout->addWidget(transfer_frame, 1);
     layout->addLayout(footer);
-    layout->addWidget(log_);
 
     connect(back, &QPushButton::clicked, this, [this] {
         stack_->setCurrentWidget(peer_page_);
@@ -614,12 +626,23 @@ QWidget* MainWindow::build_transfer_page() {
 }
 
 void MainWindow::apply_style() {
-    setStyleSheet(R"(
+    if (applying_style_) {
+        return;
+    }
+    applying_style_ = true;
+
+    const auto window_lightness = QApplication::palette().color(QPalette::Window).lightness();
+    const auto dark = window_lightness < 128;
+    QString style = R"(
         #app {
             background: #f6f7fb;
             color: #1e2430;
             font-family: "Noto Sans", "Inter", sans-serif;
             font-size: 14px;
+        }
+        QDialog {
+            background: #f6f7fb;
+            color: #1e2430;
         }
         #title {
             font-size: 22px;
@@ -649,10 +672,14 @@ void MainWindow::apply_style() {
             color: #364152;
             font-size: 13px;
         }
-        #transferDropArea {
-            border: 1px dashed #97a3b6;
-            border-radius: 8px;
+        #transferPanel {
             background: #ffffff;
+            border: 1px solid #dfe5ee;
+            border-radius: 8px;
+        }
+        #transferDropArea {
+            border: none;
+            background: transparent;
         }
         #searchInput {
             min-height: 38px;
@@ -662,7 +689,7 @@ void MainWindow::apply_style() {
             background: #ffffff;
             color: #1e2430;
         }
-        #peerList, #transferScroll {
+        #peerList, #transferScroll, #transferListSurface {
             background: transparent;
             border: none;
             outline: none;
@@ -699,6 +726,13 @@ void MainWindow::apply_style() {
             background: #e7f8ef;
             border-radius: 7px;
             padding: 3px 4px;
+            font-size: 12px;
+        }
+        #linkedCountBadge {
+            color: #1d4ed8;
+            background: #eaf1ff;
+            border-radius: 7px;
+            padding: 3px 7px;
             font-size: 12px;
         }
         #linkedBadge {
@@ -864,7 +898,171 @@ void MainWindow::apply_style() {
             color: #a6adb8;
             background: #f3f4f6;
         }
-    )");
+    )";
+
+    if (dark) {
+        style += R"(
+            #app {
+                background: #171a21;
+                color: #e7eaf0;
+            }
+            QDialog {
+                background: #171a21;
+                color: #e7eaf0;
+            }
+            #title {
+                color: #f1f4f8;
+            }
+            #dialogTitle {
+                color: #f1f4f8;
+            }
+            #mutedText {
+                color: #9aa4b2;
+            }
+            #setupCard, #transferPanel, #peerCard, #transferCard {
+                background: #222733;
+                border-color: #343b4a;
+            }
+            #pathBox {
+                background: #1c2029;
+                border-color: #343b4a;
+            }
+            #pathLabel {
+                color: #d8dde6;
+            }
+            #transferDropArea {
+                background: transparent;
+            }
+            #searchInput {
+                background: #1c2029;
+                border-color: #343b4a;
+                color: #e7eaf0;
+            }
+            #peerName, #transferName {
+                color: #f1f4f8;
+            }
+            #peerMeta, #transferMeta, #transferMetric {
+                color: #9aa4b2;
+            }
+            #transferDetail {
+                color: #aeb7c5;
+            }
+            #onlineBadge {
+                color: #8ff0b7;
+                background: #173625;
+            }
+            #linkedBadge {
+                color: #9dc2ff;
+                background: #172a4c;
+            }
+            #linkedCountBadge {
+                color: #9dc2ff;
+                background: #172a4c;
+            }
+            #offlineBadge {
+                color: #a4adba;
+                background: #2a303d;
+            }
+            #stateBadge {
+                color: #8ff0b7;
+                background: #173625;
+            }
+            #emptyTransfer {
+                color: #8f98a8;
+            }
+            #logView {
+                background: #1c2029;
+                border-color: #343b4a;
+                color: #c8d0dc;
+            }
+            QPushButton {
+                background: #252b36;
+                border-color: #3a4252;
+                color: #e8edf5;
+            }
+            QPushButton:focus {
+                border-color: #4a5468;
+            }
+            QPushButton:hover {
+                background: #2d3542;
+                border-color: #4a5468;
+            }
+            QPushButton:pressed {
+                background: #202631;
+                border-color: #59657a;
+            }
+            QPushButton:disabled {
+                background: #202631;
+                border-color: #303746;
+                color: #6d7583;
+            }
+            #primaryButton, #linkButton {
+                background: #3b82f6;
+                border-color: #3b82f6;
+                color: #ffffff;
+            }
+            #primaryButton:hover, #linkButton:hover {
+                background: #60a5fa;
+                border-color: #60a5fa;
+            }
+            #primaryButton:pressed, #linkButton:pressed {
+                background: #2563eb;
+                border-color: #2563eb;
+            }
+            #secondaryButton {
+                background: #252b36;
+                border-color: #3a4252;
+                color: #e8edf5;
+            }
+            #secondaryButton:hover {
+                background: #2d3542;
+                border-color: #4a5468;
+            }
+            #secondaryButton:pressed {
+                background: #202631;
+                border-color: #59657a;
+            }
+            #taskResumeButton, #taskOpenButton, #taskStopButton, #taskRemoveButton {
+                background: #2a303d;
+                border-color: transparent;
+            }
+            #taskOpenButton {
+                color: #8bb7ff;
+            }
+            #taskOpenButton:hover {
+                background: #1d355f;
+                color: #b6d2ff;
+            }
+            #taskResumeButton {
+                color: #8ff0b7;
+            }
+            #taskResumeButton:hover {
+                background: #173625;
+                color: #b6f6cd;
+            }
+            #taskStopButton {
+                color: #ffaaa5;
+            }
+            #taskStopButton:hover {
+                background: #4a2022;
+                color: #ffc3bf;
+            }
+            #taskRemoveButton {
+                color: #b7c0ce;
+            }
+            #taskRemoveButton:hover {
+                background: #343b4a;
+                color: #f1f4f8;
+            }
+            #taskResumeButton:disabled, #taskOpenButton:disabled, #taskStopButton:disabled, #taskRemoveButton:disabled {
+                color: #6d7583;
+                background: #252b36;
+            }
+        )";
+    }
+
+    setStyleSheet(style);
+    applying_style_ = false;
 }
 
 void MainWindow::setup_tray() {
@@ -1185,7 +1383,9 @@ void MainWindow::show_settings() {
         state.close_action = SettingsCloseAction::quit;
     }
 
-    const auto result = edit_settings(this, state);
+    const auto result = edit_settings(this, state, [this](QWidget* parent) {
+        show_debug_logs(parent);
+    });
     if (!result.has_value()) {
         return;
     }
@@ -1234,6 +1434,48 @@ void MainWindow::show_settings() {
                              QCoreApplication::translate("MainWindow", "Settings"),
                              QCoreApplication::translate("MainWindow", "Receiver failed to restart. Check the receiving folder."));
     }
+}
+
+void MainWindow::show_debug_logs(QWidget* parent) {
+    if (debug_log_view_ != nullptr) {
+        debug_log_view_->window()->raise();
+        debug_log_view_->window()->activateWindow();
+        return;
+    }
+
+    auto* dialog = new QDialog(parent != nullptr ? parent : this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(QCoreApplication::translate("MainWindow", "Debug logs"));
+    dialog->resize(360, 320);
+
+    auto* layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+
+    auto* view = new QPlainTextEdit(dialog);
+    view->setObjectName("logView");
+    view->setReadOnly(true);
+    view->setMaximumBlockCount(120);
+    view->setPlaceholderText(QCoreApplication::translate("MainWindow", "No logs yet."));
+    view->setPlainText(log_lines_.join(QLatin1Char('\n')));
+
+    auto* close = new QPushButton(QCoreApplication::translate("MainWindow", "Close"), dialog);
+    close->setObjectName("secondaryButton");
+    auto* buttons = new QHBoxLayout();
+    buttons->addStretch(1);
+    buttons->addWidget(close);
+
+    layout->addWidget(view, 1);
+    layout->addLayout(buttons);
+
+    debug_log_view_ = view;
+    auto* bar = view->verticalScrollBar();
+    bar->setValue(bar->maximum());
+    connect(close, &QPushButton::clicked, dialog, &QDialog::close);
+    connect(dialog, &QObject::destroyed, this, [this] {
+        debug_log_view_ = nullptr;
+    });
+    dialog->show();
 }
 
 void MainWindow::search_peers() {
@@ -2261,6 +2503,12 @@ void MainWindow::show_send_targets() {
 }
 
 void MainWindow::update_linked_header() {
+    const auto count = linked_peer_count();
+    if (linked_count_label_ != nullptr) {
+        linked_count_label_->setText(count > 0
+                                         ? QCoreApplication::translate("MainWindow", "Linked %1").arg(count)
+                                         : QCoreApplication::translate("MainWindow", "Not linked"));
+    }
     if (linked_label_ == nullptr) {
         return;
     }
@@ -2275,13 +2523,8 @@ void MainWindow::update_linked_header() {
         return;
     }
     const auto peer = active_peer();
-    const auto count = linked_peer_count();
     const auto target_count = send_target_peer_ids().size();
-    if (target_count <= 1) {
-        linked_label_->setText(QCoreApplication::translate("MainWindow", "Send to %1 (%2 linked)").arg(peer.name).arg(count));
-    } else {
-        linked_label_->setText(QCoreApplication::translate("MainWindow", "%1 targets (%2 linked)").arg(target_count).arg(count));
-    }
+    linked_label_->setText(peer.name);
     if (back_to_transfer_ != nullptr) {
         back_to_transfer_->setVisible(true);
     }
@@ -2445,21 +2688,24 @@ void MainWindow::show_log(QString text) {
 }
 
 void MainWindow::log_event(QString text) {
-    if (log_ == nullptr) {
+    if (QThread::currentThread() != thread()) {
+        QMetaObject::invokeMethod(this, [this, text = std::move(text)] {
+            log_event(text);
+        }, Qt::QueuedConnection);
         return;
     }
+
     const auto line = QString("[%1] %2").arg(QTime::currentTime().toString("HH:mm:ss"), text);
-    if (QThread::currentThread() == thread()) {
-        log_->appendPlainText(line);
-        auto* bar = log_->verticalScrollBar();
-        bar->setValue(bar->maximum());
-        return;
+    log_lines_.append(line);
+    while (log_lines_.size() > 120) {
+        log_lines_.removeFirst();
     }
-    QMetaObject::invokeMethod(this, [this, line] {
-        log_->appendPlainText(line);
-        auto* bar = log_->verticalScrollBar();
+
+    if (debug_log_view_ != nullptr) {
+        debug_log_view_->appendPlainText(line);
+        auto* bar = debug_log_view_->verticalScrollBar();
         bar->setValue(bar->maximum());
-    }, Qt::QueuedConnection);
+    }
 }
 
 }  // namespace lan::gui
