@@ -16,6 +16,8 @@
 namespace lan::gui {
 namespace {
 
+constexpr int kTransferCardHeight = 92;
+
 QToolButton* make_task_tool_button(const QIcon& icon,
                                    const QString& tooltip,
                                    QWidget* parent) {
@@ -112,6 +114,8 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
                            QWidget* parent)
     : QWidget(parent) {
     setObjectName("transferCard");
+    setMinimumHeight(kTransferCardHeight);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(10, 9, 10, 9);
@@ -232,6 +236,14 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     root->addLayout(header);
     root->addLayout(progress_row);
     root->addLayout(footer);
+}
+
+QSize TransferCard::sizeHint() const {
+    return QSize(360, kTransferCardHeight);
+}
+
+QSize TransferCard::minimumSizeHint() const {
+    return QSize(220, kTransferCardHeight);
 }
 
 }  // namespace lan::gui

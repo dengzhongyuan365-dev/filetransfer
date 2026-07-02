@@ -2069,7 +2069,7 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     const auto can_change_target = can_change_transfer_target(snapshot);
     const auto can_resume_queue = can_resume_queued_transfer(snapshot);
     const auto can_pause = can_pause_transfer(snapshot);
-    return new TransferCard(
+    auto* card = new TransferCard(
         snapshot,
         TransferCardText{
             .detail = transfer_detail_text(snapshot),
@@ -2115,6 +2115,8 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
             },
         },
         transfer_page_);
+    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    return card;
 }
 
 QString MainWindow::transfer_rate_text(const TransferSnapshot& snapshot) const {

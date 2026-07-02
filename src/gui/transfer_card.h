@@ -39,6 +39,9 @@ public:
                  TransferCardActions actions,
                  TransferCardCallbacks callbacks,
                  QWidget* parent = nullptr);
+
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 };
 
 }  // namespace lan::gui
