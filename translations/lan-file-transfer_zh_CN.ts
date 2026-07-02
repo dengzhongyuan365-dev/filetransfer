@@ -1346,6 +1346,10 @@ Code: %2</source>
         <translation>已自动接受信任设备：%1</translation>
     </message>
     <message>
+        <source>Auto accepted legacy trusted peer and refreshed trust token: %1</source>
+        <translation>已自动接受旧版信任设备并刷新信任令牌：%1</translation>
+    </message>
+    <message>
         <source>Trust removed for %1</source>
         <translation>已取消对 %1 的信任</translation>
     </message>

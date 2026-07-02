@@ -289,6 +289,13 @@ bool DeviceManager::can_auto_accept_peer(const Peer& peer, const QString& trust_
            stored.trust_token == trust_token;
 }
 
+bool DeviceManager::needs_trust_token_migration(const Peer& peer) const {
+    const auto stored = peers_.value(peer.id, peer);
+    return stored.trusted &&
+           stored.trusted_at_ms > 0 &&
+           stored.trust_token.isEmpty();
+}
+
 Peer DeviceManager::trust_peer(const QString& id, qint64 now_ms, const QString& trust_token) {
     auto peer = peers_.value(id);
     if (peer.id.isEmpty()) {

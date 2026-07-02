@@ -146,10 +146,12 @@ TEST(DeviceManagerTrustTest, AutoAcceptRequiresStoredTrustToken) {
     const auto legacy_trusted = devices.trust_peer(peer.id, 100);
     EXPECT_TRUE(devices.is_trusted_peer(legacy_trusted));
     EXPECT_FALSE(devices.can_auto_accept_peer(legacy_trusted, QString()));
+    EXPECT_TRUE(devices.needs_trust_token_migration(legacy_trusted));
 
     const auto token_trusted = devices.trust_peer(peer.id, 200, QStringLiteral("token-a"));
     EXPECT_TRUE(devices.can_auto_accept_peer(token_trusted, QStringLiteral("token-a")));
     EXPECT_FALSE(devices.can_auto_accept_peer(token_trusted, QString()));
+    EXPECT_FALSE(devices.needs_trust_token_migration(token_trusted));
 }
 
 }  // namespace

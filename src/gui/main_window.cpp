@@ -2521,6 +2521,15 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
         set_linked_peer(peer, !has_active_peer());
         return;
     }
+    if (devices_.needs_trust_token_migration(peer)) {
+        const auto token = trust_token.isEmpty() ? make_trust_token() : trust_token;
+        const auto trusted = trust_peer(peer.id, token);
+        log_event(QCoreApplication::translate("MainWindow", "Auto accepted legacy trusted peer and refreshed trust token: %1")
+                      .arg(display_peer_name(trusted)));
+        send_control(trusted, "link_accept", QJsonObject{{"code", code}, {"trusted", true}, {"trustToken", token}});
+        set_linked_peer(trusted, !has_active_peer());
+        return;
+    }
     const auto answer = QMessageBox::question(
         this,
         QCoreApplication::translate("MainWindow", "Link request"),

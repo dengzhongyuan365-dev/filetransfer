@@ -47,6 +47,7 @@ public:
     bool is_linked_peer(const Peer& peer) const;
     bool is_trusted_peer(const Peer& peer) const;
     bool can_auto_accept_peer(const Peer& peer, const QString& trust_token) const;
+    bool needs_trust_token_migration(const Peer& peer) const;
     Peer trust_peer(const QString& id, qint64 now_ms, const QString& trust_token = {});
     bool untrust_peer(const QString& id, Peer* updated_peer = nullptr);
     bool set_alias(const QString& id, const QString& alias, Peer* updated_peer = nullptr);
