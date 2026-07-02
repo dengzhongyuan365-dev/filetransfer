@@ -120,6 +120,11 @@
         <translation>历史</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="649"/>
+        <source>Targets</source>
+        <translation>目标</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="606"/>
         <source>Change</source>
         <translation>更换</translation>
@@ -133,9 +138,9 @@
     <message>
         <location filename="../src/gui/main_window.cpp" line="633"/>
         <source>Drop or paste files and folders here
-Send to the linked machine</source>
+Send to selected machine(s)</source>
         <translation>将文件或文件夹拖到这里，或复制后按 Ctrl+V
-发送到已连接设备</translation>
+发送到所选设备</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="647"/>
@@ -229,6 +234,28 @@ Send to the linked machine</source>
         <location filename="../src/gui/main_window.cpp" line="1293"/>
         <source>Save</source>
         <translation>保存</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2305"/>
+        <location filename="../src/gui/main_window.cpp" line="2314"/>
+        <location filename="../src/gui/main_window.cpp" line="2351"/>
+        <source>Send targets</source>
+        <translation>发送目标</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2316"/>
+        <source>Dropped and pasted files will be queued for selected machines.</source>
+        <translation>拖拽或粘贴的文件会加入所选设备的发送队列。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2352"/>
+        <source>Choose at least one linked machine.</source>
+        <translation>至少选择一台已连接设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2360"/>
+        <source>Send targets updated: %1 machine(s).</source>
+        <translation>发送目标已更新：%1 台设备。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1327"/>
@@ -772,9 +799,24 @@ Code: %2</source>
         <translation>发送给 %1（已连接 %2 台）</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="2354"/>
+        <source>%1 targets (%2 linked)</source>
+        <translation>%1 个目标（已连接 %2 台）</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2359"/>
+        <source>Targets (%1)</source>
+        <translation>目标（%1）</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2364"/>
+        <source>Queued %1 path(s) for %2 machine(s).</source>
+        <translation>已将 %1 个路径加入 %2 台设备的发送队列。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="2364"/>
         <source>Queued %1 path(s) for sending.</source>
-        <translation>已加入 %1 个路径准备发送。</translation>
+        <translation type="vanished">已加入 %1 个路径准备发送。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="2379"/>

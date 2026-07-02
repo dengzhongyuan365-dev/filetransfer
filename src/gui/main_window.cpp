@@ -608,7 +608,7 @@ QWidget* MainWindow::build_transfer_page() {
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);
 
-    empty_transfer_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Drop or paste files and folders here\nSend to the linked machine"), transfer_list);
+    empty_transfer_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Drop or paste files and folders here\nSend to selected machine(s)"), transfer_list);
     empty_transfer_label_->setObjectName("emptyTransfer");
     empty_transfer_label_->setAlignment(Qt::AlignCenter);
     empty_transfer_label_->setMinimumHeight(320);
@@ -626,8 +626,11 @@ QWidget* MainWindow::build_transfer_page() {
 
     auto* footer = new QHBoxLayout();
     footer->setSpacing(8);
+    target_button_ = new QPushButton(QCoreApplication::translate("MainWindow", "Targets"), transfer_page_);
+    target_button_->setObjectName("secondaryButton");
     auto* history = new QPushButton(QCoreApplication::translate("MainWindow", "History"), transfer_page_);
     history->setObjectName("secondaryButton");
+    footer->addWidget(target_button_);
     footer->addStretch(1);
     footer->addWidget(history);
 
@@ -641,6 +644,9 @@ QWidget* MainWindow::build_transfer_page() {
     });
     connect(history, &QPushButton::clicked, this, [this] {
         show_receive_history();
+    });
+    connect(target_button_, &QPushButton::clicked, this, [this] {
+        show_send_targets();
     });
     connect(disconnect, &QPushButton::clicked, this, [this] {
         disconnect_peer();
@@ -2288,6 +2294,7 @@ void MainWindow::set_active_peer(const QString& id) {
         return;
     }
     active_peer_id_ = id;
+    reset_send_targets_to_active();
     update_linked_header();
     refresh_transfer_list();
     refresh_peer_list();
@@ -2341,6 +2348,9 @@ void MainWindow::disconnect_peer(const QString& id, bool notify_peer, bool confi
                 break;
             }
         }
+        reset_send_targets_to_active();
+    } else {
+        send_target_peer_ids_.remove(id);
     }
     update_linked_header();
     status_->setText(QCoreApplication::translate("MainWindow", "Disconnected."));
@@ -2373,6 +2383,112 @@ int MainWindow::linked_peer_count() const {
     return count;
 }
 
+QStringList MainWindow::linked_peer_ids() const {
+    QStringList ids;
+    for (auto it = peers_.cbegin(); it != peers_.cend(); ++it) {
+        if (it.value().linked) {
+            ids.append(it.key());
+        }
+    }
+    return ids;
+}
+
+QStringList MainWindow::send_target_peer_ids() const {
+    QStringList ids;
+    for (const auto& id : send_target_peer_ids_) {
+        if (peers_.contains(id) && peers_.value(id).linked) {
+            ids.append(id);
+        }
+    }
+    if (ids.isEmpty() && has_active_peer()) {
+        ids.append(active_peer_id_);
+    }
+    ids.sort();
+    return ids;
+}
+
+void MainWindow::reset_send_targets_to_active() {
+    send_target_peer_ids_.clear();
+    if (has_active_peer()) {
+        send_target_peer_ids_.insert(active_peer_id_);
+    }
+}
+
+void MainWindow::show_send_targets() {
+    const auto linked_ids = linked_peer_ids();
+    if (linked_ids.isEmpty()) {
+        show_log(QCoreApplication::translate("MainWindow", "No linked machine."));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Send targets"));
+    dialog.resize(340, 320);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(9);
+
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Send targets"), &dialog);
+    title->setObjectName("dialogTitle");
+    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Dropped and pasted files will be queued for selected machines."), &dialog);
+    hint->setObjectName("mutedText");
+    hint->setWordWrap(true);
+
+    auto* list = new QWidget(&dialog);
+    auto* list_layout = new QVBoxLayout(list);
+    list_layout->setContentsMargins(0, 0, 0, 0);
+    list_layout->setSpacing(6);
+
+    const auto selected_ids = send_target_peer_ids();
+    QMap<QString, QCheckBox*> checks;
+    for (const auto& id : linked_ids) {
+        const auto peer = peers_.value(id);
+        auto* check = new QCheckBox(QStringLiteral("%1  %2:%3").arg(peer.name, peer.host).arg(peer.port), list);
+        check->setChecked(selected_ids.contains(id));
+        checks.insert(id, check);
+        list_layout->addWidget(check);
+    }
+    list_layout->addStretch(1);
+
+    auto* buttons = new QHBoxLayout();
+    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
+    cancel->setObjectName("secondaryButton");
+    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Save"), &dialog);
+    save->setObjectName("primaryButton");
+    buttons->addStretch(1);
+    buttons->addWidget(cancel);
+    buttons->addWidget(save);
+
+    layout->addWidget(title);
+    layout->addWidget(hint);
+    layout->addWidget(list, 1);
+    layout->addLayout(buttons);
+
+    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(save, &QPushButton::clicked, this, [this, &dialog, checks] {
+        QSet<QString> next_targets;
+        for (auto it = checks.cbegin(); it != checks.cend(); ++it) {
+            if (it.value()->isChecked()) {
+                next_targets.insert(it.key());
+            }
+        }
+        if (next_targets.isEmpty()) {
+            QMessageBox::warning(this,
+                                 QCoreApplication::translate("MainWindow", "Send targets"),
+                                 QCoreApplication::translate("MainWindow", "Choose at least one linked machine."));
+            return;
+        }
+        send_target_peer_ids_ = std::move(next_targets);
+        update_linked_header();
+        log_event(QCoreApplication::translate("MainWindow", "Send targets updated: %1 machine(s).")
+                      .arg(send_target_peer_ids_.size()));
+        dialog.accept();
+    });
+
+    dialog.exec();
+}
+
 void MainWindow::update_linked_header() {
     if (linked_label_ == nullptr) {
         return;
@@ -2382,13 +2498,25 @@ void MainWindow::update_linked_header() {
         if (back_to_transfer_ != nullptr) {
             back_to_transfer_->setVisible(false);
         }
+        if (target_button_ != nullptr) {
+            target_button_->setVisible(false);
+        }
         return;
     }
     const auto peer = active_peer();
     const auto count = linked_peer_count();
-    linked_label_->setText(QCoreApplication::translate("MainWindow", "Send to %1 (%2 linked)").arg(peer.name).arg(count));
+    const auto target_count = send_target_peer_ids().size();
+    if (target_count <= 1) {
+        linked_label_->setText(QCoreApplication::translate("MainWindow", "Send to %1 (%2 linked)").arg(peer.name).arg(count));
+    } else {
+        linked_label_->setText(QCoreApplication::translate("MainWindow", "%1 targets (%2 linked)").arg(target_count).arg(count));
+    }
     if (back_to_transfer_ != nullptr) {
         back_to_transfer_->setVisible(true);
+    }
+    if (target_button_ != nullptr) {
+        target_button_->setVisible(count > 1);
+        target_button_->setText(QCoreApplication::translate("MainWindow", "Targets (%1)").arg(target_count));
     }
 }
 
@@ -2401,10 +2529,25 @@ void MainWindow::send_paths(const QStringList& paths) {
         show_log(QCoreApplication::translate("MainWindow", "Transfer scheduler is not ready."));
         return;
     }
-    const auto peer = active_peer();
-    log_event(QCoreApplication::translate("MainWindow", "Queued %1 path(s) for sending.").arg(paths.size()));
+    const auto target_ids = send_target_peer_ids();
+    if (target_ids.isEmpty()) {
+        show_log(QCoreApplication::translate("MainWindow", "No linked machine."));
+        return;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Queued %1 path(s) for %2 machine(s).")
+                  .arg(paths.size())
+                  .arg(target_ids.size()));
     for (const auto& path : paths) {
-        scheduler_->enqueue_send(to_string(peer.id), std::filesystem::path(to_string(path)));
+        if (target_ids.size() == 1) {
+            scheduler_->enqueue_send(to_string(target_ids.front()), std::filesystem::path(to_string(path)));
+            continue;
+        }
+        std::vector<std::string> peer_ids;
+        peer_ids.reserve(target_ids.size());
+        for (const auto& id : target_ids) {
+            peer_ids.push_back(to_string(id));
+        }
+        scheduler_->enqueue_send_to_peers(peer_ids, std::filesystem::path(to_string(path)));
     }
 }
 

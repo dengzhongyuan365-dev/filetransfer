@@ -114,6 +114,10 @@ private:
     bool has_active_peer() const;
     Peer active_peer() const;
     int linked_peer_count() const;
+    QStringList linked_peer_ids() const;
+    QStringList send_target_peer_ids() const;
+    void reset_send_targets_to_active();
+    void show_send_targets();
     void update_linked_header();
 
     void send_paths(const QStringList& paths);
@@ -137,6 +141,7 @@ private:
     QLineEdit* peer_filter_ = nullptr;
     QListWidget* peer_list_ = nullptr;
     QPushButton* back_to_transfer_ = nullptr;
+    QPushButton* target_button_ = nullptr;
     QLabel* linked_label_ = nullptr;
     DropPanel* drop_panel_ = nullptr;
     QVBoxLayout* transfers_layout_ = nullptr;
@@ -151,6 +156,7 @@ private:
     QMap<QString, QString> transfer_peer_ids_;
     QSet<QString> dismissed_transfer_keys_;
     QSet<QString> recorded_history_keys_;
+    QSet<QString> send_target_peer_ids_;
     QString active_peer_id_;
     QMap<QString, QString> pending_link_codes_;
     QString node_id_;
