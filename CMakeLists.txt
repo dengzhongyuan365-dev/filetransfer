@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(file_transfer VERSION 0.1.0 LANGUAGES CXX)
+project(file_transfer VERSION 0.2.0 LANGUAGES CXX)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -23,6 +23,10 @@ install(FILES packaging/lan-file-transfer.desktop
 
 install(FILES resources/icons/lan-file-transfer.svg
     DESTINATION share/icons/hicolor/scalable/apps
+)
+
+install(FILES CHANGELOG.md
+    DESTINATION share/doc/lan-file-transfer
 )
 
 set(CPACK_PACKAGE_NAME "lan-file-transfer")

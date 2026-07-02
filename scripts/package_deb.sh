@@ -103,6 +103,7 @@ required_entries=(
     './usr/share/applications/lan-file-transfer.desktop'
     './usr/share/icons/hicolor/scalable/apps/lan-file-transfer.svg'
     './usr/share/lan-file-transfer/translations/lan-file-transfer_zh_CN.qm'
+    './usr/share/doc/lan-file-transfer/CHANGELOG.md'
 )
 
 contents="$(dpkg-deb -c "$package")"
