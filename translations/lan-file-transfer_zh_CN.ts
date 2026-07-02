@@ -39,6 +39,10 @@
         <translation>文件</translation>
     </message>
     <message>
+        <source>Folder transfer</source>
+        <translation>文件夹传输</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="127"/>
         <source>folder</source>
         <translation>文件夹</translation>

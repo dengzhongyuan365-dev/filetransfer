@@ -40,10 +40,12 @@ class TaskScopedEvents final : public SenderTransferEvents {
 public:
     TaskScopedEvents(SchedulerTaskId task_id,
                      std::string peer_id,
+                     std::filesystem::path source_path,
                      FileTransferSource source,
                      std::function<void(SchedulerSnapshot)> on_snapshot)
         : task_id_(task_id),
           peer_id_(std::move(peer_id)),
+          source_path_(std::move(source_path)),
           source_(source),
           on_snapshot_(std::move(on_snapshot)) {}
 
@@ -54,7 +56,7 @@ public:
         snapshot.direction = started.direction;
         snapshot.kind = started.kind;
         snapshot.path = started.path;
-        snapshot.name = started.name;
+        snapshot.name = display_name(started.name);
         snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
@@ -73,7 +75,7 @@ public:
         snapshot.direction = progress.direction;
         snapshot.kind = progress.kind;
         snapshot.path = progress.path;
-        snapshot.name = progress.name;
+        snapshot.name = display_name(progress.name);
         snapshot.current_bytes = progress.current_bytes;
         snapshot.total_bytes = progress.total_bytes;
         snapshot.processed_files = progress.processed_files;
@@ -94,7 +96,7 @@ public:
         snapshot.direction = completed.direction;
         snapshot.kind = completed.kind;
         snapshot.path = completed.path;
-        snapshot.name = completed.name;
+        snapshot.name = display_name(completed.name);
         snapshot.current_bytes = completed.bytes;
         snapshot.total_bytes = completed.bytes;
         snapshot.total_files = completed.total_files;
@@ -116,7 +118,7 @@ public:
         snapshot.direction = failed.direction;
         snapshot.kind = failed.kind;
         snapshot.path = failed.path;
-        snapshot.name = failed.name;
+        snapshot.name = display_name(failed.name);
         snapshot.error = failed.error;
         snapshot.error_category = failed.category;
         snapshot.retryable = failed.retryable;
@@ -132,14 +134,26 @@ public:
         snapshot.direction = cancelled.direction;
         snapshot.kind = cancelled.kind;
         snapshot.path = cancelled.path;
-        snapshot.name = cancelled.name;
+        snapshot.name = display_name(cancelled.name);
         snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
 private:
+    std::string display_name(const std::string& event_name) const {
+        if (!event_name.empty()) {
+            return event_name;
+        }
+        auto name = source_path_.filename().string();
+        if (!name.empty()) {
+            return name;
+        }
+        return source_path_.string();
+    }
+
     SchedulerTaskId task_id_ = 0;
     std::string peer_id_;
+    std::filesystem::path source_path_;
     FileTransferSource source_ = FileTransferSource::file;
     std::function<void(SchedulerSnapshot)> on_snapshot_;
     std::chrono::steady_clock::time_point last_progress_emit_;
@@ -658,6 +672,7 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
     running->events = std::make_shared<TaskScopedEvents>(
         item.task_id,
         item.peer_id,
+        item.source_path,
         item.source,
         [this](SchedulerSnapshot snapshot) {
             emit_snapshot(std::move(snapshot));

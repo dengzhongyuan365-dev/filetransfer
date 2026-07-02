@@ -323,6 +323,20 @@ bool is_clipboard_image_transfer(const TransferSnapshot& snapshot) {
            suffix == QStringLiteral("webp");
 }
 
+std::string display_transfer_name(const TransferSnapshot& snapshot) {
+    if (!snapshot.name.empty()) {
+        return snapshot.name;
+    }
+    if (!snapshot.path.empty()) {
+        auto name = snapshot.path.filename().string();
+        if (!name.empty()) {
+            return name;
+        }
+        return snapshot.path.string();
+    }
+    return QCoreApplication::translate("MainWindow", "Folder transfer").toStdString();
+}
+
 QIcon application_icon() {
     auto icon = QIcon::fromTheme("lan-file-transfer");
     if (!icon.isNull()) {
@@ -2069,8 +2083,10 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     const auto can_change_target = can_change_transfer_target(snapshot);
     const auto can_resume_queue = can_resume_queued_transfer(snapshot);
     const auto can_pause = can_pause_transfer(snapshot);
+    auto display_snapshot = snapshot;
+    display_snapshot.name = display_transfer_name(snapshot);
     auto* card = new TransferCard(
-        snapshot,
+        display_snapshot,
         TransferCardText{
             .detail = transfer_detail_text(snapshot),
             .speed = transfer_rate_text(snapshot),

@@ -117,6 +117,43 @@ private:
     bool cancelled_ = false;
 };
 
+class DirectoryProgressNameRunner final : public lan::SchedulerSendRunner {
+public:
+    lan::Result<lan::SenderTransferReport> run(const lan::SenderConfig& config,
+                                               lan::SenderTransferEvents& events) override {
+        events.on_transfer_started(lan::TransferStarted{
+            .transfer_id = 7,
+            .state = lan::TransferState::running,
+            .direction = lan::TransferDirection::send,
+            .kind = lan::TransferKind::directory,
+            .path = config.source_path,
+            .name = config.source_path.filename().string(),
+        });
+        events.on_transfer_progress(lan::TransferProgress{
+            .transfer_id = 7,
+            .state = lan::TransferState::running,
+            .direction = lan::TransferDirection::send,
+            .kind = lan::TransferKind::directory,
+            .path = {},
+            .name = {},
+            .processed_files = 1,
+            .total_files = 2,
+        });
+        events.on_transfer_completed(lan::TransferCompleted{
+            .transfer_id = 7,
+            .state = lan::TransferState::completed,
+            .direction = lan::TransferDirection::send,
+            .kind = lan::TransferKind::directory,
+            .path = config.source_path,
+            .name = {},
+            .total_files = 2,
+        });
+        return lan::Result<lan::SenderTransferReport>::success(lan::SenderTransferReport{});
+    }
+
+    void cancel() override {}
+};
+
 void make_source_newer_than_target(const std::filesystem::path& source,
                                    const std::filesystem::path& target) {
     const auto now = std::filesystem::file_time_type::clock::now();
@@ -779,6 +816,52 @@ TEST(TransferSchedulerTest, RespectsGlobalAndPerPeerConcurrencyLimits) {
     EXPECT_EQ(peer1_stats.queued, 0);
     EXPECT_EQ(peer2_stats.running, 0);
     EXPECT_EQ(peer2_stats.queued, 0);
+}
+
+TEST(TransferSchedulerTest, KeepsDirectoryNameDuringProgress) {
+    TempDir temp("transfer-scheduler-directory-name");
+    const auto source = temp.path() / "music";
+    std::filesystem::create_directories(source);
+    write_text(source / "song.txt", "audio");
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+    scheduler.set_runner_factory([] {
+        return std::make_unique<DirectoryProgressNameRunner>();
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = true,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", source);
+    for (int i = 0; i < 20; ++i) {
+        scheduler.pump();
+        const auto tasks = scheduler.tasks();
+        if (tasks.empty()) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    ASSERT_GE(snapshots.size(), 3U);
+    for (const auto& snapshot : snapshots) {
+        if (snapshot.task_id == task_id &&
+            snapshot.snapshot.kind == lan::TransferKind::directory &&
+            snapshot.snapshot.state != lan::TransferState::pending) {
+            EXPECT_EQ(snapshot.snapshot.name, "music");
+        }
+    }
 }
 
 struct MemoryPipe {
