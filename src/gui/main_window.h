@@ -145,6 +145,7 @@ private:
     void wake_scheduler();
 
     void merge_snapshots(TransferSnapshotStore store, const QString& peer_id = {});
+    void merge_snapshots(TransferSnapshotStore store, QMap<std::uint64_t, QString> peer_ids);
     void upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id = {});
     void show_log(QString text);
     void log_event(QString text);

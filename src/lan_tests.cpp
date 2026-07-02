@@ -133,7 +133,7 @@ bool test_partial_file_cleanup_after_disconnect(const TestContext& context) {
 
     lan::Frame hello;
     hello.type = lan::MessageType::hello;
-    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file});
+    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file, .sender_id = {}});
     auto hello_written = lan::write_frame(socket.value(), hello);
     if (!expect(static_cast<bool>(hello_written), hello_written ? "" : hello_written.error().message)) {
         return false;
@@ -184,7 +184,7 @@ bool test_invalid_chunk_offset_is_rejected(const TestContext& context) {
 
     lan::Frame hello;
     hello.type = lan::MessageType::hello;
-    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file});
+    hello.body = lan::encode_hello(lan::HelloMetadata{.mode = lan::HelloMode::file, .sender_id = {}});
     auto hello_written = lan::write_frame(socket.value(), hello);
     if (!expect(static_cast<bool>(hello_written), hello_written ? "" : hello_written.error().message)) {
         return false;

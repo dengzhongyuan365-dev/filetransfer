@@ -95,7 +95,7 @@ void GuiSenderEvents::update(const std::function<void()>& apply) {
     on_change_(snapshots_);
 }
 
-GuiReceiverEvents::GuiReceiverEvents(std::function<void(TransferSnapshotStore)> on_change,
+GuiReceiverEvents::GuiReceiverEvents(std::function<void(TransferSnapshotStore, QMap<std::uint64_t, QString>)> on_change,
                                      std::function<void(QString)> on_log,
                                      std::function<void(const ReceiverConfig&)> on_listening)
     : on_change_(std::move(on_change)),
@@ -106,6 +106,14 @@ void GuiReceiverEvents::on_listening(const ReceiverConfig& config) {
     if (on_listening_) {
         on_listening_(config);
     }
+}
+
+void GuiReceiverEvents::on_client_identified(std::uint64_t transfer_id, const std::string& sender_id) {
+    if (sender_id.empty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    peer_ids_.insert(transfer_id, to_qstring(sender_id));
 }
 
 void GuiReceiverEvents::on_transfer_started(const TransferStarted& started) {
@@ -188,7 +196,7 @@ void GuiReceiverEvents::on_client_error(const Error& error) {
 void GuiReceiverEvents::update(const std::function<void()>& apply) {
     std::lock_guard<std::mutex> lock(mutex_);
     apply();
-    on_change_(snapshots_);
+    on_change_(snapshots_, peer_ids_);
 }
 
 }  // namespace lan::gui

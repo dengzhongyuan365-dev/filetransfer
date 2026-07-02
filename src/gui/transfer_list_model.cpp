@@ -21,7 +21,7 @@ bool TransferListModel::try_snapshot(const QString& key, TransferSnapshot* snaps
 void TransferListModel::upsert(const TransferSnapshot& snapshot, const QString& peer_id) {
     const auto key = transfer_snapshot_key(snapshot);
     clear_dismissed(key);
-    if (snapshot.direction == TransferDirection::send && !peer_id.isEmpty() && peer_ids_.value(key) != peer_id) {
+    if (!peer_id.isEmpty() && peer_ids_.value(key) != peer_id) {
         peer_ids_.insert(key, peer_id);
     }
     snapshots_.insert(key, snapshot);
@@ -51,7 +51,7 @@ QString TransferListModel::peer_id_or(const QString& key, const QString& fallbac
 
 bool TransferListModel::belongs_to_peer(const QString& key, const QString& active_peer_id, bool has_active_peer) const {
     if (!peer_ids_.contains(key)) {
-        return true;
+        return false;
     }
     if (!has_active_peer) {
         return false;

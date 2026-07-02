@@ -21,6 +21,7 @@ struct SenderConfig {
     std::uint64_t chunk_size = 4 * 1024 * 1024;
     bool resume = true;
     FileTransferSource source = FileTransferSource::file;
+    std::string sender_id;
 };
 
 std::string sender_usage();

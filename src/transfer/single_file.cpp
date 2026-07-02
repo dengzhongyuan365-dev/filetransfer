@@ -369,7 +369,7 @@ Result<SendFileReport> send_single_file_to_connection(
 
     Frame hello;
     hello.type = MessageType::hello;
-    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::file});
+    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::file, .sender_id = config.sender_id});
     auto hello_result = write_frame(connection, hello);
     if (!hello_result) {
         return Result<SendFileReport>::failure(hello_result.error());

@@ -144,6 +144,8 @@ void ReceiverServerEvents::on_file_progress(const ReceiveFileProgress&) {}
 
 void ReceiverServerEvents::on_directory_progress(const ReceiveSyncProgress&) {}
 
+void ReceiverServerEvents::on_client_identified(std::uint64_t, const std::string&) {}
+
 Result<ReceiverServerReport> ReceiverServer::run(const ReceiverConfig& config,
                                                  ReceiverServerEvents& events) {
     stop_requested_.store(false);
@@ -231,6 +233,7 @@ Result<bool> ReceiverServer::handle_client(const ReceiverConfig& config,
     }
 
     const auto transfer_id = next_transfer_id_.fetch_add(1);
+    events.on_client_identified(transfer_id, hello_metadata.value().sender_id);
     const auto kind = hello_metadata.value().mode == HelloMode::sync ? TransferKind::directory
                                                                      : TransferKind::file;
     events.on_transfer_started(make_receiver_started(transfer_id, config, kind));

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 
 #include "lan/app/receiver_config.h"
@@ -26,6 +27,7 @@ public:
     virtual ~ReceiverServerEvents() = default;
 
     virtual void on_listening(const ReceiverConfig& config) = 0;
+    virtual void on_client_identified(std::uint64_t transfer_id, const std::string& sender_id);
     virtual void on_file_progress(const ReceiveFileProgress& progress);
     virtual void on_file_received(const ReceiveFileReport& report) = 0;
     virtual void on_directory_progress(const ReceiveSyncProgress& progress);

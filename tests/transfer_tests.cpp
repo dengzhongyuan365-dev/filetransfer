@@ -1027,6 +1027,8 @@ public:
     std::vector<std::uint64_t> completed_ids;
     std::vector<std::uint64_t> failed_ids;
     std::vector<std::uint64_t> cancelled_ids;
+    std::vector<std::uint64_t> identified_ids;
+    std::vector<std::string> sender_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
@@ -1064,6 +1066,11 @@ public:
         started_ids.push_back(started.transfer_id);
         started_kinds.push_back(started.kind);
         started_states.push_back(started.state);
+    }
+
+    void on_client_identified(std::uint64_t transfer_id, const std::string& sender_id) override {
+        identified_ids.push_back(transfer_id);
+        sender_ids.push_back(sender_id);
     }
 
     void on_transfer_progress(const lan::TransferProgress& progress) override {
@@ -1141,6 +1148,8 @@ public:
     std::vector<std::uint64_t> completed_ids;
     std::vector<std::uint64_t> failed_ids;
     std::vector<std::uint64_t> cancelled_ids;
+    std::vector<std::uint64_t> identified_ids;
+    std::vector<std::string> sender_ids;
     std::vector<lan::TransferKind> started_kinds;
     std::vector<lan::TransferKind> completed_kinds;
     std::vector<lan::TransferKind> failed_kinds;
@@ -1229,12 +1238,14 @@ TEST(HelloCodecTest, RoundTripsVersionedHello) {
     lan::HelloMetadata metadata{
         .protocol_version = lan::current_hello_version,
         .mode = lan::HelloMode::sync,
+        .sender_id = "node-a",
     };
 
     auto decoded = lan::decode_hello_body(lan::encode_hello(metadata));
     ASSERT_TRUE(decoded);
     EXPECT_EQ(decoded.value().protocol_version, lan::current_hello_version);
     EXPECT_EQ(decoded.value().mode, lan::HelloMode::sync);
+    EXPECT_EQ(decoded.value().sender_id, "node-a");
 }
 
 TEST(HelloCodecTest, AcceptsLegacyHelloBodies) {
@@ -1245,6 +1256,8 @@ TEST(HelloCodecTest, AcceptsLegacyHelloBodies) {
     ASSERT_TRUE(sync);
     EXPECT_EQ(file.value().mode, lan::HelloMode::file);
     EXPECT_EQ(sync.value().mode, lan::HelloMode::sync);
+    EXPECT_TRUE(file.value().sender_id.empty());
+    EXPECT_TRUE(sync.value().sender_id.empty());
 }
 
 TEST(HelloCodecTest, RejectsUnsupportedVersion) {
@@ -1271,7 +1284,10 @@ TEST(ReceiveSingleFileTest, ReportsProgressForChunks) {
 
     lan::Frame hello;
     hello.type = lan::MessageType::hello;
-    hello.body = lan::bytes_from_string("file");
+    hello.body = lan::encode_hello(lan::HelloMetadata{
+        .mode = lan::HelloMode::file,
+        .sender_id = "node-a",
+    });
 
     std::vector<std::uint64_t> progress_bytes;
     std::vector<std::uint64_t> progress_totals;
@@ -1840,6 +1856,7 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
 
     lan::SenderConfig sender_config;
     sender_config.source_path = source.path();
+    sender_config.sender_id = "node-a";
 
     lan::ReceiverConfig receiver_config;
     receiver_config.receive_dir = receive.path();
@@ -2015,6 +2032,7 @@ TEST(SenderTransferRunnerTest, SendsFileThroughInjectedNetworkBackend) {
     const std::vector<lan::TransferCompletionStatus> expected_statuses = {
         lan::TransferCompletionStatus::transferred};
     const std::vector<std::uint64_t> expected_resumed_from = {0};
+    const std::vector<std::string> expected_sender_ids = {"node-a"};
     EXPECT_EQ(events.started_kinds, expected_started);
     EXPECT_EQ(events.completed_kinds, expected_completed);
     EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
@@ -2300,6 +2318,7 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
 
     lan::SenderConfig sender_config;
     sender_config.source_path = source.path();
+    sender_config.sender_id = "node-a";
 
     CapturingReceiverEvents events;
     lan::ReceiverServer server(backend);
@@ -2321,10 +2340,13 @@ TEST(ReceiverServerTest, RunsOnceWithInjectedNetworkBackend) {
     EXPECT_FALSE(events.client_error);
     const std::vector<lan::TransferKind> expected_lifecycle = {lan::TransferKind::directory};
     const std::vector<std::uint64_t> expected_lifecycle_ids = {1};
+    const std::vector<std::string> expected_sender_ids = {"node-a"};
     EXPECT_EQ(events.started_kinds, expected_lifecycle);
     EXPECT_EQ(events.completed_kinds, expected_lifecycle);
     EXPECT_EQ(events.started_ids, expected_lifecycle_ids);
     EXPECT_EQ(events.completed_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.identified_ids, expected_lifecycle_ids);
+    EXPECT_EQ(events.sender_ids, expected_sender_ids);
     EXPECT_TRUE(events.failed_kinds.empty());
     EXPECT_EQ(served.value().accepted_connections, 1);
     EXPECT_EQ(served.value().failed_connections, 0);

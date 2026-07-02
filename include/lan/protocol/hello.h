@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "lan/common/result.h"
@@ -18,6 +19,7 @@ enum class HelloMode {
 struct HelloMetadata {
     std::uint32_t protocol_version = current_hello_version;
     HelloMode mode = HelloMode::file;
+    std::string sender_id;
 };
 
 std::vector<std::byte> encode_hello(const HelloMetadata& metadata);

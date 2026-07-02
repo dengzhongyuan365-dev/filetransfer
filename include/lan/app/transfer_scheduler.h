@@ -90,6 +90,7 @@ public:
     void set_runner_factory(SchedulerSendRunnerFactory factory);
     void set_limits(SchedulerLimits limits);
     SchedulerLimits limits() const;
+    void set_sender_id(std::string sender_id);
 
     void upsert_peer(SchedulerPeer peer);
     void remove_peer(const std::string& peer_id);
@@ -171,6 +172,7 @@ private:
     SchedulerCallbacks callbacks_;
     SchedulerSendRunnerFactory runner_factory_;
     SchedulerLimits limits_;
+    std::string sender_id_;
     std::map<std::string, SchedulerPeer> peers_;
     std::deque<QueuedSend> queue_;
     std::map<SchedulerTaskId, QueuedSend> paused_;

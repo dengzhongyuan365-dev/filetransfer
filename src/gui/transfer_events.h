@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QMap>
 #include <QString>
 
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -39,11 +41,12 @@ private:
 
 class GuiReceiverEvents final : public ReceiverServerEvents {
 public:
-    GuiReceiverEvents(std::function<void(TransferSnapshotStore)> on_change,
+    GuiReceiverEvents(std::function<void(TransferSnapshotStore, QMap<std::uint64_t, QString>)> on_change,
                       std::function<void(QString)> on_log,
                       std::function<void(const ReceiverConfig&)> on_listening = {});
 
     void on_listening(const ReceiverConfig& config) override;
+    void on_client_identified(std::uint64_t transfer_id, const std::string& sender_id) override;
     void on_transfer_started(const TransferStarted& started) override;
     void on_transfer_progress(const TransferProgress& progress) override;
     void on_transfer_completed(const TransferCompleted& completed) override;
@@ -60,7 +63,8 @@ private:
 
     std::mutex mutex_;
     TransferSnapshotStore snapshots_;
-    std::function<void(TransferSnapshotStore)> on_change_;
+    QMap<std::uint64_t, QString> peer_ids_;
+    std::function<void(TransferSnapshotStore, QMap<std::uint64_t, QString>)> on_change_;
     std::function<void(QString)> on_log_;
     std::function<void(const ReceiverConfig&)> on_listening_;
     bool directory_receive_logged_ = false;

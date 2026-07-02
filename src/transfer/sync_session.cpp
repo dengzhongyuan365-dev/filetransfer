@@ -476,10 +476,12 @@ Result<DeltaStreamSendReport> send_streaming_delta(Connection& connection,
     return Result<DeltaStreamSendReport>::success(report);
 }
 
-Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection, const Manifest& manifest) {
+Result<SyncPlan> send_manifest_and_receive_plan(Connection& connection,
+                                                const Manifest& manifest,
+                                                const std::string& sender_id) {
     Frame hello;
     hello.type = MessageType::hello;
-    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::sync});
+    hello.body = encode_hello(HelloMetadata{.mode = HelloMode::sync, .sender_id = sender_id});
     auto hello_written = write_frame(connection, hello);
     if (!hello_written) {
         return Result<SyncPlan>::failure(hello_written.error());
@@ -594,7 +596,7 @@ Result<SendSyncNegotiationReport> negotiate_sync_sender(const SenderConfig& conf
         return Result<SendSyncNegotiationReport>::failure(connection.error());
     }
 
-    auto plan = send_manifest_and_receive_plan(*connection.value(), manifest.value());
+    auto plan = send_manifest_and_receive_plan(*connection.value(), manifest.value(), config.sender_id);
     if (!plan) {
         return Result<SendSyncNegotiationReport>::failure(plan.error());
     }
@@ -698,7 +700,7 @@ Result<SendSyncReport> sync_sender_to_connection(const SenderConfig& config,
         return Result<SendSyncReport>::failure(manifest.error());
     }
 
-    auto plan = send_manifest_and_receive_plan(connection, manifest.value());
+    auto plan = send_manifest_and_receive_plan(connection, manifest.value(), config.sender_id);
     if (!plan) {
         return Result<SendSyncReport>::failure(plan.error());
     }

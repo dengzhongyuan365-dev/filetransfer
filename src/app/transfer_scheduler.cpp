@@ -193,6 +193,11 @@ SchedulerLimits TransferScheduler::limits() const {
     return limits_;
 }
 
+void TransferScheduler::set_sender_id(std::string sender_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    sender_id_ = std::move(sender_id);
+}
+
 void TransferScheduler::upsert_peer(SchedulerPeer peer) {
     SchedulerEmissions emissions;
     {
@@ -613,6 +618,7 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
     config.source_path = item.source_path;
     config.resume = true;
     config.source = item.source;
+    config.sender_id = sender_id_;
 
     auto validated = validate_sender_config(std::move(config));
     if (!validated) {

@@ -18,11 +18,14 @@ find_package(Qt6 COMPONENTS Core QUIET)
 if(Qt6_FOUND)
     add_executable(gui_unit_tests
         gui_device_manager_tests.cpp
+        gui_transfer_list_model_tests.cpp
         ../src/gui/device_manager.cpp
+        ../src/gui/transfer_list_model.cpp
     )
 
     target_include_directories(gui_unit_tests PRIVATE
         ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/include
     )
 
     target_link_libraries(gui_unit_tests PRIVATE
