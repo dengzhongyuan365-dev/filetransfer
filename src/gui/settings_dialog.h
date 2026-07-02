@@ -1,0 +1,25 @@
+#pragma once
+
+#include <QString>
+#include <QWidget>
+
+#include <optional>
+
+namespace lan::gui {
+
+enum class SettingsCloseAction {
+    ask,
+    tray,
+    quit,
+};
+
+struct SettingsDialogState {
+    QString receive_dir;
+    int max_global_sends = 1;
+    int max_peer_sends = 1;
+    SettingsCloseAction close_action = SettingsCloseAction::ask;
+};
+
+std::optional<SettingsDialogState> edit_settings(QWidget* parent, const SettingsDialogState& state);
+
+}  // namespace lan::gui

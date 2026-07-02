@@ -34,7 +34,6 @@
 #include <QSizePolicy>
 #include <QShortcut>
 #include <QSettings>
-#include <QSpinBox>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStringList>
@@ -60,6 +59,8 @@
 
 #include "gui/drop_panel.h"
 #include "gui/qt_utils.h"
+#include "gui/receive_history_dialog.h"
+#include "gui/settings_dialog.h"
 #include "gui/target_dialogs.h"
 #include "gui/transfer_card.h"
 #include "gui/transfer_events.h"
@@ -1104,153 +1105,60 @@ void MainWindow::stop_receiver() {
 }
 
 void MainWindow::show_settings() {
-    QDialog dialog(this);
-    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Settings"));
-    dialog.resize(360, 390);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(14, 14, 14, 14);
-    layout->setSpacing(9);
-
-    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Settings"), &dialog);
-    title->setObjectName("dialogTitle");
-    auto* receive_label = new QLabel(QCoreApplication::translate("MainWindow", "Receiving folder"), &dialog);
-    receive_label->setObjectName("mutedText");
-
-    auto* path_box = new QFrame(&dialog);
-    path_box->setObjectName("pathBox");
-    auto* path_row = new QHBoxLayout(path_box);
-    path_row->setContentsMargins(10, 8, 8, 8);
-    path_row->setSpacing(8);
-
-    auto* path = new QLabel(receive_dir_ != nullptr ? receive_dir_->text() : saved_receive_dir(), path_box);
-    path->setObjectName("pathLabel");
-    path->setWordWrap(true);
-    auto* choose = new QPushButton(QCoreApplication::translate("MainWindow", "Choose"), path_box);
-    choose->setObjectName("secondaryButton");
-    path_row->addWidget(path, 1);
-    path_row->addWidget(choose);
-
-    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Changing this folder restarts the local receiver."), &dialog);
-    hint->setObjectName("mutedText");
-    hint->setWordWrap(true);
-
-    auto* scheduler_label = new QLabel(QCoreApplication::translate("MainWindow", "Transfer scheduling"), &dialog);
-    scheduler_label->setObjectName("mutedText");
-    auto* max_global_sends = new QSpinBox(&dialog);
-    max_global_sends->setRange(1, 8);
-    max_global_sends->setValue(remembered_max_global_sends());
-    auto* max_peer_sends = new QSpinBox(&dialog);
-    max_peer_sends->setRange(1, 4);
-    max_peer_sends->setValue(remembered_max_peer_sends());
-
-    auto* global_row = new QHBoxLayout();
-    global_row->setSpacing(8);
-    auto* global_label = new QLabel(QCoreApplication::translate("MainWindow", "Max simultaneous sends"), &dialog);
-    global_label->setObjectName("mutedText");
-    global_row->addWidget(global_label, 1);
-    global_row->addWidget(max_global_sends);
-
-    auto* peer_row = new QHBoxLayout();
-    peer_row->setSpacing(8);
-    auto* peer_label = new QLabel(QCoreApplication::translate("MainWindow", "Max sends per machine"), &dialog);
-    peer_label->setObjectName("mutedText");
-    peer_row->addWidget(peer_label, 1);
-    peer_row->addWidget(max_peer_sends);
-
-    auto* close_label = new QLabel(QCoreApplication::translate("MainWindow", "Close button action"), &dialog);
-    close_label->setObjectName("mutedText");
-    auto* ask_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Ask every time"), &dialog);
-    auto* tray_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Minimize to system tray"), &dialog);
-    auto* quit_on_close = new QRadioButton(QCoreApplication::translate("MainWindow", "Quit"), &dialog);
+    SettingsDialogState state{
+        .receive_dir = receive_dir_ != nullptr ? receive_dir_->text() : saved_receive_dir(),
+        .max_global_sends = remembered_max_global_sends(),
+        .max_peer_sends = remembered_max_peer_sends(),
+        .close_action = SettingsCloseAction::ask,
+    };
     const auto close_action = remembered_close_action();
     if (close_action == QStringLiteral("tray")) {
-        tray_on_close->setChecked(true);
+        state.close_action = SettingsCloseAction::tray;
     } else if (close_action == QStringLiteral("quit")) {
-        quit_on_close->setChecked(true);
-    } else {
-        ask_on_close->setChecked(true);
+        state.close_action = SettingsCloseAction::quit;
     }
 
-    auto* buttons = new QHBoxLayout();
-    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
-    cancel->setObjectName("secondaryButton");
-    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Save"), &dialog);
-    save->setObjectName("primaryButton");
-    buttons->addStretch(1);
-    buttons->addWidget(cancel);
-    buttons->addWidget(save);
+    const auto result = edit_settings(this, state);
+    if (!result.has_value()) {
+        return;
+    }
 
-    layout->addWidget(title);
-    layout->addWidget(receive_label);
-    layout->addWidget(path_box);
-    layout->addWidget(hint);
-    layout->addSpacing(2);
-    layout->addWidget(scheduler_label);
-    layout->addLayout(global_row);
-    layout->addLayout(peer_row);
-    layout->addSpacing(2);
-    layout->addWidget(close_label);
-    layout->addWidget(ask_on_close);
-    layout->addWidget(tray_on_close);
-    layout->addWidget(quit_on_close);
-    layout->addStretch(1);
-    layout->addLayout(buttons);
-
-    connect(choose, &QPushButton::clicked, this, [this, path] {
-        const auto dir = QFileDialog::getExistingDirectory(this, QCoreApplication::translate("MainWindow", "Receiving folder"), path->text());
-        if (!dir.isEmpty()) {
-            path->setText(dir);
-        }
-    });
-    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(save, &QPushButton::clicked, this, [this, &dialog, path, ask_on_close, tray_on_close, max_global_sends, max_peer_sends] {
-        const auto next_dir = path->text().trimmed();
-        if (next_dir.isEmpty()) {
-            QMessageBox::warning(this,
-                                 QCoreApplication::translate("MainWindow", "Settings"),
-                                 QCoreApplication::translate("MainWindow", "Receiving folder cannot be empty."));
-            return;
-        }
-
-        if (ask_on_close->isChecked()) {
+    switch (result->close_action) {
+        case SettingsCloseAction::ask:
             save_close_action({});
-        } else if (tray_on_close->isChecked()) {
+            break;
+        case SettingsCloseAction::tray:
             save_close_action(QStringLiteral("tray"));
-        } else {
+            break;
+        case SettingsCloseAction::quit:
             save_close_action(QStringLiteral("quit"));
-        }
-        save_send_scheduler_settings(max_global_sends->value(), max_peer_sends->value());
-        if (scheduler_ != nullptr) {
-            scheduler_->set_limits(SchedulerLimits{
-                .max_global_sends = max_global_sends->value(),
-                .max_peer_sends = max_peer_sends->value(),
-            });
-        }
+            break;
+    }
+    save_send_scheduler_settings(result->max_global_sends, result->max_peer_sends);
+    if (scheduler_ != nullptr) {
+        scheduler_->set_limits(SchedulerLimits{
+            .max_global_sends = result->max_global_sends,
+            .max_peer_sends = result->max_peer_sends,
+        });
+    }
 
-        const auto old_dir = receive_dir_ != nullptr ? receive_dir_->text() : QString{};
-        if (next_dir == old_dir) {
-            dialog.accept();
-            return;
-        }
+    const auto old_dir = receive_dir_ != nullptr ? receive_dir_->text() : QString{};
+    if (result->receive_dir == old_dir) {
+        return;
+    }
 
-        const auto was_ready = receiver_ready_;
-        stop_receiver();
-        if (receive_dir_ != nullptr) {
-            receive_dir_->setText(next_dir);
-        }
-        save_receive_dir(next_dir);
-        log_event(QCoreApplication::translate("MainWindow", "Receiving folder changed to %1").arg(next_dir));
-        if (was_ready && !start_receiver()) {
-            QMessageBox::warning(this,
-                                 QCoreApplication::translate("MainWindow", "Settings"),
-                                 QCoreApplication::translate("MainWindow", "Receiver failed to restart. Check the receiving folder."));
-            return;
-        }
-        dialog.accept();
-    });
-
-    dialog.exec();
+    const auto was_ready = receiver_ready_;
+    stop_receiver();
+    if (receive_dir_ != nullptr) {
+        receive_dir_->setText(result->receive_dir);
+    }
+    save_receive_dir(result->receive_dir);
+    log_event(QCoreApplication::translate("MainWindow", "Receiving folder changed to %1").arg(result->receive_dir));
+    if (was_ready && !start_receiver()) {
+        QMessageBox::warning(this,
+                             QCoreApplication::translate("MainWindow", "Settings"),
+                             QCoreApplication::translate("MainWindow", "Receiver failed to restart. Check the receiving folder."));
+    }
 }
 
 void MainWindow::search_peers() {
@@ -1734,100 +1642,58 @@ void MainWindow::open_transfer_dir(const QString& key) {
 void MainWindow::show_receive_history() {
     auto settings = app_settings();
     const auto history = settings.value(QStringLiteral("receiveHistory")).toList();
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Receive history"));
-    dialog.resize(380, 420);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
-
-    auto* list = new QListWidget(&dialog);
-    list->setFrameShape(QFrame::NoFrame);
-    list->setWordWrap(true);
-    list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-
-    if (history.isEmpty()) {
-        auto* item = new QListWidgetItem(QCoreApplication::translate("MainWindow", "No receive history yet."));
-        item->setFlags(Qt::NoItemFlags);
-        list->addItem(item);
-    } else {
-        for (const auto& value : history) {
-            const auto map = value.toMap();
-            const auto finished_at = QDateTime::fromMSecsSinceEpoch(map.value(QStringLiteral("finishedAt")).toLongLong());
-            const auto state = state_text(static_cast<TransferState>(map.value(QStringLiteral("state")).toInt()));
-            const auto kind = kind_text(static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt()));
-            const auto name = map.value(QStringLiteral("name")).toString();
-            const auto path = map.value(QStringLiteral("path")).toString();
-            const auto open_dir = map.value(QStringLiteral("openDir")).toString();
-            const auto bytes = map.value(QStringLiteral("bytes")).toULongLong();
-            const auto files = map.value(QStringLiteral("files")).toULongLong();
-            const auto error = map.value(QStringLiteral("error")).toString();
-            const auto amount = files > 0
-                                    ? QCoreApplication::translate("MainWindow", "%1 file(s)").arg(files)
-                                    : to_qstring(format_size(bytes));
-            auto text = QStringLiteral("%1\n%2, %3, %4, %5\n%6")
-                            .arg(name,
-                                 state,
-                                 kind,
-                                 amount,
-                                 finished_at.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
-                                 path);
-            if (!error.isEmpty()) {
-                text += QStringLiteral("\n%1").arg(error);
-            }
-            auto* item = new QListWidgetItem(text);
-            item->setData(Qt::UserRole, open_dir);
-            item->setSizeHint(QSize(0, error.isEmpty() ? 64 : 82));
-            list->addItem(item);
+    std::vector<ReceiveHistoryItem> items;
+    items.reserve(static_cast<std::size_t>(history.size()));
+    for (const auto& value : history) {
+        const auto map = value.toMap();
+        const auto finished_at = QDateTime::fromMSecsSinceEpoch(map.value(QStringLiteral("finishedAt")).toLongLong());
+        const auto state = state_text(static_cast<TransferState>(map.value(QStringLiteral("state")).toInt()));
+        const auto kind = kind_text(static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt()));
+        const auto name = map.value(QStringLiteral("name")).toString();
+        const auto path = map.value(QStringLiteral("path")).toString();
+        const auto open_dir = map.value(QStringLiteral("openDir")).toString();
+        const auto bytes = map.value(QStringLiteral("bytes")).toULongLong();
+        const auto files = map.value(QStringLiteral("files")).toULongLong();
+        const auto error = map.value(QStringLiteral("error")).toString();
+        const auto amount = files > 0
+                                ? QCoreApplication::translate("MainWindow", "%1 file(s)").arg(files)
+                                : to_qstring(format_size(bytes));
+        auto text = QStringLiteral("%1\n%2, %3, %4, %5\n%6")
+                        .arg(name,
+                             state,
+                             kind,
+                             amount,
+                             finished_at.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                             path);
+        if (!error.isEmpty()) {
+            text += QStringLiteral("\n%1").arg(error);
         }
+        items.push_back(ReceiveHistoryItem{
+            .text = text,
+            .open_dir = open_dir,
+            .has_error = !error.isEmpty(),
+        });
     }
 
-    auto* buttons = new QHBoxLayout();
-    auto* open = new QPushButton(QCoreApplication::translate("MainWindow", "Open folder"), &dialog);
-    open->setObjectName("secondaryButton");
-    auto* clear = new QPushButton(QCoreApplication::translate("MainWindow", "Clear history"), &dialog);
-    clear->setObjectName("secondaryButton");
-    auto* close = new QPushButton(QCoreApplication::translate("MainWindow", "Close"), &dialog);
-    close->setObjectName("primaryButton");
-    open->setEnabled(!history.isEmpty());
-    clear->setEnabled(!history.isEmpty());
-    buttons->addWidget(open);
-    buttons->addWidget(clear);
-    buttons->addStretch(1);
-    buttons->addWidget(close);
-
-    layout->addWidget(list, 1);
-    layout->addLayout(buttons);
-
-    const auto open_selected = [this, list] {
-        auto* item = list->currentItem();
-        if (item == nullptr) {
-            return;
-        }
-        const auto dir = item->data(Qt::UserRole).toString();
-        if (dir.isEmpty()) {
-            show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this history item."));
-            return;
-        }
-        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
-            show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
-        }
-    };
-
-    connect(open, &QPushButton::clicked, this, open_selected);
-    connect(list, &QListWidget::itemDoubleClicked, this, open_selected);
-    connect(clear, &QPushButton::clicked, this, [&dialog, this] {
-        auto settings = app_settings();
+    const auto action = show_receive_history_dialog(this, items);
+    if (!action.has_value()) {
+        return;
+    }
+    if (action->type == ReceiveHistoryActionType::clear) {
         settings.remove(QStringLiteral("receiveHistory"));
         recorded_history_keys_.clear();
         log_event(QCoreApplication::translate("MainWindow", "Receive history cleared."));
-        dialog.accept();
-    });
-    connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+        return;
+    }
 
-    dialog.exec();
+    const auto dir = action->open_dir;
+    if (dir.isEmpty()) {
+        show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this history item."));
+        return;
+    }
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
+        show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
+    }
 }
 
 void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {

@@ -1027,6 +1027,110 @@ Code: %2</source>
     </message>
 </context>
 <context>
+    <name>ReceiveHistoryDialog</name>
+    <message>
+        <location filename="../src/gui/receive_history_dialog.cpp" line="19"/>
+        <source>Receive history</source>
+        <translation>接收历史</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/receive_history_dialog.cpp" line="32"/>
+        <source>No receive history yet.</source>
+        <translation>暂无接收历史。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/receive_history_dialog.cpp" line="45"/>
+        <source>Open folder</source>
+        <translation>打开目录</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/receive_history_dialog.cpp" line="47"/>
+        <source>Clear history</source>
+        <translation>清空历史</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/receive_history_dialog.cpp" line="49"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsDialog</name>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="19"/>
+        <location filename="../src/gui/settings_dialog.cpp" line="26"/>
+        <location filename="../src/gui/settings_dialog.cpp" line="126"/>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="28"/>
+        <location filename="../src/gui/settings_dialog.cpp" line="116"/>
+        <source>Receiving folder</source>
+        <translation>接收目录</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="40"/>
+        <source>Choose</source>
+        <translation>选择</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="45"/>
+        <source>Changing this folder restarts the local receiver.</source>
+        <translation>更改此目录会重启本机接收端。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="49"/>
+        <source>Transfer scheduling</source>
+        <translation>传输调度</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="60"/>
+        <source>Max simultaneous sends</source>
+        <translation>最大同时发送数</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="67"/>
+        <source>Max sends per machine</source>
+        <translation>每台设备最大发送数</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="72"/>
+        <source>Close button action</source>
+        <translation>关闭按钮动作</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="74"/>
+        <source>Ask every time</source>
+        <translation>每次询问</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="75"/>
+        <source>Minimize to system tray</source>
+        <translation>最小化到系统托盘</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="76"/>
+        <source>Quit</source>
+        <translation>退出</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="90"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="92"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="127"/>
+        <source>Receiving folder cannot be empty.</source>
+        <translation>接收目录不能为空。</translation>
+    </message>
+</context>
+<context>
     <name>TargetDialogs</name>
     <message>
         <location filename="../src/gui/target_dialogs.cpp" line="23"/>
