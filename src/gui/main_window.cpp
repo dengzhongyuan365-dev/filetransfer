@@ -24,7 +24,6 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
-#include <QNetworkInterface>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -46,7 +45,6 @@
 #include <QTimer>
 #include <QTime>
 #include <QToolButton>
-#include <QUdpSocket>
 #include <QUrl>
 #include <QUuid>
 #include <QVariant>
@@ -62,7 +60,6 @@
 #include <utility>
 
 #include "gui/drop_panel.h"
-#include "gui/control_message.h"
 #include "gui/qt_utils.h"
 #include "gui/target_dialogs.h"
 #include "gui/transfer_events.h"
@@ -119,97 +116,6 @@ QString make_link_code() {
 
 qint64 now_ms() {
     return QDateTime::currentMSecsSinceEpoch();
-}
-
-QList<QHostAddress> discovery_targets() {
-    QList<QHostAddress> targets;
-    QSet<QString> seen;
-    const auto add_target = [&targets, &seen](const QHostAddress& address) {
-        if (address.isNull() || address.protocol() != QAbstractSocket::IPv4Protocol) {
-            return;
-        }
-        const auto key = address.toString();
-        if (seen.contains(key)) {
-            return;
-        }
-        seen.insert(key);
-        targets.push_back(address);
-    };
-
-    add_target(QHostAddress(QHostAddress::Broadcast));
-    const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const auto& interface : interfaces) {
-        const auto flags = interface.flags();
-        if (!flags.testFlag(QNetworkInterface::IsUp) ||
-            !flags.testFlag(QNetworkInterface::IsRunning) ||
-            !flags.testFlag(QNetworkInterface::CanBroadcast) ||
-            flags.testFlag(QNetworkInterface::IsLoopBack)) {
-            continue;
-        }
-        for (const auto& entry : interface.addressEntries()) {
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) {
-                continue;
-            }
-            add_target(entry.broadcast());
-        }
-    }
-    return targets;
-}
-
-bool is_private_ipv4(quint32 address) {
-    const auto first = (address >> 24) & 0xffU;
-    const auto second = (address >> 16) & 0xffU;
-    return first == 10U ||
-           (first == 172U && second >= 16U && second <= 31U) ||
-           (first == 192U && second == 168U);
-}
-
-QList<QHostAddress> extended_discovery_targets() {
-    QList<QHostAddress> targets;
-    QSet<QString> seen;
-    const auto add_target = [&targets, &seen](quint32 address) {
-        const auto host = address & 0xffU;
-        if (host == 0U || host == 255U) {
-            return;
-        }
-        const auto target = QHostAddress(address);
-        const auto key = target.toString();
-        if (seen.contains(key)) {
-            return;
-        }
-        seen.insert(key);
-        targets.push_back(target);
-    };
-
-    const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const auto& interface : interfaces) {
-        const auto flags = interface.flags();
-        if (!flags.testFlag(QNetworkInterface::IsUp) ||
-            !flags.testFlag(QNetworkInterface::IsRunning) ||
-            flags.testFlag(QNetworkInterface::IsLoopBack)) {
-            continue;
-        }
-        for (const auto& entry : interface.addressEntries()) {
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) {
-                continue;
-            }
-            const auto local = entry.ip().toIPv4Address();
-            if (!is_private_ipv4(local)) {
-                continue;
-            }
-
-            const auto prefix = local & 0xffff0000U;
-            const auto local_subnet = static_cast<int>((local >> 8) & 0xffU);
-            const auto begin_subnet = std::max(0, local_subnet - 16);
-            const auto end_subnet = std::min(255, local_subnet + 16);
-            for (int subnet = begin_subnet; subnet <= end_subnet; ++subnet) {
-                for (quint32 host = 1; host <= 254; ++host) {
-                    add_target(prefix | (static_cast<quint32>(subnet) << 8) | host);
-                }
-            }
-        }
-    }
-    return targets;
 }
 
 bool parse_manual_peer_endpoint(const QString& text, QString& host, std::uint16_t& port) {
@@ -1042,19 +948,17 @@ CloseAction MainWindow::ask_close_action() {
 }
 
 void MainWindow::setup_discovery() {
-    discovery_ = std::make_unique<QUdpSocket>();
-    const auto bound = discovery_->bind(QHostAddress::AnyIPv4, kDiscoveryPort,
-                                        QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+    discovery_ = std::make_unique<DiscoveryController>();
+    const auto bound = discovery_->bind(this, [this](DiscoveryDatagram datagram) {
+        handle_discovery_datagram(std::move(datagram));
+    });
     if (bound) {
         log_event(QCoreApplication::translate("MainWindow", "UDP discovery listening on %1").arg(kDiscoveryPort));
     } else {
         log_event(QCoreApplication::translate("MainWindow", "UDP discovery bind failed on %1: %2")
                       .arg(kDiscoveryPort)
-                      .arg(discovery_->errorString()));
+                      .arg(discovery_->error_string()));
     }
-    connect(discovery_.get(), &QUdpSocket::readyRead, this, [this] {
-        read_discovery();
-    });
 
     auto* presence = new QTimer(this);
     connect(presence, &QTimer::timeout, this, [this] {
@@ -1394,27 +1298,14 @@ void MainWindow::send_discovery_probe(bool extended) {
     if (discovery_ == nullptr) {
         return;
     }
-    const auto message = encode_control_message(QStringLiteral("discover"), node_id_, machine_name(), kTransferPort);
-    const auto targets = discovery_targets();
-    QStringList target_labels;
-    for (const auto& target : targets) {
-        discovery_->writeDatagram(message, target, kDiscoveryPort);
-        target_labels.push_back(target.toString());
-    }
+    const auto report = discovery_->send_discovery_probe(node_id_, machine_name(), extended);
     if (extended) {
         log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1 to %2")
                       .arg(kDiscoveryPort)
-                      .arg(target_labels.join(QStringLiteral(", "))));
+                      .arg(report.broadcast_targets.join(QStringLiteral(", "))));
     }
-    if (!extended) {
-        return;
-    }
-    const auto extended_targets = extended_discovery_targets();
-    for (const auto& target : extended_targets) {
-        discovery_->writeDatagram(message, target, kDiscoveryPort);
-    }
-    if (!extended_targets.isEmpty()) {
-        log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(extended_targets.size()));
+    if (extended && report.extended_target_count > 0) {
+        log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(report.extended_target_count));
     }
 }
 
@@ -1446,56 +1337,57 @@ void MainWindow::add_manual_peer_from_filter() {
     refresh_peer_list();
 }
 
-void MainWindow::read_discovery() {
-    while (discovery_->hasPendingDatagrams()) {
-        QByteArray datagram;
-        datagram.resize(static_cast<int>(discovery_->pendingDatagramSize()));
-        QHostAddress sender;
-        quint16 sender_port = 0;
-        discovery_->readDatagram(datagram.data(), datagram.size(), &sender, &sender_port);
-
-        const auto message = decode_control_message(datagram);
-        if (!message.has_value()) {
-            continue;
+void MainWindow::handle_discovery_datagram(DiscoveryDatagram datagram) {
+    const auto& obj = datagram.message.fields;
+    if (datagram.message.type == "discover") {
+        if (datagram.message.id == node_id_) {
+            return;
         }
-        const auto& obj = message->fields;
-        if (message->type == "discover") {
-            if (message->id != node_id_) {
-                if (!receiver_ready_) {
-                    log_event(QCoreApplication::translate("MainWindow", "Ignored discover from %1 because receiver is not ready.")
-                                  .arg(sender.toString()));
-                    continue;
-                }
-                log_event(QCoreApplication::translate("MainWindow", "Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
-                reply_to_discovery(sender, sender_port);
-            }
-        } else if (message->type == "announce") {
-            log_event(QCoreApplication::translate("MainWindow", "Received announce from %1").arg(sender.toString()));
-            add_peer(sender, obj);
-        } else if (message->type == "link_request") {
-            if (!receiver_ready_) {
-                log_event(QCoreApplication::translate("MainWindow", "Ignored link request from %1 because receiver is not ready.")
-                              .arg(sender.toString()));
-                continue;
-            }
-            log_event(QCoreApplication::translate("MainWindow", "Received link request from %1").arg(sender.toString()));
-            receive_link_request(sender, obj);
-        } else if (message->type == "link_accept") {
-            log_event(QCoreApplication::translate("MainWindow", "Received link accept from %1").arg(sender.toString()));
-            receive_link_response(sender, obj, true);
-        } else if (message->type == "link_reject") {
-            log_event(QCoreApplication::translate("MainWindow", "Received link reject from %1").arg(sender.toString()));
-            receive_link_response(sender, obj, false);
-        } else if (message->type == "link_disconnect") {
-            log_event(QCoreApplication::translate("MainWindow", "Received link disconnect from %1").arg(sender.toString()));
-            receive_link_disconnect(sender, obj);
+        if (!receiver_ready_) {
+            log_event(QCoreApplication::translate("MainWindow", "Ignored discover from %1 because receiver is not ready.")
+                          .arg(datagram.sender.toString()));
+            return;
         }
+        log_event(QCoreApplication::translate("MainWindow", "Received discover from %1:%2").arg(datagram.sender.toString()).arg(datagram.sender_port));
+        reply_to_discovery(datagram.sender, datagram.sender_port);
+        return;
+    }
+    if (datagram.message.type == "announce") {
+        log_event(QCoreApplication::translate("MainWindow", "Received announce from %1").arg(datagram.sender.toString()));
+        add_peer(datagram.sender, obj);
+        return;
+    }
+    if (datagram.message.type == "link_request") {
+        if (!receiver_ready_) {
+            log_event(QCoreApplication::translate("MainWindow", "Ignored link request from %1 because receiver is not ready.")
+                          .arg(datagram.sender.toString()));
+            return;
+        }
+        log_event(QCoreApplication::translate("MainWindow", "Received link request from %1").arg(datagram.sender.toString()));
+        receive_link_request(datagram.sender, obj);
+        return;
+    }
+    if (datagram.message.type == "link_accept") {
+        log_event(QCoreApplication::translate("MainWindow", "Received link accept from %1").arg(datagram.sender.toString()));
+        receive_link_response(datagram.sender, obj, true);
+        return;
+    }
+    if (datagram.message.type == "link_reject") {
+        log_event(QCoreApplication::translate("MainWindow", "Received link reject from %1").arg(datagram.sender.toString()));
+        receive_link_response(datagram.sender, obj, false);
+        return;
+    }
+    if (datagram.message.type == "link_disconnect") {
+        log_event(QCoreApplication::translate("MainWindow", "Received link disconnect from %1").arg(datagram.sender.toString()));
+        receive_link_disconnect(datagram.sender, obj);
     }
 }
 
 void MainWindow::reply_to_discovery(const QHostAddress& target, quint16 port) {
-    const auto message = encode_control_message(QStringLiteral("announce"), node_id_, machine_name(), kTransferPort);
-    discovery_->writeDatagram(message, target, port);
+    if (discovery_ == nullptr) {
+        return;
+    }
+    discovery_->reply_to_discovery(target, port, node_id_, machine_name());
     log_event(QCoreApplication::translate("MainWindow", "Sent announce to %1:%2").arg(target.toString()).arg(port));
 }
 
@@ -2318,8 +2210,10 @@ void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJso
 }
 
 void MainWindow::send_control(const Peer& peer, const QString& type, const QJsonObject& fields) {
-    const auto payload = encode_control_message(type, node_id_, machine_name(), kTransferPort, fields);
-    discovery_->writeDatagram(payload, QHostAddress(peer.host), kDiscoveryPort);
+    if (discovery_ == nullptr) {
+        return;
+    }
+    discovery_->send_control(peer, type, node_id_, machine_name(), fields);
     log_event(QCoreApplication::translate("MainWindow", "Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
 }
 

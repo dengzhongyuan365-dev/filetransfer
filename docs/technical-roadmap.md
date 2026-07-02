@@ -12,6 +12,7 @@ This is now the baseline for later multi-device and queue work:
 
 - `src/gui/target_dialogs.*`: compact target-selection dialogs for multi-target sends and queued-task target changes.
 - `src/gui/device_manager.*`: peer inventory, endpoint de-duplication, online/stale status, linked peers, active peer, and selected send targets.
+- `src/gui/discovery_controller.*`: UDP discovery socket ownership, LAN broadcast/extended probing, announce replies, and control-message sending.
 - `src/gui/control_message.*`: UDP discovery/link JSON message encoding and decoding.
 - `src/gui/transfer_list_model.*`: transfer snapshot storage, peer ownership, per-peer filtering, and dismissed transfer keys.
 - `TransferScheduler::set_runner_factory`: injectable send runner factory used by tests to simulate concurrent sends without real network I/O.

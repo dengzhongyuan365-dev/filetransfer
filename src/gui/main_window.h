@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "gui/device_manager.h"
+#include "gui/discovery_controller.h"
 #include "gui/transfer_list_model.h"
 #include "gui/types.h"
 #include "lan/app/receiver_server.h"
@@ -27,7 +28,6 @@ class QStackedWidget;
 class QSystemTrayIcon;
 class QToolButton;
 class QVBoxLayout;
-class QUdpSocket;
 
 namespace lan::gui {
 
@@ -74,7 +74,7 @@ private:
     void send_discovery_probe(bool extended);
     void refresh_peer_presence();
     void add_manual_peer_from_filter();
-    void read_discovery();
+    void handle_discovery_datagram(DiscoveryDatagram datagram);
     void reply_to_discovery(const QHostAddress& target, quint16 port);
     void add_peer(const QHostAddress& address, const QJsonObject& obj);
     bool peer_matches_filter(const Peer& peer) const;
@@ -159,7 +159,7 @@ private:
     QPlainTextEdit* log_ = nullptr;
     QSystemTrayIcon* tray_icon_ = nullptr;
 
-    std::unique_ptr<QUdpSocket> discovery_;
+    std::unique_ptr<DiscoveryController> discovery_;
     DeviceManager devices_;
     QMap<QString, QWidget*> transfer_cards_;
     TransferListModel transfer_model_;

@@ -1147,6 +1147,8 @@ graph TD
     A --> C["TransferListModel"]
     A --> D["target_dialogs"]
     A --> E["control_message"]
+    A --> I["DiscoveryController"]
+    I --> E
     A --> F["TransferScheduler"]
     F --> G["SchedulerSendRunner"]
     G --> H["SenderTransferRunner"]
@@ -1158,6 +1160,7 @@ graph TD
 | --- | --- | --- |
 | `MainWindow` | 页面切换、按钮回调、控件刷新、日志显示 | 不直接保存复杂设备/任务拓扑 |
 | `DeviceManager` | peer 列表、在线过期、连接状态、活动设备、发送目标 | 不发 UDP、不弹窗 |
+| `DiscoveryController` | UDP socket、broadcast/extended probe、announce、control send、datagram decode | 不决定是否接受连接 |
 | `TransferListModel` | transfer snapshot、任务所属设备、按设备过滤、隐藏任务 | 不创建 QWidget |
 | `control_message` | UDP 控制消息 JSON encode/decode | 不处理消息语义 |
 | `target_dialogs` | 选择发送目标、移动排队任务目标 | 不调用 scheduler |

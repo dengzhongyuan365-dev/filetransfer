@@ -206,6 +206,7 @@ magic + version + type + flags + body_size + body
 GUI 主窗口现在只负责页面组织、用户交互和控件刷新，部分可维护性边界已经拆出：
 
 - `DeviceManager`：管理设备列表、在线状态、连接状态、当前活动设备和发送目标。
+- `DiscoveryController`：管理 UDP discovery socket、广播探测、announce 回复和控制消息发送。
 - `TransferListModel`：管理传输快照、任务所属设备、按设备过滤和用户隐藏的任务。
 - `control_message`：统一 UDP 发现、连接请求、连接响应、断开连接的 JSON 编解码。
 - `target_dialogs`：封装发送目标选择和排队任务更换目标设备弹窗。

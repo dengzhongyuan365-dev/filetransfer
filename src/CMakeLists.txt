@@ -63,6 +63,7 @@ if(Qt6_FOUND)
 
     add_executable(lan-gui
         gui/control_message.cpp
+        gui/discovery_controller.cpp
         gui/drop_panel.cpp
         gui/device_manager.cpp
         gui/main_window.cpp
