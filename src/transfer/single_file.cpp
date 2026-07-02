@@ -382,6 +382,7 @@ Result<SendFileReport> send_single_file_to_connection(
         .size = size.value(),
         .sha256 = hash.value().hex_digest,
         .resume = config.resume,
+        .source = config.source,
     }));
     auto begin_result = write_frame(connection, begin);
     if (!begin_result) {
@@ -487,6 +488,7 @@ Result<SendFileReport> send_single_file_to_connection(
         .elapsed_seconds = transfer_timer.elapsed_seconds(),
         .status = status,
         .resumed_from = begin_ack.value().offset,
+        .source = config.source,
     });
 }
 
@@ -592,6 +594,7 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
             .sha256 = metadata.value().sha256,
             .elapsed_seconds = 0.0,
             .status = FileTransferStatus::skipped,
+            .source = metadata.value().source,
         });
     }
 
@@ -730,6 +733,7 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
         .elapsed_seconds = transfer_timer.elapsed_seconds(),
         .status = status,
         .resumed_from = resume_offset.value(),
+        .source = metadata.value().source,
     });
 }
 

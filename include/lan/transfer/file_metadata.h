@@ -8,11 +8,17 @@
 
 namespace lan {
 
+enum class FileTransferSource {
+    file,
+    clipboard_image,
+};
+
 struct FileBeginMetadata {
     std::string name;
     std::uint64_t size = 0;
     std::string sha256;
     bool resume = true;
+    FileTransferSource source = FileTransferSource::file;
 };
 
 struct FileBeginAckMetadata {
@@ -22,6 +28,7 @@ struct FileBeginAckMetadata {
 
 std::string encode_file_begin(const FileBeginMetadata& metadata);
 Result<FileBeginMetadata> decode_file_begin(std::string_view body);
+std::string_view file_transfer_source_name(FileTransferSource source);
 std::string encode_file_begin_ack(const FileBeginAckMetadata& metadata);
 Result<FileBeginAckMetadata> decode_file_begin_ack(std::string_view body);
 

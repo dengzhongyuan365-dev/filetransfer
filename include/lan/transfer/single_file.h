@@ -11,6 +11,7 @@
 #include "lan/common/result.h"
 #include "lan/net/connection.h"
 #include "lan/protocol/frame.h"
+#include "lan/transfer/file_metadata.h"
 
 namespace lan {
 
@@ -27,6 +28,7 @@ struct SendFileReport {
     double elapsed_seconds = 0.0;
     FileTransferStatus status = FileTransferStatus::transferred;
     std::uint64_t resumed_from = 0;
+    FileTransferSource source = FileTransferSource::file;
 };
 
 struct SendFileProgress {
@@ -46,6 +48,7 @@ struct ReceiveFileReport {
     double elapsed_seconds = 0.0;
     FileTransferStatus status = FileTransferStatus::transferred;
     std::uint64_t resumed_from = 0;
+    FileTransferSource source = FileTransferSource::file;
 };
 
 struct ReceiveFileProgress {

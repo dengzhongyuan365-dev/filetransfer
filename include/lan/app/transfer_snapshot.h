@@ -29,6 +29,7 @@ struct TransferSnapshot {
     TransferCompletionStatus completion_status = TransferCompletionStatus::transferred;
     std::uint64_t resumed_from = 0;
     double elapsed_seconds = 0.0;
+    FileTransferSource source = FileTransferSource::file;
     std::optional<Error> error;
     ErrorCategory error_category = ErrorCategory::internal;
     bool retryable = false;

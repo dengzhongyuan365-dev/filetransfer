@@ -5,6 +5,7 @@
 #include <string>
 
 #include "lan/common/result.h"
+#include "lan/transfer/file_metadata.h"
 
 namespace lan {
 
@@ -19,6 +20,7 @@ struct SenderConfig {
     std::filesystem::path source_path;
     std::uint64_t chunk_size = 4 * 1024 * 1024;
     bool resume = true;
+    FileTransferSource source = FileTransferSource::file;
 };
 
 std::string sender_usage();

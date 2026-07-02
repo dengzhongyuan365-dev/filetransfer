@@ -75,6 +75,7 @@ TransferCompleted make_sender_file_completed(std::uint64_t transfer_id,
         .status = to_completion_status(report.status),
         .resumed_from = report.resumed_from,
         .elapsed_seconds = report.elapsed_seconds,
+        .source = report.source,
     };
 }
 

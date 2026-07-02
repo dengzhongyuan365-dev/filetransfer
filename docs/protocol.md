@@ -88,9 +88,11 @@ name=<base file name>
 size=<bytes>
 sha256=<hex digest>
 resume=1|0
+source=file|clipboard_image
 ```
 
 `resume=1` lets the receiver continue from an existing `.part` file. `resume=0` makes the receiver ignore any `.part` file and restart from byte 0.
+`source` describes the semantic origin of this file. It defaults to `file` for older senders. `clipboard_image` is used when the sender converted raw clipboard image data into a temporary image file; GUI receivers can copy the completed image back to the clipboard and show a notification.
 
 ### file_begin ack
 

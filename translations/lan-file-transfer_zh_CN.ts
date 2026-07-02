@@ -962,6 +962,22 @@ Code: %2</source>
         <translation>已从剪贴板粘贴 %1 个路径。</translation>
     </message>
     <message>
+        <source>Failed to copy received clipboard image: %1</source>
+        <translation>复制接收到的剪贴板图片失败：%1</translation>
+    </message>
+    <message>
+        <source>Received clipboard image copied to clipboard.</source>
+        <translation>接收到的剪贴板图片已写入剪贴板。</translation>
+    </message>
+    <message>
+        <source>Clipboard image received</source>
+        <translation>已收到剪贴板图片</translation>
+    </message>
+    <message>
+        <source>The received image has been copied to the clipboard.</source>
+        <translation>接收到的图片已复制到剪贴板。</translation>
+    </message>
+    <message>
         <source>Queued send: %1</source>
         <translation type="vanished">已排队发送：%1</translation>
     </message>

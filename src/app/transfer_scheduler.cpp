@@ -16,6 +16,7 @@ int clamp_limit(int value, int min_value, int max_value) {
 
 TransferSnapshot make_failed_snapshot(SchedulerTaskId task_id,
                                       const std::filesystem::path& source_path,
+                                      FileTransferSource source,
                                       const Error& error) {
     TransferSnapshot snapshot;
     snapshot.transfer_id = task_id;
@@ -26,6 +27,7 @@ TransferSnapshot make_failed_snapshot(SchedulerTaskId task_id,
     snapshot.path = source_path;
     snapshot.name = source_path.filename().string();
     snapshot.state = TransferState::failed;
+    snapshot.source = source;
     snapshot.error = error;
     snapshot.error_category = error_category(error);
     snapshot.retryable = is_retryable(error);
@@ -37,9 +39,11 @@ class TaskScopedEvents final : public SenderTransferEvents {
 public:
     TaskScopedEvents(SchedulerTaskId task_id,
                      std::string peer_id,
+                     FileTransferSource source,
                      std::function<void(SchedulerSnapshot)> on_snapshot)
         : task_id_(task_id),
           peer_id_(std::move(peer_id)),
+          source_(source),
           on_snapshot_(std::move(on_snapshot)) {}
 
     void on_transfer_started(const TransferStarted& started) override {
@@ -50,6 +54,7 @@ public:
         snapshot.kind = started.kind;
         snapshot.path = started.path;
         snapshot.name = started.name;
+        snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
@@ -70,6 +75,7 @@ public:
         snapshot.delta_files = progress.delta_files;
         snapshot.payload_bytes = progress.payload_bytes;
         snapshot.elapsed_seconds = progress.elapsed_seconds;
+        snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
@@ -91,6 +97,7 @@ public:
         snapshot.completion_status = completed.status;
         snapshot.resumed_from = completed.resumed_from;
         snapshot.elapsed_seconds = completed.elapsed_seconds;
+        snapshot.source = completed.source;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
@@ -106,6 +113,7 @@ public:
         snapshot.error_category = failed.category;
         snapshot.retryable = failed.retryable;
         snapshot.user_action_required = failed.user_action_required;
+        snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
@@ -117,12 +125,14 @@ public:
         snapshot.kind = cancelled.kind;
         snapshot.path = cancelled.path;
         snapshot.name = cancelled.name;
+        snapshot.source = source_;
         on_snapshot_(SchedulerSnapshot{.task_id = task_id_, .peer_id = peer_id_, .snapshot = std::move(snapshot)});
     }
 
 private:
     SchedulerTaskId task_id_ = 0;
     std::string peer_id_;
+    FileTransferSource source_ = FileTransferSource::file;
     std::function<void(SchedulerSnapshot)> on_snapshot_;
 };
 
@@ -200,16 +210,22 @@ void TransferScheduler::remove_peer(const std::string& peer_id) {
 }
 
 SchedulerTaskId TransferScheduler::enqueue_send(const std::string& peer_id,
-                                                std::filesystem::path source_path) {
+                                                std::filesystem::path source_path,
+                                                FileTransferSource source) {
     SchedulerEmissions emissions;
     SchedulerTaskId task_id = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         task_id = next_task_id_++;
-        queue_.push_back(QueuedSend{.task_id = task_id, .peer_id = peer_id, .source_path = source_path});
+        queue_.push_back(QueuedSend{
+            .task_id = task_id,
+            .peer_id = peer_id,
+            .source_path = source_path,
+            .source = source,
+        });
         emissions.snapshots.push_back(SchedulerSnapshot{.task_id = task_id,
                                                         .peer_id = peer_id,
-                                                        .snapshot = make_pending_snapshot(task_id, source_path)});
+                                                        .snapshot = make_pending_snapshot(task_id, source_path, source)});
         start_next_locked(emissions);
     }
     flush_emissions(std::move(emissions));
@@ -217,7 +233,8 @@ SchedulerTaskId TransferScheduler::enqueue_send(const std::string& peer_id,
 }
 
 std::vector<SchedulerTaskId> TransferScheduler::enqueue_send_to_peers(const std::vector<std::string>& peer_ids,
-                                                                      std::filesystem::path source_path) {
+                                                                      std::filesystem::path source_path,
+                                                                      FileTransferSource source) {
     SchedulerEmissions emissions;
     std::vector<SchedulerTaskId> task_ids;
     std::set<std::string> seen;
@@ -229,12 +246,17 @@ std::vector<SchedulerTaskId> TransferScheduler::enqueue_send_to_peers(const std:
             }
             seen.insert(peer_id);
             const auto task_id = next_task_id_++;
-            queue_.push_back(QueuedSend{.task_id = task_id, .peer_id = peer_id, .source_path = source_path});
+            queue_.push_back(QueuedSend{
+                .task_id = task_id,
+                .peer_id = peer_id,
+                .source_path = source_path,
+                .source = source,
+            });
             task_ids.push_back(task_id);
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = task_id,
                 .peer_id = peer_id,
-                .snapshot = make_pending_snapshot(task_id, source_path),
+                .snapshot = make_pending_snapshot(task_id, source_path, source),
             });
         }
         start_next_locked(emissions);
@@ -261,7 +283,7 @@ bool TransferScheduler::move_queued_task(SchedulerTaskId task_id, const std::str
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = item.task_id,
                 .peer_id = item.peer_id,
-                .snapshot = make_pending_snapshot(item.task_id, item.source_path),
+                .snapshot = make_pending_snapshot(item.task_id, item.source_path, item.source),
             });
             break;
         }
@@ -272,7 +294,9 @@ bool TransferScheduler::move_queued_task(SchedulerTaskId task_id, const std::str
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = paused_it->second.task_id,
                 .peer_id = paused_it->second.peer_id,
-                .snapshot = make_paused_snapshot(paused_it->second.task_id, paused_it->second.source_path),
+                .snapshot = make_paused_snapshot(paused_it->second.task_id,
+                                                paused_it->second.source_path,
+                                                paused_it->second.source),
             });
         }
         if (moved) {
@@ -298,7 +322,7 @@ bool TransferScheduler::pause_task(SchedulerTaskId task_id) {
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = item.task_id,
                 .peer_id = item.peer_id,
-                .snapshot = make_paused_snapshot(item.task_id, item.source_path),
+                .snapshot = make_paused_snapshot(item.task_id, item.source_path, item.source),
             });
             paused = true;
             break;
@@ -324,7 +348,7 @@ bool TransferScheduler::resume_task(SchedulerTaskId task_id) {
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = item.task_id,
                 .peer_id = item.peer_id,
-                .snapshot = make_pending_snapshot(item.task_id, item.source_path),
+                .snapshot = make_pending_snapshot(item.task_id, item.source_path, item.source),
             });
             resumed = true;
             start_next_locked(emissions);
@@ -356,7 +380,7 @@ void TransferScheduler::cancel_peer(const std::string& peer_id) {
                 emissions.snapshots.push_back(SchedulerSnapshot{
                     .task_id = it->task_id,
                     .peer_id = it->peer_id,
-                    .snapshot = make_cancelled_snapshot(it->task_id, it->source_path),
+                    .snapshot = make_cancelled_snapshot(it->task_id, it->source_path, it->source),
                 });
                 it = queue_.erase(it);
             } else {
@@ -368,7 +392,9 @@ void TransferScheduler::cancel_peer(const std::string& peer_id) {
                 emissions.snapshots.push_back(SchedulerSnapshot{
                     .task_id = it->second.task_id,
                     .peer_id = it->second.peer_id,
-                    .snapshot = make_cancelled_snapshot(it->second.task_id, it->second.source_path),
+                    .snapshot = make_cancelled_snapshot(it->second.task_id,
+                                                        it->second.source_path,
+                                                        it->second.source),
                 });
                 it = paused_.erase(it);
             } else {
@@ -462,8 +488,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::tasks() const {
             .task_id = item.task_id,
             .peer_id = item.peer_id,
             .source_path = item.source_path,
+            .source = item.source,
             .status = queued_status_locked(item),
-            .snapshot = make_pending_snapshot(item.task_id, item.source_path),
+            .snapshot = make_pending_snapshot(item.task_id, item.source_path, item.source),
         });
     }
     for (const auto& [task_id, item] : paused_) {
@@ -471,8 +498,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::tasks() const {
             .task_id = task_id,
             .peer_id = item.peer_id,
             .source_path = item.source_path,
+            .source = item.source,
             .status = SchedulerTaskStatus::paused,
-            .snapshot = make_paused_snapshot(task_id, item.source_path),
+            .snapshot = make_paused_snapshot(task_id, item.source_path, item.source),
         });
     }
     for (const auto& [task_id, running] : running_) {
@@ -480,8 +508,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::tasks() const {
             .task_id = task_id,
             .peer_id = running->peer_id,
             .source_path = running->source_path,
+            .source = running->source,
             .status = SchedulerTaskStatus::running,
-            .snapshot = make_running_snapshot(task_id, running->source_path),
+            .snapshot = make_running_snapshot(task_id, running->source_path, running->source),
         });
     }
     std::sort(result.begin(), result.end(), [](const SchedulerTaskInfo& lhs, const SchedulerTaskInfo& rhs) {
@@ -501,8 +530,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::peer_tasks(const std::string& 
             .task_id = item.task_id,
             .peer_id = item.peer_id,
             .source_path = item.source_path,
+            .source = item.source,
             .status = queued_status_locked(item),
-            .snapshot = make_pending_snapshot(item.task_id, item.source_path),
+            .snapshot = make_pending_snapshot(item.task_id, item.source_path, item.source),
         });
     }
     for (const auto& [task_id, item] : paused_) {
@@ -513,8 +543,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::peer_tasks(const std::string& 
             .task_id = task_id,
             .peer_id = item.peer_id,
             .source_path = item.source_path,
+            .source = item.source,
             .status = SchedulerTaskStatus::paused,
-            .snapshot = make_paused_snapshot(task_id, item.source_path),
+            .snapshot = make_paused_snapshot(task_id, item.source_path, item.source),
         });
     }
     for (const auto& [task_id, running] : running_) {
@@ -525,8 +556,9 @@ std::vector<SchedulerTaskInfo> TransferScheduler::peer_tasks(const std::string& 
             .task_id = task_id,
             .peer_id = running->peer_id,
             .source_path = running->source_path,
+            .source = running->source,
             .status = SchedulerTaskStatus::running,
-            .snapshot = make_running_snapshot(task_id, running->source_path),
+            .snapshot = make_running_snapshot(task_id, running->source_path, running->source),
         });
     }
     std::sort(result.begin(), result.end(), [](const SchedulerTaskInfo& lhs, const SchedulerTaskInfo& rhs) {
@@ -570,7 +602,7 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
         emissions.snapshots.push_back(SchedulerSnapshot{
             .task_id = item.task_id,
             .peer_id = item.peer_id,
-            .snapshot = make_failed_snapshot(item.task_id, item.source_path, error),
+            .snapshot = make_failed_snapshot(item.task_id, item.source_path, item.source, error),
         });
         return false;
     }
@@ -580,13 +612,14 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
     config.target.port = peer_it->second.port;
     config.source_path = item.source_path;
     config.resume = true;
+    config.source = item.source;
 
     auto validated = validate_sender_config(std::move(config));
     if (!validated) {
         emissions.snapshots.push_back(SchedulerSnapshot{
             .task_id = item.task_id,
             .peer_id = item.peer_id,
-            .snapshot = make_failed_snapshot(item.task_id, item.source_path, validated.error()),
+            .snapshot = make_failed_snapshot(item.task_id, item.source_path, item.source, validated.error()),
         });
         return false;
     }
@@ -595,6 +628,7 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
     running->task_id = item.task_id;
     running->peer_id = item.peer_id;
     running->source_path = item.source_path;
+    running->source = item.source;
     running->config = std::move(validated).value();
     running->runner = make_runner_locked();
     if (running->runner == nullptr) {
@@ -602,13 +636,14 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
         emissions.snapshots.push_back(SchedulerSnapshot{
             .task_id = item.task_id,
             .peer_id = item.peer_id,
-            .snapshot = make_failed_snapshot(item.task_id, item.source_path, error),
+            .snapshot = make_failed_snapshot(item.task_id, item.source_path, item.source, error),
         });
         return false;
     }
     running->events = std::make_shared<TaskScopedEvents>(
         item.task_id,
         item.peer_id,
+        item.source,
         [this](SchedulerSnapshot snapshot) {
             emit_snapshot(std::move(snapshot));
         });
@@ -659,7 +694,7 @@ void TransferScheduler::cancel_queued_locked(SchedulerTaskId task_id, SchedulerE
             emissions.snapshots.push_back(SchedulerSnapshot{
                 .task_id = it->task_id,
                 .peer_id = it->peer_id,
-                .snapshot = make_cancelled_snapshot(it->task_id, it->source_path),
+                .snapshot = make_cancelled_snapshot(it->task_id, it->source_path, it->source),
             });
             it = queue_.erase(it);
             continue;
@@ -676,7 +711,9 @@ void TransferScheduler::cancel_paused_locked(SchedulerTaskId task_id, SchedulerE
     emissions.snapshots.push_back(SchedulerSnapshot{
         .task_id = it->second.task_id,
         .peer_id = it->second.peer_id,
-        .snapshot = make_cancelled_snapshot(it->second.task_id, it->second.source_path),
+        .snapshot = make_cancelled_snapshot(it->second.task_id,
+                                            it->second.source_path,
+                                            it->second.source),
     });
     paused_.erase(it);
 }
@@ -755,7 +792,8 @@ void TransferScheduler::emit_wakeup() {
 }
 
 TransferSnapshot TransferScheduler::make_pending_snapshot(SchedulerTaskId task_id,
-                                                          const std::filesystem::path& source_path) const {
+                                                          const std::filesystem::path& source_path,
+                                                          FileTransferSource source) const {
     TransferSnapshot snapshot;
     snapshot.transfer_id = task_id;
     snapshot.state = TransferState::pending;
@@ -765,6 +803,7 @@ TransferSnapshot TransferScheduler::make_pending_snapshot(SchedulerTaskId task_i
                         : TransferKind::file;
     snapshot.path = source_path;
     snapshot.name = source_path.filename().string();
+    snapshot.source = source;
     if (snapshot.name.empty()) {
         snapshot.name = source_path.string();
     }
@@ -772,22 +811,25 @@ TransferSnapshot TransferScheduler::make_pending_snapshot(SchedulerTaskId task_i
 }
 
 TransferSnapshot TransferScheduler::make_running_snapshot(SchedulerTaskId task_id,
-                                                          const std::filesystem::path& source_path) const {
-    auto snapshot = make_pending_snapshot(task_id, source_path);
+                                                          const std::filesystem::path& source_path,
+                                                          FileTransferSource source) const {
+    auto snapshot = make_pending_snapshot(task_id, source_path, source);
     snapshot.state = TransferState::running;
     return snapshot;
 }
 
 TransferSnapshot TransferScheduler::make_paused_snapshot(SchedulerTaskId task_id,
-                                                         const std::filesystem::path& source_path) const {
-    auto snapshot = make_pending_snapshot(task_id, source_path);
+                                                         const std::filesystem::path& source_path,
+                                                         FileTransferSource source) const {
+    auto snapshot = make_pending_snapshot(task_id, source_path, source);
     snapshot.state = TransferState::paused;
     return snapshot;
 }
 
 TransferSnapshot TransferScheduler::make_cancelled_snapshot(SchedulerTaskId task_id,
-                                                            const std::filesystem::path& source_path) const {
-    auto snapshot = make_pending_snapshot(task_id, source_path);
+                                                            const std::filesystem::path& source_path,
+                                                            FileTransferSource source) const {
+    auto snapshot = make_pending_snapshot(task_id, source_path, source);
     snapshot.state = TransferState::cancelled;
     return snapshot;
 }

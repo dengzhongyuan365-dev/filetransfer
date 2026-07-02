@@ -57,6 +57,7 @@ struct SchedulerTaskInfo {
     SchedulerTaskId task_id = 0;
     std::string peer_id;
     std::filesystem::path source_path;
+    FileTransferSource source = FileTransferSource::file;
     SchedulerTaskStatus status = SchedulerTaskStatus::queued;
     TransferSnapshot snapshot;
 };
@@ -93,9 +94,12 @@ public:
     void upsert_peer(SchedulerPeer peer);
     void remove_peer(const std::string& peer_id);
 
-    SchedulerTaskId enqueue_send(const std::string& peer_id, std::filesystem::path source_path);
+    SchedulerTaskId enqueue_send(const std::string& peer_id,
+                                 std::filesystem::path source_path,
+                                 FileTransferSource source = FileTransferSource::file);
     std::vector<SchedulerTaskId> enqueue_send_to_peers(const std::vector<std::string>& peer_ids,
-                                                       std::filesystem::path source_path);
+                                                       std::filesystem::path source_path,
+                                                       FileTransferSource source = FileTransferSource::file);
     bool move_queued_task(SchedulerTaskId task_id, const std::string& peer_id);
     bool pause_task(SchedulerTaskId task_id);
     bool resume_task(SchedulerTaskId task_id);
@@ -114,12 +118,14 @@ private:
         SchedulerTaskId task_id = 0;
         std::string peer_id;
         std::filesystem::path source_path;
+        FileTransferSource source = FileTransferSource::file;
     };
 
     struct RunningSend {
         SchedulerTaskId task_id = 0;
         std::string peer_id;
         std::filesystem::path source_path;
+        FileTransferSource source = FileTransferSource::file;
         SenderConfig config;
         std::unique_ptr<SchedulerSendRunner> runner;
         std::shared_ptr<SenderTransferEvents> events;
@@ -148,13 +154,17 @@ private:
     void emit_log(std::string line);
     void emit_wakeup();
     TransferSnapshot make_pending_snapshot(SchedulerTaskId task_id,
-                                           const std::filesystem::path& source_path) const;
+                                           const std::filesystem::path& source_path,
+                                           FileTransferSource source) const;
     TransferSnapshot make_running_snapshot(SchedulerTaskId task_id,
-                                           const std::filesystem::path& source_path) const;
+                                           const std::filesystem::path& source_path,
+                                           FileTransferSource source) const;
     TransferSnapshot make_paused_snapshot(SchedulerTaskId task_id,
-                                          const std::filesystem::path& source_path) const;
+                                          const std::filesystem::path& source_path,
+                                          FileTransferSource source) const;
     TransferSnapshot make_cancelled_snapshot(SchedulerTaskId task_id,
-                                             const std::filesystem::path& source_path) const;
+                                             const std::filesystem::path& source_path,
+                                             FileTransferSource source) const;
 
     mutable std::mutex mutex_;
     mutable std::mutex callbacks_mutex_;

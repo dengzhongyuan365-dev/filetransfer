@@ -5,6 +5,7 @@
 #include <string>
 
 #include "lan/common/error.h"
+#include "lan/transfer/file_metadata.h"
 
 namespace lan {
 
@@ -76,6 +77,7 @@ struct TransferCompleted {
     TransferCompletionStatus status = TransferCompletionStatus::transferred;
     std::uint64_t resumed_from = 0;
     double elapsed_seconds = 0.0;
+    FileTransferSource source = FileTransferSource::file;
 };
 
 struct TransferFailed {

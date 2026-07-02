@@ -84,6 +84,7 @@ bool TransferSnapshotTracker::apply(const TransferCompleted& event) {
     snapshot_->completion_status = event.status;
     snapshot_->resumed_from = event.resumed_from;
     snapshot_->elapsed_seconds = event.elapsed_seconds;
+    snapshot_->source = event.source;
     snapshot_->error.reset();
     snapshot_->retryable = false;
     snapshot_->user_action_required = false;

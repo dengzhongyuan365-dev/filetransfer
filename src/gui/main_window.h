@@ -97,6 +97,7 @@ private:
     void open_transfer_dir(const QString& key);
     void show_receive_history();
     void record_receive_history(const TransferSnapshot& snapshot);
+    void copy_received_clipboard_image(const TransferSnapshot& snapshot);
     void resume_transfer(const QString& key);
     void resume_queued_transfer(const QString& key);
     void change_transfer_target(const QString& key);
@@ -129,7 +130,7 @@ private:
     void show_send_targets();
     void update_linked_header();
 
-    void send_paths(const QStringList& paths);
+    void send_paths(const QStringList& paths, FileTransferSource source = FileTransferSource::file);
     void paste_paths_from_clipboard();
     void stop_sender();
     void sync_scheduler_peer(const Peer& peer);
@@ -163,6 +164,7 @@ private:
     QMap<QString, QWidget*> transfer_cards_;
     TransferListModel transfer_model_;
     QSet<QString> recorded_history_keys_;
+    QSet<QString> copied_clipboard_image_keys_;
     QMap<QString, QString> pending_link_codes_;
     QString node_id_;
     bool receiver_ready_ = false;

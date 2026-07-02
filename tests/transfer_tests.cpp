@@ -1174,6 +1174,7 @@ TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
         .size = 42,
         .sha256 = "abcdef",
         .resume = false,
+        .source = lan::FileTransferSource::clipboard_image,
     };
 
     auto decoded = lan::decode_file_begin(lan::encode_file_begin(metadata));
@@ -1182,6 +1183,18 @@ TEST(FileMetadataTest, RoundTripsFileBeginMetadata) {
     EXPECT_EQ(decoded.value().size, metadata.size);
     EXPECT_EQ(decoded.value().sha256, metadata.sha256);
     EXPECT_EQ(decoded.value().resume, metadata.resume);
+    EXPECT_EQ(decoded.value().source, metadata.source);
+}
+
+TEST(FileMetadataTest, DefaultsFileBeginSourceForLegacyMetadata) {
+    auto decoded = lan::decode_file_begin(
+        "name=demo.txt\n"
+        "size=42\n"
+        "sha256=abcdef\n"
+        "resume=1\n");
+
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded.value().source, lan::FileTransferSource::file);
 }
 
 TEST(FileMetadataTest, RoundTripsFileBeginAckMetadata) {
@@ -1328,6 +1341,7 @@ TEST(SendSingleFileTest, ReportsProgressForChunks) {
     lan::SenderConfig sender_config;
     sender_config.source_path = source;
     sender_config.chunk_size = 3;
+    sender_config.source = lan::FileTransferSource::clipboard_image;
 
     lan::ReceiverConfig receiver_config;
     receiver_config.receive_dir = receive_dir;
@@ -1362,6 +1376,8 @@ TEST(SendSingleFileTest, ReportsProgressForChunks) {
     EXPECT_EQ(received.value().bytes_received, 6);
     EXPECT_EQ(sent.value().status, lan::FileTransferStatus::transferred);
     EXPECT_EQ(received.value().status, lan::FileTransferStatus::transferred);
+    EXPECT_EQ(sent.value().source, lan::FileTransferSource::clipboard_image);
+    EXPECT_EQ(received.value().source, lan::FileTransferSource::clipboard_image);
     EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
 
     const std::vector<std::uint64_t> expected_bytes = {0, 3, 6};

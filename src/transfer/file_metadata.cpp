@@ -15,11 +15,23 @@ Error make_error(ErrorCode code, std::string message) {
 
 }  // namespace
 
+std::string_view file_transfer_source_name(FileTransferSource source) {
+    switch (source) {
+        case FileTransferSource::file:
+            return "file";
+        case FileTransferSource::clipboard_image:
+            return "clipboard_image";
+    }
+
+    return "file";
+}
+
 std::string encode_file_begin(const FileBeginMetadata& metadata) {
     return "name=" + metadata.name + "\n" +
            "size=" + std::to_string(metadata.size) + "\n" +
            "sha256=" + metadata.sha256 + "\n" +
-           "resume=" + (metadata.resume ? "1" : "0") + "\n";
+           "resume=" + (metadata.resume ? "1" : "0") + "\n" +
+           "source=" + std::string(file_transfer_source_name(metadata.source)) + "\n";
 }
 
 Result<FileBeginMetadata> decode_file_begin(std::string_view body) {
@@ -59,6 +71,15 @@ Result<FileBeginMetadata> decode_file_begin(std::string_view body) {
                 } else {
                     return Result<FileBeginMetadata>::failure(
                         make_error(ErrorCode::protocol_error, "file_begin has invalid resume value"));
+                }
+            } else if (key == "source") {
+                if (value == "file") {
+                    metadata.source = FileTransferSource::file;
+                } else if (value == "clipboard_image") {
+                    metadata.source = FileTransferSource::clipboard_image;
+                } else {
+                    return Result<FileBeginMetadata>::failure(
+                        make_error(ErrorCode::protocol_error, "file_begin has invalid source value"));
                 }
             }
         }

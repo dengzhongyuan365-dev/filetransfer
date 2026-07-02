@@ -12,10 +12,12 @@
 #include <QDialog>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFrame>
 #include <QHostAddress>
 #include <QIcon>
 #include <QImage>
+#include <QImageReader>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
@@ -76,6 +78,8 @@ constexpr int kMaxRememberedPeers = 10;
 constexpr int kMaxReceiveHistory = 100;
 constexpr int kPresenceProbeMs = 5000;
 constexpr qint64 kPeerStaleMs = 15000;
+constexpr const char* kClipboardImagePrefix = "lan-clipboard-image-";
+constexpr const char* kLegacyClipboardImagePrefix = "clipboard-image-";
 
 QString state_text(TransferState state) {
     switch (state) {
@@ -263,6 +267,34 @@ QString clipboard_image_dir() {
         root = QDir::tempPath() + QStringLiteral("/lan-file-transfer");
     }
     return QDir(root).filePath(QStringLiteral("clipboard"));
+}
+
+bool is_clipboard_image_transfer(const TransferSnapshot& snapshot) {
+    if (snapshot.direction != TransferDirection::receive ||
+        snapshot.kind != TransferKind::file ||
+        snapshot.state != TransferState::completed ||
+        snapshot.path.empty()) {
+        return false;
+    }
+
+    if (snapshot.source == FileTransferSource::clipboard_image) {
+        return true;
+    }
+
+    const auto name = QString::fromStdString(snapshot.name.empty()
+                                                ? snapshot.path.filename().string()
+                                                : snapshot.name);
+    if (!name.startsWith(QString::fromUtf8(kClipboardImagePrefix)) &&
+        !name.startsWith(QString::fromUtf8(kLegacyClipboardImagePrefix))) {
+        return false;
+    }
+
+    const auto suffix = QFileInfo(name).suffix().toLower();
+    return suffix == QStringLiteral("png") ||
+           suffix == QStringLiteral("jpg") ||
+           suffix == QStringLiteral("jpeg") ||
+           suffix == QStringLiteral("bmp") ||
+           suffix == QStringLiteral("webp");
 }
 
 QIcon application_icon() {
@@ -1790,6 +1822,37 @@ void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {
     settings.setValue(QStringLiteral("receiveHistory"), history);
 }
 
+void MainWindow::copy_received_clipboard_image(const TransferSnapshot& snapshot) {
+    if (!is_clipboard_image_transfer(snapshot)) {
+        return;
+    }
+
+    const auto key = transfer_snapshot_key(snapshot);
+    if (copied_clipboard_image_keys_.contains(key)) {
+        return;
+    }
+    copied_clipboard_image_keys_.insert(key);
+
+    const auto path = to_qstring(snapshot.path);
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const auto image = reader.read();
+    if (image.isNull()) {
+        log_event(QCoreApplication::translate("MainWindow", "Failed to copy received clipboard image: %1").arg(path));
+        return;
+    }
+
+    QApplication::clipboard()->setImage(image);
+    log_event(QCoreApplication::translate("MainWindow", "Received clipboard image copied to clipboard."));
+    if (tray_icon_ != nullptr && QSystemTrayIcon::isSystemTrayAvailable()) {
+        tray_icon_->showMessage(
+            QCoreApplication::translate("MainWindow", "Clipboard image received"),
+            QCoreApplication::translate("MainWindow", "The received image has been copied to the clipboard."),
+            QSystemTrayIcon::Information,
+            2500);
+    }
+}
+
 void MainWindow::resume_transfer(const QString& key) {
     TransferSnapshot snapshot;
     if (!transfer_model_.try_snapshot(key, &snapshot)) {
@@ -2228,7 +2291,7 @@ void MainWindow::update_linked_header() {
     }
 }
 
-void MainWindow::send_paths(const QStringList& paths) {
+void MainWindow::send_paths(const QStringList& paths, FileTransferSource source) {
     if (!has_active_peer()) {
         show_log(QCoreApplication::translate("MainWindow", "No linked machine."));
         return;
@@ -2247,7 +2310,7 @@ void MainWindow::send_paths(const QStringList& paths) {
                   .arg(target_ids.size()));
     for (const auto& path : paths) {
         if (target_ids.size() == 1) {
-            scheduler_->enqueue_send(to_string(target_ids.front()), std::filesystem::path(to_string(path)));
+            scheduler_->enqueue_send(to_string(target_ids.front()), std::filesystem::path(to_string(path)), source);
             continue;
         }
         std::vector<std::string> peer_ids;
@@ -2255,13 +2318,14 @@ void MainWindow::send_paths(const QStringList& paths) {
         for (const auto& id : target_ids) {
             peer_ids.push_back(to_string(id));
         }
-        scheduler_->enqueue_send_to_peers(peer_ids, std::filesystem::path(to_string(path)));
+        scheduler_->enqueue_send_to_peers(peer_ids, std::filesystem::path(to_string(path)), source);
     }
 }
 
 void MainWindow::paste_paths_from_clipboard() {
     const auto* mime = QApplication::clipboard()->mimeData();
     auto paths = local_file_paths_from_mime(mime);
+    auto source = FileTransferSource::file;
     if (paths.empty()) {
         const auto image = image_from_mime(mime);
         if (!image.isNull()) {
@@ -2271,14 +2335,16 @@ void MainWindow::paste_paths_from_clipboard() {
                 return;
             }
 
-            const auto file_name = QStringLiteral("clipboard-image-%1.png")
-                                       .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
+            const auto file_name = QStringLiteral("%1%2.png")
+                                       .arg(QString::fromUtf8(kClipboardImagePrefix),
+                                            QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")));
             const auto path = dir.filePath(file_name);
             if (!image.save(path, "PNG")) {
                 show_log(QCoreApplication::translate("MainWindow", "Failed to save clipboard image: %1").arg(path));
                 return;
             }
             paths.push_back(path);
+            source = FileTransferSource::clipboard_image;
             log_event(QCoreApplication::translate("MainWindow", "Saved clipboard image: %1").arg(path));
         }
     }
@@ -2287,7 +2353,7 @@ void MainWindow::paste_paths_from_clipboard() {
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Pasted %1 path(s) from clipboard.").arg(paths.size()));
-    send_paths(paths);
+    send_paths(paths, source);
 }
 
 void MainWindow::stop_sender() {
@@ -2345,6 +2411,7 @@ void MainWindow::merge_snapshots(TransferSnapshotStore store, const QString& pee
 
 void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id) {
     record_receive_history(snapshot);
+    copy_received_clipboard_image(snapshot);
     const auto key = transfer_snapshot_key(snapshot);
     transfer_model_.upsert(snapshot, peer_id);
     if (!transfer_belongs_to_active_peer(key)) {
