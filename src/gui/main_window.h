@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "gui/device_manager.h"
+#include "gui/transfer_list_model.h"
 #include "gui/types.h"
 #include "lan/app/receiver_server.h"
 #include "lan/app/transfer_scheduler.h"
@@ -161,9 +162,7 @@ private:
     std::unique_ptr<QUdpSocket> discovery_;
     DeviceManager devices_;
     QMap<QString, QWidget*> transfer_cards_;
-    QMap<QString, TransferSnapshot> transfer_snapshots_;
-    QMap<QString, QString> transfer_peer_ids_;
-    QSet<QString> dismissed_transfer_keys_;
+    TransferListModel transfer_model_;
     QSet<QString> recorded_history_keys_;
     QMap<QString, QString> pending_link_codes_;
     QString node_id_;

@@ -78,11 +78,6 @@ constexpr int kMaxReceiveHistory = 100;
 constexpr int kPresenceProbeMs = 5000;
 constexpr qint64 kPeerStaleMs = 15000;
 
-QString snapshot_key(const TransferSnapshot& snapshot) {
-    const auto direction = snapshot.direction == TransferDirection::receive ? "receive" : "send";
-    return QString("%1:%2").arg(direction).arg(snapshot.transfer_id);
-}
-
 QString state_text(TransferState state) {
     switch (state) {
         case TransferState::pending:
@@ -1684,7 +1679,7 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
 }
 
 QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
-    const auto key = snapshot_key(snapshot);
+    const auto key = transfer_snapshot_key(snapshot);
     auto* card = new QFrame(transfer_page_);
     card->setObjectName("transferCard");
     auto* row = new QHBoxLayout(card);
@@ -1732,12 +1727,12 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     resume->setObjectName("taskResumeButton");
     resume->setEnabled(can_resume_queue || can_change_target || can_resume_transfer(snapshot));
     connect(resume, &QToolButton::clicked, this, [this, key] {
-        const auto it = transfer_snapshots_.find(key);
-        if (it != transfer_snapshots_.end() && can_resume_queued_transfer(it.value())) {
+        TransferSnapshot snapshot;
+        if (transfer_model_.try_snapshot(key, &snapshot) && can_resume_queued_transfer(snapshot)) {
             resume_queued_transfer(key);
             return;
         }
-        if (it != transfer_snapshots_.end() && can_change_transfer_target(it.value())) {
+        if (transfer_model_.try_snapshot(key, &snapshot) && can_change_transfer_target(snapshot)) {
             change_transfer_target(key);
             return;
         }
@@ -1759,8 +1754,8 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     stop->setObjectName("taskStopButton");
     stop->setEnabled(can_pause || can_stop_transfer(snapshot));
     connect(stop, &QToolButton::clicked, this, [this, key] {
-        const auto it = transfer_snapshots_.find(key);
-        if (it != transfer_snapshots_.end() && can_pause_transfer(it.value())) {
+        TransferSnapshot snapshot;
+        if (transfer_model_.try_snapshot(key, &snapshot) && can_pause_transfer(snapshot)) {
             pause_transfer(key);
             return;
         }
@@ -1921,13 +1916,13 @@ QString MainWindow::transfer_open_dir(const TransferSnapshot& snapshot) const {
 }
 
 void MainWindow::open_transfer_dir(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end() || !can_open_transfer_dir(it.value())) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_open_transfer_dir(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this transfer."));
         return;
     }
 
-    const auto dir = transfer_open_dir(it.value());
+    const auto dir = transfer_open_dir(snapshot);
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
         show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
         return;
@@ -2039,7 +2034,7 @@ void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {
         return;
     }
 
-    const auto key = snapshot_key(snapshot);
+    const auto key = transfer_snapshot_key(snapshot);
     if (recorded_history_keys_.contains(key)) {
         return;
     }
@@ -2069,18 +2064,17 @@ void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {
 }
 
 void MainWindow::resume_transfer(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end()) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot)) {
         return;
     }
-    const auto snapshot = it.value();
     if (!can_resume_transfer(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be resumed."));
         return;
     }
 
     const auto path = to_qstring(snapshot.path);
-    const auto peer_id = transfer_peer_ids_.value(key, devices_.active_peer_id());
+    const auto peer_id = transfer_model_.peer_id_or(key, devices_.active_peer_id());
     if (peer_id.isEmpty()) {
         show_log(QCoreApplication::translate("MainWindow", "No linked machine for this transfer."));
         return;
@@ -2093,12 +2087,12 @@ void MainWindow::resume_transfer(const QString& key) {
 }
 
 void MainWindow::resume_queued_transfer(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end() || !can_resume_queued_transfer(it.value())) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_resume_queued_transfer(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "This queued transfer cannot be resumed."));
         return;
     }
-    if (scheduler_ == nullptr || !scheduler_->resume_task(it.value().transfer_id)) {
+    if (scheduler_ == nullptr || !scheduler_->resume_task(snapshot.transfer_id)) {
         show_log(QCoreApplication::translate("MainWindow", "This queued transfer cannot be resumed."));
         return;
     }
@@ -2106,13 +2100,13 @@ void MainWindow::resume_queued_transfer(const QString& key) {
 }
 
 void MainWindow::change_transfer_target(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end() || !can_change_transfer_target(it.value())) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_change_transfer_target(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer target cannot be changed."));
         return;
     }
 
-    const auto current_peer_id = transfer_peer_ids_.value(key, devices_.active_peer_id());
+    const auto current_peer_id = transfer_model_.peer_id_or(key, devices_.active_peer_id());
     QList<TargetDevice> devices;
     for (const auto& id : linked_peer_ids()) {
         const auto peer = devices_.peer(id);
@@ -2129,10 +2123,8 @@ void MainWindow::change_transfer_target(const QString& key) {
     if (!next_peer_id.has_value() || next_peer_id.value() == current_peer_id) {
         return;
     }
-    const auto snapshot_it = transfer_snapshots_.find(key);
-    if (snapshot_it == transfer_snapshots_.end() ||
-        scheduler_ == nullptr ||
-        !scheduler_->move_queued_task(snapshot_it.value().transfer_id, to_string(next_peer_id.value()))) {
+    if (scheduler_ == nullptr ||
+        !scheduler_->move_queued_task(snapshot.transfer_id, to_string(next_peer_id.value()))) {
         QMessageBox::warning(this,
                              QCoreApplication::translate("MainWindow", "Change target machine"),
                              QCoreApplication::translate("MainWindow", "Only queued sends can be moved."));
@@ -2143,12 +2135,12 @@ void MainWindow::change_transfer_target(const QString& key) {
 }
 
 void MainWindow::pause_transfer(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end() || !can_pause_transfer(it.value())) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_pause_transfer(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be paused."));
         return;
     }
-    if (scheduler_ == nullptr || !scheduler_->pause_task(it.value().transfer_id)) {
+    if (scheduler_ == nullptr || !scheduler_->pause_task(snapshot.transfer_id)) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be paused."));
         return;
     }
@@ -2156,15 +2148,15 @@ void MainWindow::pause_transfer(const QString& key) {
 }
 
 void MainWindow::stop_transfer(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it == transfer_snapshots_.end()) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot)) {
         return;
     }
-    if (!can_stop_transfer(it.value())) {
+    if (!can_stop_transfer(snapshot)) {
         show_log(QCoreApplication::translate("MainWindow", "This transfer is not running."));
         return;
     }
-    if (it.value().direction == TransferDirection::receive) {
+    if (snapshot.direction == TransferDirection::receive) {
         if (receiver_runner_ == nullptr) {
             show_log(QCoreApplication::translate("MainWindow", "No active receiver for this transfer."));
             return;
@@ -2174,22 +2166,22 @@ void MainWindow::stop_transfer(const QString& key) {
         return;
     }
     if (scheduler_ != nullptr) {
-        scheduler_->cancel_task(it.value().transfer_id);
+        scheduler_->cancel_task(snapshot.transfer_id);
     }
     show_log(QCoreApplication::translate("MainWindow", "Stopping transfer..."));
 }
 
 void MainWindow::remove_transfer_card(const QString& key) {
-    const auto it = transfer_snapshots_.find(key);
-    if (it != transfer_snapshots_.end()) {
-        if ((it.value().state == TransferState::pending ||
-             it.value().state == TransferState::paused) &&
-            it.value().direction == TransferDirection::send) {
-            dismissed_transfer_keys_.insert(key);
+    TransferSnapshot snapshot;
+    if (transfer_model_.try_snapshot(key, &snapshot)) {
+        if ((snapshot.state == TransferState::pending ||
+             snapshot.state == TransferState::paused) &&
+            snapshot.direction == TransferDirection::send) {
+            transfer_model_.mark_dismissed(key);
             if (scheduler_ != nullptr) {
-                scheduler_->cancel_task(it.value().transfer_id);
+                scheduler_->cancel_task(snapshot.transfer_id);
             }
-        } else if (!can_clear_transfer(it.value())) {
+        } else if (!can_clear_transfer(snapshot)) {
             show_log(QCoreApplication::translate("MainWindow", "Stop the transfer before clearing it from the list."));
             return;
         }
@@ -2199,8 +2191,7 @@ void MainWindow::remove_transfer_card(const QString& key) {
 }
 
 void MainWindow::remove_transfer_snapshot(const QString& key) {
-    transfer_snapshots_.remove(key);
-    transfer_peer_ids_.remove(key);
+    transfer_model_.remove(key);
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {
         transfers_layout_->removeWidget(card);
@@ -2212,13 +2203,7 @@ void MainWindow::remove_transfer_snapshot(const QString& key) {
 }
 
 bool MainWindow::transfer_belongs_to_active_peer(const QString& key) const {
-    if (!transfer_peer_ids_.contains(key)) {
-        return true;
-    }
-    if (!has_active_peer()) {
-        return false;
-    }
-    return transfer_peer_ids_.value(key) == devices_.active_peer_id();
+    return transfer_model_.belongs_to_peer(key, devices_.active_peer_id(), has_active_peer());
 }
 
 void MainWindow::clear_transfer_cards() {
@@ -2234,12 +2219,9 @@ void MainWindow::refresh_transfer_list() {
         return;
     }
     clear_transfer_cards();
-    for (auto it = transfer_snapshots_.cbegin(); it != transfer_snapshots_.cend(); ++it) {
-        if (!transfer_belongs_to_active_peer(it.key())) {
-            continue;
-        }
-        auto* card = make_transfer_card(it.value());
-        transfer_cards_.insert(it.key(), card);
+    for (const auto& entry : transfer_model_.visible_entries(devices_.active_peer_id(), has_active_peer())) {
+        auto* card = make_transfer_card(entry.snapshot);
+        transfer_cards_.insert(entry.key, card);
         transfers_layout_->insertWidget(0, card);
     }
     if (empty_transfer_label_ != nullptr) {
@@ -2600,11 +2582,10 @@ void MainWindow::sync_scheduler_peer(const Peer& peer) {
 }
 
 void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
-    const auto key = snapshot_key(snapshot.snapshot);
-    if (dismissed_transfer_keys_.contains(key)) {
+    const auto key = transfer_snapshot_key(snapshot.snapshot);
+    if (transfer_model_.is_dismissed(key)) {
         if (snapshot.snapshot.state != TransferState::pending) {
-            transfer_snapshots_.remove(key);
-            transfer_peer_ids_.remove(key);
+            transfer_model_.remove(key);
         }
         refresh_peer_list();
         return;
@@ -2635,14 +2616,8 @@ void MainWindow::merge_snapshots(TransferSnapshotStore store, const QString& pee
 
 void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id) {
     record_receive_history(snapshot);
-    const auto key = snapshot_key(snapshot);
-    dismissed_transfer_keys_.remove(key);
-    if (snapshot.direction == TransferDirection::send &&
-        !peer_id.isEmpty() &&
-        transfer_peer_ids_.value(key) != peer_id) {
-        transfer_peer_ids_.insert(key, peer_id);
-    }
-    transfer_snapshots_.insert(key, snapshot);
+    const auto key = transfer_snapshot_key(snapshot);
+    transfer_model_.upsert(snapshot, peer_id);
     if (!transfer_belongs_to_active_peer(key)) {
         auto* old = transfer_cards_.take(key);
         if (old != nullptr) {

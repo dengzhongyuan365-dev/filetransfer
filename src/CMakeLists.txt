@@ -69,6 +69,7 @@ if(Qt6_FOUND)
         gui/qt_utils.cpp
         gui/target_dialogs.cpp
         gui/transfer_events.cpp
+        gui/transfer_list_model.cpp
         gui_main.cpp
     )
     target_include_directories(lan-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
