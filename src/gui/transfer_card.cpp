@@ -48,12 +48,9 @@ int progress_percent(const TransferSnapshot& snapshot) {
         return 100;
     }
 
-    std::uint64_t current = snapshot.current_bytes;
-    std::uint64_t total = snapshot.total_bytes;
-    if (total == 0 && snapshot.total_files > 0) {
-        current = snapshot.processed_files;
-        total = snapshot.total_files;
-    }
+    const auto use_file_progress = snapshot.kind == TransferKind::directory && snapshot.total_files > 0;
+    const std::uint64_t current = use_file_progress ? snapshot.processed_files : snapshot.current_bytes;
+    const std::uint64_t total = use_file_progress ? snapshot.total_files : snapshot.total_bytes;
     if (total == 0) {
         return 0;
     }

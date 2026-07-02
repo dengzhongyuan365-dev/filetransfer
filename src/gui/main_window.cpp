@@ -2983,6 +2983,18 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     record_receive_history(snapshot);
     copy_received_clipboard_image(snapshot);
     const auto key = transfer_snapshot_key(snapshot);
+    if (snapshot.direction == TransferDirection::receive && !is_terminal_state(snapshot.state)) {
+        transfer_model_.remove(key);
+        auto* old = transfer_cards_.take(key);
+        if (old != nullptr) {
+            transfers_layout_->removeWidget(old);
+            old->deleteLater();
+        }
+        if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
+            empty_transfer_label_->show();
+        }
+        return;
+    }
     transfer_model_.upsert(snapshot, peer_id);
     if (!transfer_belongs_to_active_peer(key)) {
         auto* old = transfer_cards_.take(key);
