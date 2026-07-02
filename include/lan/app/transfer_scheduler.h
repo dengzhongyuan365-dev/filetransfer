@@ -43,11 +43,13 @@ struct SchedulerPeerStats {
     int queued = 0;
     int running = 0;
     int waiting = 0;
+    int paused = 0;
 };
 
 enum class SchedulerTaskStatus {
     queued,
     waiting_for_peer,
+    paused,
     running,
 };
 
@@ -84,6 +86,8 @@ public:
     std::vector<SchedulerTaskId> enqueue_send_to_peers(const std::vector<std::string>& peer_ids,
                                                        std::filesystem::path source_path);
     bool move_queued_task(SchedulerTaskId task_id, const std::string& peer_id);
+    bool pause_task(SchedulerTaskId task_id);
+    bool resume_task(SchedulerTaskId task_id);
     void cancel_task(SchedulerTaskId task_id);
     void cancel_peer(const std::string& peer_id);
     void stop_all();
@@ -122,6 +126,7 @@ private:
     void reap_completed_locked();
     void cancel_running_locked(SchedulerTaskId task_id);
     void cancel_queued_locked(SchedulerTaskId task_id, SchedulerEmissions& emissions);
+    void cancel_paused_locked(SchedulerTaskId task_id, SchedulerEmissions& emissions);
     int running_count_for_peer_locked(const std::string& peer_id) const;
     SchedulerTaskStatus queued_status_locked(const QueuedSend& item) const;
     void mark_completed(SchedulerTaskId task_id);
@@ -134,6 +139,8 @@ private:
                                            const std::filesystem::path& source_path) const;
     TransferSnapshot make_running_snapshot(SchedulerTaskId task_id,
                                            const std::filesystem::path& source_path) const;
+    TransferSnapshot make_paused_snapshot(SchedulerTaskId task_id,
+                                          const std::filesystem::path& source_path) const;
     TransferSnapshot make_cancelled_snapshot(SchedulerTaskId task_id,
                                              const std::filesystem::path& source_path) const;
 
@@ -143,6 +150,7 @@ private:
     SchedulerLimits limits_;
     std::map<std::string, SchedulerPeer> peers_;
     std::deque<QueuedSend> queue_;
+    std::map<SchedulerTaskId, QueuedSend> paused_;
     std::map<SchedulerTaskId, std::unique_ptr<RunningSend>> running_;
     SchedulerTaskId next_task_id_ = 1;
 };

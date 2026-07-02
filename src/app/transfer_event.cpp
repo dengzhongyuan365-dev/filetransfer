@@ -6,6 +6,8 @@ std::string_view transfer_state_name(TransferState state) {
     switch (state) {
         case TransferState::pending:
             return "pending";
+        case TransferState::paused:
+            return "paused";
         case TransferState::running:
             return "running";
         case TransferState::completed:
@@ -26,7 +28,10 @@ bool can_transition(TransferState from, TransferState to) {
 
     switch (from) {
         case TransferState::pending:
-            return to == TransferState::running || to == TransferState::cancelled;
+            return to == TransferState::running || to == TransferState::paused ||
+                   to == TransferState::cancelled;
+        case TransferState::paused:
+            return to == TransferState::pending || to == TransferState::cancelled;
         case TransferState::running:
             return to == TransferState::completed || to == TransferState::failed ||
                    to == TransferState::cancelled;

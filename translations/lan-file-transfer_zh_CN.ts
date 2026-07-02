@@ -10,6 +10,11 @@
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="111"/>
+        <source>paused</source>
+        <translation>已暂停</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="111"/>
         <source>running</source>
         <translation>传输中</translation>
     </message>
@@ -387,6 +392,11 @@ Send to selected machine(s)</source>
         <translation>%1 个等待设备上线</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1647"/>
+        <source>%1 paused</source>
+        <translation>%1 个已暂停</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1645"/>
         <source>Link</source>
         <translation>连接</translation>
@@ -431,6 +441,26 @@ Send to selected machine(s)</source>
         <location filename="../src/gui/main_window.cpp" line="2044"/>
         <source>This transfer target cannot be changed.</source>
         <translation>这个传输任务不能更换目标设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2166"/>
+        <source>This queued transfer cannot be resumed.</source>
+        <translation>这个排队任务不能恢复。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2170"/>
+        <source>Queued transfer resumed.</source>
+        <translation>排队任务已恢复。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2266"/>
+        <source>This transfer cannot be paused.</source>
+        <translation>这个传输任务不能暂停。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2270"/>
+        <source>Queued transfer paused.</source>
+        <translation>排队任务已暂停。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="2060"/>
@@ -584,6 +614,16 @@ Send to selected machine(s)</source>
         <translation>继续传输</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1793"/>
+        <source>Resume queued transfer</source>
+        <translation>恢复排队任务</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1821"/>
+        <source>Pause queued transfer</source>
+        <translation>暂停排队任务</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1698"/>
         <location filename="../src/gui/main_window.cpp" line="2050"/>
         <location filename="../src/gui/main_window.cpp" line="2058"/>
@@ -595,6 +635,11 @@ Send to selected machine(s)</source>
         <location filename="../src/gui/main_window.cpp" line="1778"/>
         <source>Queued. Resume is enabled if a partial file exists.</source>
         <translation>已排队。如果存在临时文件，将自动续传。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1896"/>
+        <source>Paused. Resume to put it back in the queue.</source>
+        <translation>已暂停。点击继续可重新加入队列。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1783"/>

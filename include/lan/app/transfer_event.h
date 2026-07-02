@@ -26,6 +26,7 @@ enum class TransferCompletionStatus {
 
 enum class TransferState {
     pending,
+    paused,
     running,
     completed,
     failed,

@@ -84,15 +84,20 @@ void make_source_newer_than_target(const std::filesystem::path& source,
 
 TEST(TransferStateTest, NamesAndValidatesTransitions) {
     EXPECT_EQ(lan::transfer_state_name(lan::TransferState::pending), "pending");
+    EXPECT_EQ(lan::transfer_state_name(lan::TransferState::paused), "paused");
     EXPECT_EQ(lan::transfer_state_name(lan::TransferState::running), "running");
     EXPECT_EQ(lan::transfer_state_name(lan::TransferState::completed), "completed");
 
     EXPECT_TRUE(lan::can_transition(lan::TransferState::pending, lan::TransferState::running));
+    EXPECT_TRUE(lan::can_transition(lan::TransferState::pending, lan::TransferState::paused));
     EXPECT_TRUE(lan::can_transition(lan::TransferState::pending, lan::TransferState::cancelled));
+    EXPECT_TRUE(lan::can_transition(lan::TransferState::paused, lan::TransferState::pending));
+    EXPECT_TRUE(lan::can_transition(lan::TransferState::paused, lan::TransferState::cancelled));
     EXPECT_TRUE(lan::can_transition(lan::TransferState::running, lan::TransferState::completed));
     EXPECT_TRUE(lan::can_transition(lan::TransferState::running, lan::TransferState::failed));
     EXPECT_TRUE(lan::can_transition(lan::TransferState::running, lan::TransferState::cancelled));
 
+    EXPECT_FALSE(lan::can_transition(lan::TransferState::paused, lan::TransferState::running));
     EXPECT_FALSE(lan::can_transition(lan::TransferState::completed, lan::TransferState::running));
     EXPECT_FALSE(lan::can_transition(lan::TransferState::failed, lan::TransferState::running));
     EXPECT_FALSE(lan::can_transition(lan::TransferState::cancelled, lan::TransferState::running));
@@ -468,6 +473,57 @@ TEST(TransferSchedulerTest, ExposesPerPeerWaitingTasks) {
     EXPECT_EQ(stats.queued, 1);
     EXPECT_EQ(stats.waiting, 1);
     EXPECT_EQ(stats.running, 0);
+}
+
+TEST(TransferSchedulerTest, PausesResumesAndCancelsQueuedSend) {
+    TempDir temp("transfer-scheduler-pause");
+    const auto source = temp.path() / "album.txt";
+    write_text(source, "audio");
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = false,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", source);
+    ASSERT_TRUE(scheduler.pause_task(task_id));
+    ASSERT_EQ(snapshots.size(), 2U);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::paused);
+    auto stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 0);
+    EXPECT_EQ(stats.paused, 1);
+    EXPECT_TRUE(scheduler.has_pending_or_running_for_peer("peer-1"));
+    auto tasks = scheduler.peer_tasks("peer-1");
+    ASSERT_EQ(tasks.size(), 1U);
+    EXPECT_EQ(tasks.front().status, lan::SchedulerTaskStatus::paused);
+
+    ASSERT_TRUE(scheduler.resume_task(task_id));
+    ASSERT_EQ(snapshots.size(), 3U);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::pending);
+    stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 1);
+    EXPECT_EQ(stats.paused, 0);
+
+    ASSERT_TRUE(scheduler.pause_task(task_id));
+    scheduler.cancel_task(task_id);
+    ASSERT_EQ(snapshots.size(), 5U);
+    EXPECT_EQ(snapshots.back().snapshot.state, lan::TransferState::cancelled);
+    stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 0);
+    EXPECT_EQ(stats.paused, 0);
+    EXPECT_FALSE(scheduler.has_pending_or_running_for_peer("peer-1"));
 }
 
 TEST(TransferSchedulerTest, EnqueuesOneSourceForManyPeers) {

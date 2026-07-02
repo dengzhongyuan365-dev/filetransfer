@@ -86,6 +86,8 @@ QString state_text(TransferState state) {
     switch (state) {
         case TransferState::pending:
             return QCoreApplication::translate("MainWindow", "pending");
+        case TransferState::paused:
+            return QCoreApplication::translate("MainWindow", "paused");
         case TransferState::running:
             return QCoreApplication::translate("MainWindow", "running");
         case TransferState::completed:
@@ -1683,7 +1685,7 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     auto meta_text = QString("%1:%2").arg(peer.host).arg(peer.port);
     if (scheduler_ != nullptr) {
         const auto stats = scheduler_->peer_stats(to_string(peer.id));
-        if (stats.running > 0 || stats.queued > 0) {
+        if (stats.running > 0 || stats.queued > 0 || stats.paused > 0) {
             QStringList parts;
             const auto queued_ready = std::max(0, stats.queued - stats.waiting);
             if (stats.running > 0) {
@@ -1694,6 +1696,9 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
             }
             if (stats.waiting > 0) {
                 parts.append(QCoreApplication::translate("MainWindow", "%1 waiting").arg(stats.waiting));
+            }
+            if (stats.paused > 0) {
+                parts.append(QCoreApplication::translate("MainWindow", "%1 paused").arg(stats.paused));
             }
             meta_text += QStringLiteral(" - ");
             meta_text += parts.join(QStringLiteral(", "));
@@ -1782,15 +1787,21 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(4);
     const auto can_change_target = can_change_transfer_target(snapshot);
+    const auto can_resume_queue = can_resume_queued_transfer(snapshot);
     auto* resume = make_task_tool_button(
         QApplication::style()->standardIcon(can_change_target ? QStyle::SP_ComputerIcon : QStyle::SP_ArrowForward),
-        can_change_target ? QCoreApplication::translate("MainWindow", "Change target machine")
-                          : QCoreApplication::translate("MainWindow", "Resume transfer"),
+        can_resume_queue ? QCoreApplication::translate("MainWindow", "Resume queued transfer")
+                         : (can_change_target ? QCoreApplication::translate("MainWindow", "Change target machine")
+                                              : QCoreApplication::translate("MainWindow", "Resume transfer")),
         card);
     resume->setObjectName("taskResumeButton");
-    resume->setEnabled(can_change_target || can_resume_transfer(snapshot));
+    resume->setEnabled(can_resume_queue || can_change_target || can_resume_transfer(snapshot));
     connect(resume, &QToolButton::clicked, this, [this, key] {
         const auto it = transfer_snapshots_.find(key);
+        if (it != transfer_snapshots_.end() && can_resume_queued_transfer(it.value())) {
+            resume_queued_transfer(key);
+            return;
+        }
         if (it != transfer_snapshots_.end() && can_change_transfer_target(it.value())) {
             change_transfer_target(key);
             return;
@@ -1804,11 +1815,20 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     connect(open, &QToolButton::clicked, this, [this, key] {
         open_transfer_dir(key);
     });
+    const auto can_pause = can_pause_transfer(snapshot);
     auto* stop = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_MediaStop), QCoreApplication::translate("MainWindow", "Stop transfer"), card);
+        QApplication::style()->standardIcon(QStyle::SP_MediaStop),
+        can_pause ? QCoreApplication::translate("MainWindow", "Pause queued transfer")
+                  : QCoreApplication::translate("MainWindow", "Stop transfer"),
+        card);
     stop->setObjectName("taskStopButton");
-    stop->setEnabled(can_stop_transfer(snapshot));
+    stop->setEnabled(can_pause || can_stop_transfer(snapshot));
     connect(stop, &QToolButton::clicked, this, [this, key] {
+        const auto it = transfer_snapshots_.find(key);
+        if (it != transfer_snapshots_.end() && can_pause_transfer(it.value())) {
+            pause_transfer(key);
+            return;
+        }
         stop_transfer(key);
     });
     auto* remove = make_task_tool_button(
@@ -1872,6 +1892,9 @@ QString MainWindow::transfer_detail_text(const TransferSnapshot& snapshot) const
     if (snapshot.state == TransferState::pending && snapshot.direction == TransferDirection::send) {
         return QCoreApplication::translate("MainWindow", "Queued. Resume is enabled if a partial file exists.");
     }
+    if (snapshot.state == TransferState::paused && snapshot.direction == TransferDirection::send) {
+        return QCoreApplication::translate("MainWindow", "Paused. Resume to put it back in the queue.");
+    }
     if ((snapshot.state == TransferState::failed || snapshot.state == TransferState::cancelled) &&
         snapshot.direction == TransferDirection::send) {
         return can_resume_transfer(snapshot)
@@ -1906,8 +1929,15 @@ bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
     return snapshot.state == TransferState::running;
 }
 
+bool MainWindow::can_pause_transfer(const TransferSnapshot& snapshot) const {
+    return scheduler_ != nullptr &&
+           snapshot.direction == TransferDirection::send &&
+           snapshot.state == TransferState::pending;
+}
+
 bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
     return snapshot.state == TransferState::pending ||
+           snapshot.state == TransferState::paused ||
            snapshot.state == TransferState::completed ||
            snapshot.state == TransferState::failed ||
            snapshot.state == TransferState::cancelled;
@@ -1930,10 +1960,16 @@ bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
     return std::filesystem::exists(snapshot.path, ec);
 }
 
+bool MainWindow::can_resume_queued_transfer(const TransferSnapshot& snapshot) const {
+    return scheduler_ != nullptr &&
+           snapshot.direction == TransferDirection::send &&
+           snapshot.state == TransferState::paused;
+}
+
 bool MainWindow::can_change_transfer_target(const TransferSnapshot& snapshot) const {
     return scheduler_ != nullptr &&
            snapshot.direction == TransferDirection::send &&
-           snapshot.state == TransferState::pending &&
+           (snapshot.state == TransferState::pending || snapshot.state == TransferState::paused) &&
            linked_peer_count() > 1;
 }
 
@@ -2121,6 +2157,19 @@ void MainWindow::resume_transfer(const QString& key) {
     }
 }
 
+void MainWindow::resume_queued_transfer(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end() || !can_resume_queued_transfer(it.value())) {
+        show_log(QCoreApplication::translate("MainWindow", "This queued transfer cannot be resumed."));
+        return;
+    }
+    if (scheduler_ == nullptr || !scheduler_->resume_task(it.value().transfer_id)) {
+        show_log(QCoreApplication::translate("MainWindow", "This queued transfer cannot be resumed."));
+        return;
+    }
+    show_log(QCoreApplication::translate("MainWindow", "Queued transfer resumed."));
+}
+
 void MainWindow::change_transfer_target(const QString& key) {
     const auto it = transfer_snapshots_.find(key);
     if (it == transfer_snapshots_.end() || !can_change_transfer_target(it.value())) {
@@ -2208,6 +2257,19 @@ void MainWindow::change_transfer_target(const QString& key) {
     dialog.exec();
 }
 
+void MainWindow::pause_transfer(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end() || !can_pause_transfer(it.value())) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be paused."));
+        return;
+    }
+    if (scheduler_ == nullptr || !scheduler_->pause_task(it.value().transfer_id)) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be paused."));
+        return;
+    }
+    show_log(QCoreApplication::translate("MainWindow", "Queued transfer paused."));
+}
+
 void MainWindow::stop_transfer(const QString& key) {
     const auto it = transfer_snapshots_.find(key);
     if (it == transfer_snapshots_.end()) {
@@ -2235,7 +2297,8 @@ void MainWindow::stop_transfer(const QString& key) {
 void MainWindow::remove_transfer_card(const QString& key) {
     const auto it = transfer_snapshots_.find(key);
     if (it != transfer_snapshots_.end()) {
-        if (it.value().state == TransferState::pending &&
+        if ((it.value().state == TransferState::pending ||
+             it.value().state == TransferState::paused) &&
             it.value().direction == TransferDirection::send) {
             dismissed_transfer_keys_.insert(key);
             if (scheduler_ != nullptr) {
