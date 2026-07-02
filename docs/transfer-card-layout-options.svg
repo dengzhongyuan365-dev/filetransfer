@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="720" viewBox="0 0 920 720">
+  <defs>
+    <style>
+      text { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", Arial, sans-serif; fill: #243044; }
+      .bg { fill: #f4f7fb; }
+      .panel { fill: #ffffff; stroke: #dce4ef; stroke-width: 1; }
+      .title { font-size: 20px; font-weight: 700; }
+      .note { font-size: 13px; fill: #68758a; }
+      .label { font-size: 13px; fill: #708096; }
+      .main { font-size: 15px; font-weight: 650; }
+      .small { font-size: 12px; fill: #657389; }
+      .chip { fill: #dff5ea; }
+      .chipText { fill: #117a45; font-size: 13px; font-weight: 650; }
+      .btn { fill: #f0f3f7; stroke: #d8e0ea; stroke-width: 1; }
+      .btnText { font-size: 12px; fill: #526074; font-weight: 700; }
+      .barBg { fill: #e9eef5; }
+      .bar { fill: #3c82f6; }
+      .mutedLine { stroke: #e5ebf2; stroke-width: 1; }
+      .accent { fill: #2f6fed; }
+      .warn { fill: #fff5dc; }
+      .warnText { fill: #8a6100; font-size: 13px; font-weight: 650; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="920" height="720"/>
+  <text class="title" x="32" y="42">传输列表项布局方案，按 400px 主窗口宽度设计</text>
+  <text class="note" x="32" y="68">目标：文件名优先可读，按钮永远完整显示，速度/大小/状态不挤占主信息。</text>
+
+  <g transform="translate(32 100)">
+    <text class="main" x="0" y="-12">方案 A，推荐：两行紧凑布局</text>
+    <rect class="panel" x="0" y="0" rx="8" ry="8" width="400" height="92"/>
+    <text class="main" x="14" y="28">周杰伦-七里香-无损合集.zip</text>
+    <rect class="chip" x="306" y="13" rx="8" ry="8" width="72" height="26"/>
+    <text class="chipText" x="323" y="31">已完成</text>
+    <line class="mutedLine" x1="14" y1="43" x2="386" y2="43"/>
+    <text class="label" x="14" y="65">速度</text>
+    <text class="small" x="46" y="65">1.43 MiB/s</text>
+    <text class="label" x="136" y="65">大小</text>
+    <text class="small" x="168" y="65">101.44 KiB</text>
+    <circle class="btn" cx="284" cy="63" r="13"/>
+    <text class="btnText" x="280" y="68">›</text>
+    <circle class="btn" cx="318" cy="63" r="13"/>
+    <text class="btnText" x="313" y="67">□</text>
+    <circle class="btn" cx="352" cy="63" r="13"/>
+    <text class="btnText" x="348" y="67">■</text>
+    <circle class="btn" cx="386" cy="63" r="13"/>
+    <text class="btnText" x="382" y="67">×</text>
+    <text class="note" x="0" y="118">优点：文件名有整行空间，右侧按钮固定；适合 400x600。缺点：卡片高度比当前略高。</text>
+  </g>
+
+  <g transform="translate(488 100)">
+    <text class="main" x="0" y="-12">方案 B：类表格但文件名独占主列</text>
+    <rect class="panel" x="0" y="0" rx="8" ry="8" width="400" height="76"/>
+    <text class="main" x="14" y="28">周杰伦-七里香-无损合集.zip</text>
+    <text class="small" x="14" y="54">1.43 MiB/s · 101.44 KiB</text>
+    <rect class="chip" x="214" y="25" rx="8" ry="8" width="66" height="24"/>
+    <text class="chipText" x="229" y="42">完成</text>
+    <circle class="btn" cx="304" cy="38" r="13"/>
+    <text class="btnText" x="300" y="43">›</text>
+    <circle class="btn" cx="334" cy="38" r="13"/>
+    <text class="btnText" x="329" y="42">□</text>
+    <circle class="btn" cx="364" cy="38" r="13"/>
+    <text class="btnText" x="360" y="42">■</text>
+    <circle class="btn" cx="390" cy="38" r="13"/>
+    <text class="btnText" x="386" y="42">×</text>
+    <text class="note" x="0" y="102">优点：最接近当前高度。缺点：状态和按钮会让右侧比较紧。</text>
+  </g>
+
+  <g transform="translate(32 310)">
+    <text class="main" x="0" y="-12">方案 C：带进度条的传输卡片</text>
+    <rect class="panel" x="0" y="0" rx="8" ry="8" width="400" height="104"/>
+    <text class="main" x="14" y="28">周杰伦-七里香-无损合集.zip</text>
+    <rect class="warn" x="306" y="13" rx="8" ry="8" width="72" height="26"/>
+    <text class="warnText" x="323" y="31">传输中</text>
+    <rect class="barBg" x="14" y="46" rx="3" ry="3" width="250" height="6"/>
+    <rect class="bar" x="14" y="46" rx="3" ry="3" width="156" height="6"/>
+    <text class="small" x="276" y="54">62%</text>
+    <text class="small" x="14" y="78">1.43 MiB/s · 1.9 GiB</text>
+    <circle class="btn" cx="284" cy="76" r="13"/>
+    <text class="btnText" x="280" y="81">›</text>
+    <circle class="btn" cx="318" cy="76" r="13"/>
+    <text class="btnText" x="313" y="80">□</text>
+    <circle class="btn" cx="352" cy="76" r="13"/>
+    <text class="btnText" x="348" y="80">■</text>
+    <circle class="btn" cx="386" cy="76" r="13"/>
+    <text class="btnText" x="382" y="80">×</text>
+    <text class="note" x="0" y="130">优点：传输中最清楚。缺点：完成项看起来信息稍多。</text>
+  </g>
+
+  <g transform="translate(488 310)">
+    <text class="main" x="0" y="-12">方案 D：文件名 + 操作栏分离</text>
+    <rect class="panel" x="0" y="0" rx="8" ry="8" width="400" height="96"/>
+    <text class="main" x="14" y="29">周杰伦-七里香-无损合集.zip</text>
+    <text class="small" x="14" y="53">发送到 dzy-PC</text>
+    <rect class="chip" x="14" y="64" rx="8" ry="8" width="66" height="24"/>
+    <text class="chipText" x="29" y="81">完成</text>
+    <text class="small" x="96" y="81">1.43 MiB/s · 101.44 KiB</text>
+    <circle class="btn" cx="284" cy="76" r="13"/>
+    <text class="btnText" x="280" y="81">›</text>
+    <circle class="btn" cx="318" cy="76" r="13"/>
+    <text class="btnText" x="313" y="80">□</text>
+    <circle class="btn" cx="352" cy="76" r="13"/>
+    <text class="btnText" x="348" y="80">■</text>
+    <circle class="btn" cx="386" cy="76" r="13"/>
+    <text class="btnText" x="382" y="80">×</text>
+    <text class="note" x="0" y="122">优点：信息分组清楚。缺点：第二行如果加设备名，会占一点高度。</text>
+  </g>
+
+  <g transform="translate(32 560)">
+    <rect class="panel" x="0" y="0" rx="8" ry="8" width="856" height="96"/>
+    <text class="main" x="18" y="31">我的建议</text>
+    <text class="note" x="18" y="58">默认用方案 A：完成、失败、排队都能统一显示；传输中可在方案 A 基础上加一条 4px 进度条。</text>
+    <text class="note" x="18" y="80">核心规则：第一行给文件名，第二行放元信息和按钮；按钮区固定宽度，永远不参与压缩。</text>
+  </g>
+</svg>

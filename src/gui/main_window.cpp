@@ -734,13 +734,22 @@ void MainWindow::apply_style() {
         #transferName {
             min-width: 0px;
         }
-        #peerMeta, #transferMeta, #transferMetric {
+        #peerMeta, #transferMeta, #transferMetric, #transferProgressText {
             color: #717b8b;
             font-size: 12px;
         }
         #transferDetail {
             color: #5f6978;
             font-size: 12px;
+        }
+        #transferProgress {
+            border: none;
+            border-radius: 3px;
+            background: #e9eef5;
+        }
+        #transferProgress::chunk {
+            border-radius: 3px;
+            background: #2563eb;
         }
         #transferMetric {
             line-height: 16px;
@@ -751,6 +760,30 @@ void MainWindow::apply_style() {
             border-radius: 7px;
             padding: 3px 4px;
             font-size: 12px;
+        }
+        #stateBadge[transferState="running"] {
+            color: #1d4ed8;
+            background: #eaf1ff;
+        }
+        #stateBadge[transferState="completed"] {
+            color: #087443;
+            background: #e7f8ef;
+        }
+        #stateBadge[transferState="pending"] {
+            color: #7c4a03;
+            background: #fff4d6;
+        }
+        #stateBadge[transferState="paused"] {
+            color: #9a3412;
+            background: #ffedd5;
+        }
+        #stateBadge[transferState="failed"] {
+            color: #b42318;
+            background: #fee4e2;
+        }
+        #stateBadge[transferState="cancelled"] {
+            color: #475467;
+            background: #eef2f7;
         }
         #linkedCountBadge {
             color: #1d4ed8;
@@ -971,11 +1004,17 @@ void MainWindow::apply_style() {
             #peerName, #transferName {
                 color: #f1f4f8;
             }
-            #peerMeta, #transferMeta, #transferMetric {
+            #peerMeta, #transferMeta, #transferMetric, #transferProgressText {
                 color: #9aa4b2;
             }
             #transferDetail {
                 color: #aeb7c5;
+            }
+            #transferProgress {
+                background: #303746;
+            }
+            #transferProgress::chunk {
+                background: #60a5fa;
             }
             #onlineBadge {
                 color: #8ff0b7;
@@ -1000,6 +1039,30 @@ void MainWindow::apply_style() {
             #stateBadge {
                 color: #8ff0b7;
                 background: #173625;
+            }
+            #stateBadge[transferState="running"] {
+                color: #9dc2ff;
+                background: #172a4c;
+            }
+            #stateBadge[transferState="completed"] {
+                color: #8ff0b7;
+                background: #173625;
+            }
+            #stateBadge[transferState="pending"] {
+                color: #ffd987;
+                background: #3d2f12;
+            }
+            #stateBadge[transferState="paused"] {
+                color: #fdba74;
+                background: #3a2113;
+            }
+            #stateBadge[transferState="failed"] {
+                color: #fda29b;
+                background: #421b1b;
+            }
+            #stateBadge[transferState="cancelled"] {
+                color: #c4ccd8;
+                background: #2a303d;
             }
             #emptyTransfer {
                 color: #8f98a8;
@@ -1155,6 +1218,7 @@ void MainWindow::setup_scheduler() {
         .max_global_sends = remembered_max_global_sends(),
         .max_peer_sends = remembered_max_peer_sends(),
     });
+    scheduler_->set_sender_id(to_string(node_id_));
     for (const auto& peer : devices_.peers()) {
         sync_scheduler_peer(peer);
     }
@@ -1355,8 +1419,8 @@ bool MainWindow::start_receiver() {
     auto listening_reported = std::make_shared<bool>(false);
     auto listening = listening_promise->get_future();
     receiver_events_ = std::make_unique<GuiReceiverEvents>(
-        [this](TransferSnapshotStore store) {
-            merge_snapshots(std::move(store));
+        [this](TransferSnapshotStore store, QMap<std::uint64_t, QString> peer_ids) {
+            merge_snapshots(std::move(store), std::move(peer_ids));
         },
         [this](QString line) {
             show_log(std::move(line));
@@ -2072,24 +2136,11 @@ QString MainWindow::transfer_size_text(const TransferSnapshot& snapshot) const {
 }
 
 QString MainWindow::transfer_detail_text(const TransferSnapshot& snapshot) const {
-    if (snapshot.state == TransferState::pending && snapshot.direction == TransferDirection::send) {
-        return QCoreApplication::translate("MainWindow", "Queued. Resume is enabled if a partial file exists.");
-    }
-    if (snapshot.state == TransferState::paused && snapshot.direction == TransferDirection::send) {
-        return QCoreApplication::translate("MainWindow", "Paused. Resume to put it back in the queue.");
-    }
-    if ((snapshot.state == TransferState::failed || snapshot.state == TransferState::cancelled) &&
-        snapshot.direction == TransferDirection::send) {
-        return can_resume_transfer(snapshot)
-                   ? QCoreApplication::translate("MainWindow", "Can continue with resume.")
-                   : QCoreApplication::translate("MainWindow", "Cannot continue. Check the source file or linked machine.");
+    if (snapshot.error.has_value()) {
+        return to_qstring(format_error(*snapshot.error));
     }
     if (snapshot.completion_status == TransferCompletionStatus::skipped) {
         return QCoreApplication::translate("MainWindow", "Skipped because target already matches.");
-    }
-    if (snapshot.resumed_from > 0) {
-        return QCoreApplication::translate("MainWindow", "Resumed from %1")
-            .arg(to_qstring(format_size(snapshot.resumed_from)));
     }
     if (snapshot.kind == TransferKind::directory &&
         (snapshot.skipped_files > 0 || snapshot.delta_files > 0 || snapshot.full_files > 0)) {
@@ -2099,13 +2150,7 @@ QString MainWindow::transfer_detail_text(const TransferSnapshot& snapshot) const
             .arg(snapshot.full_files)
             .arg(to_qstring(format_size(snapshot.payload_bytes)));
     }
-    if (snapshot.error.has_value()) {
-        return to_qstring(format_error(*snapshot.error));
-    }
-    if (snapshot.direction == TransferDirection::send) {
-        return QCoreApplication::translate("MainWindow", "Resume is enabled for interrupted transfers.");
-    }
-    return QCoreApplication::translate("MainWindow", "Saved in the receiving folder.");
+    return {};
 }
 
 bool MainWindow::can_stop_transfer(const TransferSnapshot& snapshot) const {
@@ -2915,6 +2960,20 @@ void MainWindow::wake_scheduler() {
 void MainWindow::merge_snapshots(TransferSnapshotStore store, const QString& peer_id) {
     QMetaObject::invokeMethod(this, [this, store = std::move(store), peer_id] {
         for (const auto& snapshot : store.snapshots()) {
+            upsert_snapshot(snapshot, peer_id);
+        }
+    }, Qt::QueuedConnection);
+}
+
+void MainWindow::merge_snapshots(TransferSnapshotStore store, QMap<std::uint64_t, QString> peer_ids) {
+    QMetaObject::invokeMethod(this, [this, store = std::move(store), peer_ids = std::move(peer_ids)] {
+        const auto linked_ids = linked_peer_ids();
+        const auto fallback_peer_id = linked_ids.size() == 1 ? linked_ids.front() : QString{};
+        for (const auto& snapshot : store.snapshots()) {
+            auto peer_id = peer_ids.value(snapshot.transfer_id);
+            if (peer_id.isEmpty() && snapshot.direction == TransferDirection::receive) {
+                peer_id = fallback_peer_id;
+            }
             upsert_snapshot(snapshot, peer_id);
         }
     }, Qt::QueuedConnection);
