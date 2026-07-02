@@ -697,8 +697,8 @@ Send to selected machine(s)</source>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1795"/>
-        <source>Skipped %1, Delta %2, Full %3, Payload %4</source>
-        <translation>跳过 %1，增量 %2，完整 %3，载荷 %4</translation>
+        <source>Skipped %1, Delta %2, Full %3</source>
+        <translation>跳过 %1，增量 %2，完整 %3</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1805"/>

@@ -1,6 +1,7 @@
 #include "lan/app/transfer_scheduler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <set>
 #include <utility>
 
@@ -59,6 +60,13 @@ public:
     }
 
     void on_transfer_progress(const TransferProgress& progress) override {
+        const auto now = std::chrono::steady_clock::now();
+        if (last_progress_emit_.time_since_epoch().count() != 0 &&
+            now - last_progress_emit_ < std::chrono::milliseconds(150)) {
+            return;
+        }
+        last_progress_emit_ = now;
+
         TransferSnapshot snapshot;
         snapshot.transfer_id = task_id_;
         snapshot.state = progress.state;
@@ -134,6 +142,7 @@ private:
     std::string peer_id_;
     FileTransferSource source_ = FileTransferSource::file;
     std::function<void(SchedulerSnapshot)> on_snapshot_;
+    std::chrono::steady_clock::time_point last_progress_emit_;
 };
 
 class DefaultSchedulerSendRunner final : public SchedulerSendRunner {

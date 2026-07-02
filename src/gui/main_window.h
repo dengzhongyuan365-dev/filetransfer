@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QHostAddress>
 #include <QJsonObject>
+#include <QElapsedTimer>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -147,6 +148,9 @@ private:
     void merge_snapshots(TransferSnapshotStore store, const QString& peer_id = {});
     void merge_snapshots(TransferSnapshotStore store, QMap<std::uint64_t, QString> peer_ids);
     void upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id = {});
+    void render_transfer_snapshot(const QString& key, const TransferSnapshot& snapshot);
+    void schedule_transfer_render(const QString& key);
+    void flush_pending_transfer_renders();
     void show_log(QString text);
     void log_event(QString text);
 
@@ -171,6 +175,9 @@ private:
     DeviceManager devices_;
     QMap<QString, QWidget*> transfer_cards_;
     TransferListModel transfer_model_;
+    QSet<QString> pending_transfer_render_keys_;
+    QElapsedTimer transfer_render_timer_;
+    bool transfer_render_scheduled_ = false;
     QSet<QString> recorded_history_keys_;
     QSet<QString> copied_clipboard_image_keys_;
     QStringList log_lines_;

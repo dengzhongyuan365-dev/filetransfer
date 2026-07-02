@@ -2146,11 +2146,10 @@ QString MainWindow::transfer_detail_text(const TransferSnapshot& snapshot) const
     }
     if (snapshot.kind == TransferKind::directory &&
         (snapshot.skipped_files > 0 || snapshot.delta_files > 0 || snapshot.full_files > 0)) {
-        return QCoreApplication::translate("MainWindow", "Skipped %1, Delta %2, Full %3, Payload %4")
+        return QCoreApplication::translate("MainWindow", "Skipped %1, Delta %2, Full %3")
             .arg(snapshot.skipped_files)
             .arg(snapshot.delta_files)
-            .arg(snapshot.full_files)
-            .arg(to_qstring(format_size(snapshot.payload_bytes)));
+            .arg(snapshot.full_files);
     }
     return {};
 }
@@ -2987,6 +2986,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     const auto key = transfer_snapshot_key(snapshot);
     if (snapshot.direction == TransferDirection::receive && !is_terminal_state(snapshot.state)) {
         transfer_model_.remove(key);
+        pending_transfer_render_keys_.remove(key);
         auto* old = transfer_cards_.take(key);
         if (old != nullptr) {
             transfers_layout_->removeWidget(old);
@@ -2999,6 +2999,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     }
     transfer_model_.upsert(snapshot, peer_id);
     if (!transfer_belongs_to_active_peer(key)) {
+        pending_transfer_render_keys_.remove(key);
         auto* old = transfer_cards_.take(key);
         if (old != nullptr) {
             transfers_layout_->removeWidget(old);
@@ -3007,6 +3008,18 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
         if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
             empty_transfer_label_->show();
         }
+        return;
+    }
+    if (!is_terminal_state(snapshot.state)) {
+        schedule_transfer_render(key);
+        return;
+    }
+    pending_transfer_render_keys_.remove(key);
+    render_transfer_snapshot(key, snapshot);
+}
+
+void MainWindow::render_transfer_snapshot(const QString& key, const TransferSnapshot& snapshot) {
+    if (!transfer_belongs_to_active_peer(key)) {
         return;
     }
     if (empty_transfer_label_ != nullptr) {
@@ -3020,6 +3033,41 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     auto* card = make_transfer_card(snapshot);
     transfer_cards_.insert(key, card);
     transfers_layout_->insertWidget(0, card);
+}
+
+void MainWindow::schedule_transfer_render(const QString& key) {
+    pending_transfer_render_keys_.insert(key);
+    if (transfer_render_scheduled_) {
+        return;
+    }
+
+    if (!transfer_render_timer_.isValid()) {
+        transfer_render_timer_.start();
+    }
+
+    const auto elapsed = transfer_render_timer_.elapsed();
+    const auto delay = elapsed >= 150 ? 0 : static_cast<int>(150 - elapsed);
+    transfer_render_scheduled_ = true;
+    QTimer::singleShot(delay, this, [this] {
+        transfer_render_scheduled_ = false;
+        flush_pending_transfer_renders();
+    });
+}
+
+void MainWindow::flush_pending_transfer_renders() {
+    if (pending_transfer_render_keys_.isEmpty()) {
+        transfer_render_timer_.restart();
+        return;
+    }
+    const auto keys = pending_transfer_render_keys_.values();
+    pending_transfer_render_keys_.clear();
+    for (const auto& key : keys) {
+        TransferSnapshot snapshot;
+        if (transfer_model_.try_snapshot(key, &snapshot) && transfer_belongs_to_active_peer(key)) {
+            render_transfer_snapshot(key, snapshot);
+        }
+    }
+    transfer_render_timer_.restart();
 }
 
 void MainWindow::show_log(QString text) {

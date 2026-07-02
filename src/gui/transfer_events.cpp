@@ -76,17 +76,7 @@ void GuiSenderEvents::on_directory_progress(const SendSyncProgress& progress) {
         directory_transfer_logged_ = true;
     }
 
-    const auto current = progress.current_file.generic_string();
-    if (!current.empty() && current != current_directory_file_) {
-        current_directory_file_ = current;
-        if (progress.current_action == SyncAction::skip) {
-            on_log_(QCoreApplication::translate("MainWindow", "Skipping unchanged file: %1")
-                        .arg(to_qstring(current_directory_file_)));
-        } else {
-            on_log_(QCoreApplication::translate("MainWindow", "Sending file: %1")
-                        .arg(to_qstring(current_directory_file_)));
-        }
-    }
+    current_directory_file_ = progress.current_file.generic_string();
 }
 
 void GuiSenderEvents::update(const std::function<void()>& apply) {
@@ -130,6 +120,13 @@ void GuiReceiverEvents::on_transfer_started(const TransferStarted& started) {
 }
 
 void GuiReceiverEvents::on_transfer_progress(const TransferProgress& progress) {
+    const auto now = std::chrono::steady_clock::now();
+    if (last_progress_emit_.time_since_epoch().count() != 0 &&
+        now - last_progress_emit_ < std::chrono::milliseconds(150)) {
+        return;
+    }
+    last_progress_emit_ = now;
+
     update([&] {
         snapshots_.apply(progress);
     });
@@ -171,17 +168,7 @@ void GuiReceiverEvents::on_directory_progress(const ReceiveSyncProgress& progres
         directory_receive_logged_ = true;
     }
 
-    const auto current = progress.current_file.generic_string();
-    if (!current.empty() && current != current_directory_file_) {
-        current_directory_file_ = current;
-        if (progress.current_action == SyncAction::skip) {
-            on_log_(QCoreApplication::translate("MainWindow", "Receiver skipped unchanged file: %1")
-                        .arg(to_qstring(current_directory_file_)));
-        } else {
-            on_log_(QCoreApplication::translate("MainWindow", "Receiver applying file: %1")
-                        .arg(to_qstring(current_directory_file_)));
-        }
-    }
+    current_directory_file_ = progress.current_file.generic_string();
 }
 
 void GuiReceiverEvents::on_directory_synced(const ReceiveSyncReport& report) {

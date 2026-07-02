@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QString>
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -69,6 +70,7 @@ private:
     std::function<void(const ReceiverConfig&)> on_listening_;
     bool directory_receive_logged_ = false;
     std::string current_directory_file_;
+    std::chrono::steady_clock::time_point last_progress_emit_;
 };
 
 }  // namespace lan::gui
