@@ -25,9 +25,11 @@ struct DiscoveryDatagram {
 
 struct DiscoveryProbeReport {
     QStringList broadcast_targets;
-    QStringList directed_broadcast_targets;
-    QStringList extended_ranges;
-    int extended_target_count = 0;
+    QStringList configured_broadcast_targets;
+    QStringList configured_ranges;
+    QStringList invalid_configured_networks;
+    QStringList skipped_host_scan_networks;
+    int configured_host_target_count = 0;
 };
 
 class DiscoveryController {
@@ -45,7 +47,7 @@ public:
 
     DiscoveryProbeReport send_discovery_probe(const QString& node_id,
                                               const QString& name,
-                                              bool extended);
+                                              const QStringList& configured_networks);
     bool reply_to_discovery(const QHostAddress& target,
                             quint16 port,
                             const QString& node_id,

@@ -564,19 +564,39 @@ Send to selected machine(s)</source>
         <translation>通过 UDP %1 向 %2 发送发现广播</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1392"/>
-        <source>Extended discovery sent to %1 address(es).</source>
-        <translation>已向 %1 个地址发送扩展发现探测。</translation>
+        <location filename="../src/gui/main_window.cpp" line="1176"/>
+        <source>Extra discovery networks changed to: %1</source>
+        <translation>额外发现网段已更改为：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1395"/>
-        <source>Directed subnet broadcast sent to %1</source>
-        <translation>已向 %1 发送定向网段广播</translation>
+        <location filename="../src/gui/main_window.cpp" line="1179"/>
+        <source>none</source>
+        <translation>无</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1399"/>
-        <source>Extended discovery range: %1</source>
-        <translation>扩展发现扫描范围：%1</translation>
+        <location filename="../src/gui/main_window.cpp" line="1238"/>
+        <source>Configured discovery sent to %1 host address(es).</source>
+        <translation>已向 %1 个配置主机地址发送发现探测。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1241"/>
+        <source>Configured subnet broadcast sent to %1</source>
+        <translation>已向 %1 发送配置网段广播。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1245"/>
+        <source>Configured discovery scope: %1</source>
+        <translation>配置发现范围：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1249"/>
+        <source>Host scan skipped for broad network(s): %1</source>
+        <translation>已跳过大网段主机扫描：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1253"/>
+        <source>Invalid discovery network(s): %1</source>
+        <translation>无效的发现网段：%1</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1428"/>
@@ -1088,6 +1108,21 @@ Code: %2</source>
         <location filename="../src/gui/settings_dialog.cpp" line="45"/>
         <source>Changing this folder restarts the local receiver.</source>
         <translation>更改此目录会重启本机接收端。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="51"/>
+        <source>Extra discovery networks</source>
+        <translation>额外发现网段</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="54"/>
+        <source>Example: 10.8.12.0/24, 10.8.0.0/16</source>
+        <translation>例如：10.8.12.0/24, 10.8.0.0/16</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/settings_dialog.cpp" line="56"/>
+        <source>Use this only when machines are routed across different broadcast domains.</source>
+        <translation>仅在设备位于不同广播域但网络可路由时使用。</translation>
     </message>
     <message>
         <location filename="../src/gui/settings_dialog.cpp" line="49"/>

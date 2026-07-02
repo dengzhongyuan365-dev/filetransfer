@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSize>
@@ -156,6 +157,31 @@ QString saved_receive_dir() {
 
 void save_receive_dir(const QString& dir) {
     app_settings().setValue(QStringLiteral("receiveDir"), dir);
+}
+
+QString saved_discovery_networks() {
+    return app_settings().value(QStringLiteral("discoveryNetworks")).toString();
+}
+
+void save_discovery_networks(const QString& networks) {
+    auto settings = app_settings();
+    const auto trimmed = networks.trimmed();
+    if (trimmed.isEmpty()) {
+        settings.remove(QStringLiteral("discoveryNetworks"));
+        return;
+    }
+    settings.setValue(QStringLiteral("discoveryNetworks"), trimmed);
+}
+
+QStringList discovery_network_entries(const QString& networks) {
+    QStringList entries;
+    for (const auto& entry : networks.split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts)) {
+        const auto trimmed = entry.trimmed();
+        if (!trimmed.isEmpty()) {
+            entries.push_back(trimmed);
+        }
+    }
+    return entries;
 }
 
 QString remembered_close_action() {
@@ -1115,6 +1141,7 @@ void MainWindow::stop_receiver() {
 void MainWindow::show_settings() {
     SettingsDialogState state{
         .receive_dir = receive_dir_ != nullptr ? receive_dir_->text() : saved_receive_dir(),
+        .discovery_networks = saved_discovery_networks(),
         .max_global_sends = remembered_max_global_sends(),
         .max_peer_sends = remembered_max_peer_sends(),
         .close_action = SettingsCloseAction::ask,
@@ -1143,6 +1170,14 @@ void MainWindow::show_settings() {
             break;
     }
     save_send_scheduler_settings(result->max_global_sends, result->max_peer_sends);
+    const auto old_discovery_networks = saved_discovery_networks();
+    save_discovery_networks(result->discovery_networks);
+    if (result->discovery_networks != old_discovery_networks) {
+        log_event(QCoreApplication::translate("MainWindow", "Extra discovery networks changed to: %1")
+                      .arg(result->discovery_networks.isEmpty()
+                               ? QCoreApplication::translate("MainWindow", "none")
+                               : result->discovery_networks));
+    }
     if (scheduler_ != nullptr) {
         scheduler_->set_limits(SchedulerLimits{
             .max_global_sends = result->max_global_sends,
@@ -1192,22 +1227,31 @@ void MainWindow::send_discovery_probe(bool extended) {
     if (discovery_ == nullptr) {
         return;
     }
-    const auto report = discovery_->send_discovery_probe(node_id_, machine_name(), extended);
+    const auto configured_networks = extended ? discovery_network_entries(saved_discovery_networks()) : QStringList{};
+    const auto report = discovery_->send_discovery_probe(node_id_, machine_name(), configured_networks);
     if (extended) {
         log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1 to %2")
                       .arg(kDiscoveryPort)
                       .arg(report.broadcast_targets.join(QStringLiteral(", "))));
     }
-    if (extended && report.extended_target_count > 0) {
-        log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(report.extended_target_count));
+    if (extended && report.configured_host_target_count > 0) {
+        log_event(QCoreApplication::translate("MainWindow", "Configured discovery sent to %1 host address(es).").arg(report.configured_host_target_count));
     }
-    if (extended && !report.directed_broadcast_targets.isEmpty()) {
-        log_event(QCoreApplication::translate("MainWindow", "Directed subnet broadcast sent to %1")
-                      .arg(report.directed_broadcast_targets.join(QStringLiteral(", "))));
+    if (extended && !report.configured_broadcast_targets.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Configured subnet broadcast sent to %1")
+                      .arg(report.configured_broadcast_targets.join(QStringLiteral(", "))));
     }
-    if (extended && !report.extended_ranges.isEmpty()) {
-        log_event(QCoreApplication::translate("MainWindow", "Extended discovery range: %1")
-                      .arg(report.extended_ranges.join(QStringLiteral(", "))));
+    if (extended && !report.configured_ranges.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Configured discovery scope: %1")
+                      .arg(report.configured_ranges.join(QStringLiteral(", "))));
+    }
+    if (extended && !report.skipped_host_scan_networks.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Host scan skipped for broad network(s): %1")
+                      .arg(report.skipped_host_scan_networks.join(QStringLiteral(", "))));
+    }
+    if (extended && !report.invalid_configured_networks.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Invalid discovery network(s): %1")
+                      .arg(report.invalid_configured_networks.join(QStringLiteral(", "))));
     }
 }
 

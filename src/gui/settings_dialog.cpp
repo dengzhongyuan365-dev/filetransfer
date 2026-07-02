@@ -6,6 +6,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
@@ -19,7 +20,7 @@ namespace lan::gui {
 std::optional<SettingsDialogState> edit_settings(QWidget* parent, const SettingsDialogState& state) {
     QDialog dialog(parent);
     dialog.setWindowTitle(QCoreApplication::translate("SettingsDialog", "Settings"));
-    dialog.resize(360, 410);
+    dialog.resize(360, 450);
 
     auto* layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(14, 14, 14, 14);
@@ -46,6 +47,17 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
     auto* hint = new QLabel(QCoreApplication::translate("SettingsDialog", "Changing this folder restarts the local receiver."), &dialog);
     hint->setObjectName("mutedText");
     hint->setWordWrap(true);
+
+    auto* discovery_label = new QLabel(QCoreApplication::translate("SettingsDialog", "Extra discovery networks"), &dialog);
+    discovery_label->setObjectName("mutedText");
+    auto* discovery_networks = new QLineEdit(state.discovery_networks, &dialog);
+    discovery_networks->setObjectName("searchInput");
+    discovery_networks->setPlaceholderText(QCoreApplication::translate("SettingsDialog", "Example: 10.8.12.0/24, 10.8.0.0/16"));
+    auto* discovery_hint = new QLabel(
+        QCoreApplication::translate("SettingsDialog", "Use this only when machines are routed across different broadcast domains."),
+        &dialog);
+    discovery_hint->setObjectName("mutedText");
+    discovery_hint->setWordWrap(true);
 
     auto* scheduler_label = new QLabel(QCoreApplication::translate("SettingsDialog", "Transfer scheduling"), &dialog);
     scheduler_label->setObjectName("mutedText");
@@ -101,6 +113,10 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
     layout->addWidget(path_box);
     layout->addWidget(hint);
     layout->addSpacing(2);
+    layout->addWidget(discovery_label);
+    layout->addWidget(discovery_networks);
+    layout->addWidget(discovery_hint);
+    layout->addSpacing(2);
     layout->addWidget(scheduler_label);
     layout->addLayout(global_row);
     layout->addLayout(peer_row);
@@ -120,7 +136,7 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
         }
     });
     QObject::connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
-    QObject::connect(save, &QPushButton::clicked, &dialog, [&dialog, &result, path, ask_on_close, tray_on_close, max_global_sends, max_peer_sends] {
+    QObject::connect(save, &QPushButton::clicked, &dialog, [&dialog, &result, path, discovery_networks, ask_on_close, tray_on_close, max_global_sends, max_peer_sends] {
         const auto next_dir = path->text().trimmed();
         if (next_dir.isEmpty()) {
             QMessageBox::warning(&dialog,
@@ -130,6 +146,7 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
         }
 
         result.receive_dir = next_dir;
+        result.discovery_networks = discovery_networks->text().trimmed();
         result.max_global_sends = max_global_sends->value();
         result.max_peer_sends = max_peer_sends->value();
         if (ask_on_close->isChecked()) {

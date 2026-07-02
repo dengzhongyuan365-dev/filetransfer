@@ -15,6 +15,7 @@ enum class SettingsCloseAction {
 
 struct SettingsDialogState {
     QString receive_dir;
+    QString discovery_networks;
     int max_global_sends = 1;
     int max_peer_sends = 1;
     SettingsCloseAction close_action = SettingsCloseAction::ask;
