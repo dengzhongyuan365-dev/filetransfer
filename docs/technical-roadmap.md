@@ -5,6 +5,20 @@ It is intentionally focused on engineering work rather than product UI ideas.
 
 ## Priorities
 
+## Architecture Refactor Status
+
+The latest maintainability pass split several responsibilities out of the GUI main window and scheduler hot path.
+This is now the baseline for later multi-device and queue work:
+
+- `src/gui/target_dialogs.*`: compact target-selection dialogs for multi-target sends and queued-task target changes.
+- `src/gui/device_manager.*`: peer inventory, endpoint de-duplication, online/stale status, linked peers, active peer, and selected send targets.
+- `src/gui/control_message.*`: UDP discovery/link JSON message encoding and decoding.
+- `src/gui/transfer_list_model.*`: transfer snapshot storage, peer ownership, per-peer filtering, and dismissed transfer keys.
+- `TransferScheduler::set_runner_factory`: injectable send runner factory used by tests to simulate concurrent sends without real network I/O.
+
+The intent is to keep `MainWindow` focused on Qt widgets and user actions.
+Network state, transfer-list state, and scheduler execution state should continue moving into small testable classes when touched.
+
 ### 1. Manifest Tree Upgrade
 
 Current manifest data is file-list oriented. Upgrade it into a full filesystem tree model:

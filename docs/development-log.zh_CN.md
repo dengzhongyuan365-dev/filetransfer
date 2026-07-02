@@ -1106,7 +1106,7 @@ graph TD
 | 网络超时/心跳 | 当前先保证基本连接和取消 | timeout + heartbeat |
 | 持久化断点续传 | 需要 session id 和 checkpoint | persistent resume |
 | 小文件批处理 | 需要稳定 manifest tree | batch metadata/ack |
-| 多任务队列 | 先保证单任务语义清楚 | pending queue |
+| 更复杂的任务拓扑 | 基础队列已经完成，还需要继续增强策略 | priority/retry/persistent queue |
 
 ## 19. 回溯后的经验
 
@@ -1121,3 +1121,92 @@ graph TD
 7. 协议字段一旦变化，必须补测试和文档。
 8. 路径语义属于传输层，不属于 GUI。
 9. 每次 bug 修复都应该留下一个能复现它的测试。
+
+## 20. 多设备队列后的架构整理
+
+多设备互联、设备切换、任务排队做完之后，`MainWindow` 开始明显变重。
+当时主窗口同时承担了这些职责：
+
+- 构建设备列表 UI。
+- 维护 peer map、在线状态、已连接状态、当前活动设备。
+- 维护发送目标集合。
+- 编码和解析 UDP discovery/link JSON。
+- 保存传输 snapshot。
+- 判断任务属于哪个设备页。
+- 构建发送目标和更换目标弹窗。
+- 调用 scheduler 启动、暂停、移动、取消任务。
+
+这会带来一个维护风险：后面继续做多设备拓扑、重试、优先级、持久化队列时，很容易在 UI 事件回调里继续堆业务状态。
+因此本轮先做了一次小步拆分，而不是一次性重写 GUI。
+
+### 拆分后的结构
+
+```mermaid
+graph TD
+    A["MainWindow"] --> B["DeviceManager"]
+    A --> C["TransferListModel"]
+    A --> D["target_dialogs"]
+    A --> E["control_message"]
+    A --> F["TransferScheduler"]
+    F --> G["SchedulerSendRunner"]
+    G --> H["SenderTransferRunner"]
+```
+
+各模块职责：
+
+| 模块 | 负责什么 | 不负责什么 |
+| --- | --- | --- |
+| `MainWindow` | 页面切换、按钮回调、控件刷新、日志显示 | 不直接保存复杂设备/任务拓扑 |
+| `DeviceManager` | peer 列表、在线过期、连接状态、活动设备、发送目标 | 不发 UDP、不弹窗 |
+| `TransferListModel` | transfer snapshot、任务所属设备、按设备过滤、隐藏任务 | 不创建 QWidget |
+| `control_message` | UDP 控制消息 JSON encode/decode | 不处理消息语义 |
+| `target_dialogs` | 选择发送目标、移动排队任务目标 | 不调用 scheduler |
+| `TransferScheduler` | 任务队列、并发上限、设备在线/离线调度 | 不关心 GUI 页面 |
+
+### 为什么这样拆
+
+本轮的目标不是“为了好看而拆文件”，而是为了后续几类复杂功能留出边界：
+
+1. 多设备同时连接后，设备状态必须是一个独立模型，否则活动设备、发送目标、在线状态会互相污染。
+2. 每个设备有自己的传输列表视图，传输 snapshot 必须能按 peer 过滤。
+3. UDP 控制消息后续可能加 capability、签名或协议版本，不能散落在主窗口里手写 JSON。
+4. 调度器要测试并发、慢网络、失败、取消，不能每个测试都真的启动 TCP 发送。
+
+### 新增测试
+
+新增了调度器 fake runner 注入能力：
+
+```mermaid
+sequenceDiagram
+    participant Test
+    participant Scheduler
+    participant FakeRunner
+
+    Test->>Scheduler: set_runner_factory(fake)
+    Test->>Scheduler: max_global=2, max_peer=1
+    Test->>Scheduler: enqueue peer-1 task A
+    Scheduler->>FakeRunner: start A
+    Test->>Scheduler: enqueue peer-1 task B
+    Scheduler-->>Test: B stays queued
+    Test->>Scheduler: enqueue peer-2 task C
+    Scheduler->>FakeRunner: start C
+```
+
+验证点：
+
+- 全局最多同时运行 2 个发送任务。
+- 同一设备最多运行 1 个发送任务。
+- peer-1 的第二个任务不会抢占或越过单设备上限。
+- 释放 fake runner 后，队列里的任务可以继续被 `pump()` 启动。
+
+### 本轮提交顺序
+
+1. `refactor: extract target selection dialogs`
+2. `refactor: extract device state manager`
+3. `refactor: extract gui control message codec`
+4. `refactor: extract transfer list model`
+5. `test: inject scheduler send runner`
+
+这次整理之后，后续继续优化时建议遵守一个原则：
+
+> 如果逻辑可以脱离 Qt 控件独立描述，就优先放进小模型或核心类；`MainWindow` 只做组装和表现层。
