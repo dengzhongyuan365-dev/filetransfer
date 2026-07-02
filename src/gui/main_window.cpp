@@ -737,6 +737,10 @@ void MainWindow::apply_style() {
             border: 1px solid #e2e7ef;
             border-radius: 8px;
         }
+        #peerCard:hover {
+            background: #f8fbff;
+            border-color: #bfd4f8;
+        }
         #peerIcon {
             border-radius: 8px;
         }
@@ -905,14 +909,14 @@ void MainWindow::apply_style() {
             border-color: #e2e7ef;
             color: #9aa3b2;
         }
-        #taskResumeButton, #taskOpenButton, #taskStopButton, #taskRemoveButton {
+        #taskControlButton, #taskOpenButton, #taskRemoveButton {
             min-width: 24px;
             max-width: 24px;
             min-height: 24px;
             max-height: 24px;
             padding: 0;
             border-radius: 12px;
-            border-color: transparent;
+            border: 1px solid transparent;
             background: #f3f4f6;
         }
         #taskOpenButton {
@@ -930,35 +934,66 @@ void MainWindow::apply_style() {
             color: #a6adb8;
             background: #f3f4f6;
         }
-        #taskResumeButton {
+        #taskControlButton[controlState="resume"] {
             color: #087443;
-        }
-        #taskResumeButton:hover {
             background: #e7f8ef;
-            color: #06643a;
+            border-color: #b8e7cc;
         }
-        #taskResumeButton:pressed {
+        #taskControlButton[controlState="resume"]:hover {
+            background: #d7f2e4;
+            color: #06643a;
+            border-color: #8ed6ad;
+        }
+        #taskControlButton[controlState="resume"]:pressed {
             background: #d4f1e1;
             color: #055730;
         }
-        #taskResumeButton:disabled {
-            color: #a6adb8;
-            background: #f3f4f6;
+        #taskControlButton[controlState="change"] {
+            color: #1d4ed8;
+            background: #eaf1ff;
+            border-color: #bed2ff;
         }
-        #taskStopButton {
+        #taskControlButton[controlState="change"]:hover {
+            background: #dce9ff;
+            color: #1e40af;
+            border-color: #9dbdff;
+        }
+        #taskControlButton[controlState="change"]:pressed {
+            background: #c9dcff;
+            color: #1e3a8a;
+        }
+        #taskControlButton[controlState="pause"] {
+            color: #7c4a03;
+            background: #fff4d6;
+            border-color: #f5d98b;
+        }
+        #taskControlButton[controlState="pause"]:hover {
+            background: #ffedb3;
+            color: #623b05;
+            border-color: #e7c662;
+        }
+        #taskControlButton[controlState="pause"]:pressed {
+            background: #ffe49a;
+            color: #523006;
+        }
+        #taskControlButton[controlState="stop"] {
             color: #9f2f2f;
-        }
-        #taskStopButton:hover {
             background: #fdecec;
-            color: #8a2424;
+            border-color: #f2b7b7;
         }
-        #taskStopButton:pressed {
+        #taskControlButton[controlState="stop"]:hover {
+            background: #fbdada;
+            color: #8a2424;
+            border-color: #e89b9b;
+        }
+        #taskControlButton[controlState="stop"]:pressed {
             background: #f9dada;
             color: #7f1d1d;
         }
-        #taskStopButton:disabled {
+        #taskControlButton:disabled {
             color: #a6adb8;
             background: #f3f4f6;
+            border-color: transparent;
         }
         #taskRemoveButton {
             color: #687386;
@@ -999,6 +1034,10 @@ void MainWindow::apply_style() {
             #setupCard, #transferPanel, #peerCard, #transferCard {
                 background: #222733;
                 border-color: #343b4a;
+            }
+            #peerCard:hover {
+                background: #262e3d;
+                border-color: #42618f;
             }
             #pathBox {
                 background: #1c2029;
@@ -1133,7 +1172,7 @@ void MainWindow::apply_style() {
                 background: #202631;
                 border-color: #59657a;
             }
-            #taskResumeButton, #taskOpenButton, #taskStopButton, #taskRemoveButton {
+            #taskControlButton, #taskOpenButton, #taskRemoveButton {
                 background: #2a303d;
                 border-color: transparent;
             }
@@ -1144,18 +1183,48 @@ void MainWindow::apply_style() {
                 background: #1d355f;
                 color: #b6d2ff;
             }
-            #taskResumeButton {
+            #taskControlButton[controlState="resume"] {
                 color: #8ff0b7;
-            }
-            #taskResumeButton:hover {
                 background: #173625;
+                border-color: #24543a;
+            }
+            #taskControlButton[controlState="resume"]:hover {
+                background: #1f4731;
                 color: #b6f6cd;
             }
-            #taskStopButton {
-                color: #ffaaa5;
+            #taskControlButton[controlState="change"] {
+                color: #9dc2ff;
+                background: #172a4c;
+                border-color: #294775;
             }
-            #taskStopButton:hover {
+            #taskControlButton[controlState="change"]:hover {
+                background: #1d355f;
+                color: #c5dbff;
+            }
+            #taskControlButton[controlState="change"]:pressed {
+                background: #14294d;
+                color: #d9e8ff;
+            }
+            #taskControlButton[controlState="pause"] {
+                color: #ffd987;
+                background: #3d2f12;
+                border-color: #5c4618;
+            }
+            #taskControlButton[controlState="pause"]:hover {
+                background: #4b3a17;
+                color: #ffe6a9;
+            }
+            #taskControlButton[controlState="pause"]:pressed {
+                background: #35270e;
+                color: #ffecc0;
+            }
+            #taskControlButton[controlState="stop"] {
+                color: #ffaaa5;
                 background: #4a2022;
+                border-color: #6a3033;
+            }
+            #taskControlButton[controlState="stop"]:hover {
+                background: #5a272a;
                 color: #ffc3bf;
             }
             #taskRemoveButton {
@@ -1165,7 +1234,7 @@ void MainWindow::apply_style() {
                 background: #343b4a;
                 color: #f1f4f8;
             }
-            #taskResumeButton:disabled, #taskOpenButton:disabled, #taskStopButton:disabled, #taskRemoveButton:disabled {
+            #taskControlButton:disabled, #taskOpenButton:disabled, #taskRemoveButton:disabled {
                 color: #6d7583;
                 background: #252b36;
             }
@@ -1657,6 +1726,7 @@ void MainWindow::show_device_management(QWidget* parent) {
         for (const auto& peer : peers) {
             auto* card = new QFrame(content);
             card->setObjectName("peerCard");
+            card->setAttribute(Qt::WA_Hover, true);
             auto* card_layout = new QVBoxLayout(card);
             card_layout->setContentsMargins(10, 9, 10, 9);
             card_layout->setSpacing(6);
@@ -1984,6 +2054,7 @@ QWidget* MainWindow::make_empty_peer_card(const QString& text) {
 QWidget* MainWindow::make_peer_card(const Peer& peer) {
     auto* card = new QFrame(peer_list_);
     card->setObjectName("peerCard");
+    card->setAttribute(Qt::WA_Hover, true);
     auto* row = new QHBoxLayout(card);
     row->setContentsMargins(12, 10, 12, 10);
     row->setSpacing(12);

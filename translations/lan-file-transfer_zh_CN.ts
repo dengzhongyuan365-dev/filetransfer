@@ -1091,6 +1091,70 @@ Code: %2</source>
         <source>synced directory: %1 files</source>
         <translation>目录同步完成：%1 个文件</translation>
     </message>
+    <message>
+        <source>Forget trusted machine</source>
+        <translation>取消信任设备</translation>
+    </message>
+    <message>
+        <source>trusted</source>
+        <translation>已信任</translation>
+    </message>
+    <message>
+        <source>Forget trust</source>
+        <translation>取消信任</translation>
+    </message>
+    <message>
+        <source>Forget trust for %1? You will need to confirm the next link request.</source>
+        <translation>取消对 %1 的信任吗？下次连接请求需要重新确认。</translation>
+    </message>
+    <message>
+        <source>Trusted peer: %1</source>
+        <translation>已信任设备：%1</translation>
+    </message>
+    <message>
+        <source>Auto accepted trusted peer: %1</source>
+        <translation>已自动接受信任设备：%1</translation>
+    </message>
+    <message>
+        <source>Auto accepted legacy trusted peer and refreshed trust token: %1</source>
+        <translation>已自动接受旧版信任设备并刷新信任令牌：%1</translation>
+    </message>
+    <message>
+        <source>Trust removed for %1</source>
+        <translation>已取消对 %1 的信任</translation>
+    </message>
+    <message>
+        <source>Set display names and manage trusted reconnect.</source>
+        <translation>设置显示名称并管理信任重连。</translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation>从未</translation>
+    </message>
+    <message>
+        <source>No known devices yet.</source>
+        <translation>暂无已知设备。</translation>
+    </message>
+    <message>
+        <source>Last linked: %1</source>
+        <translation>上次连接：%1</translation>
+    </message>
+    <message>
+        <source>Trusted: %1</source>
+        <translation>信任时间：%1</translation>
+    </message>
+    <message>
+        <source>Trusted reconnect</source>
+        <translation>信任重连</translation>
+    </message>
+    <message>
+        <source>Not trusted</source>
+        <translation>未信任</translation>
+    </message>
+    <message>
+        <source>Device settings updated.</source>
+        <translation>设备设置已更新。</translation>
+    </message>
 </context>
 <context>
     <name>ReceiveHistoryDialog</name>

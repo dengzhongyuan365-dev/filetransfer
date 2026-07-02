@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+  <rect width="920" height="520" fill="#f6f7fb"/>
+  <text x="40" y="48" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" fill="#1e2430">传输完成卡片方案</text>
+  <text x="40" y="76" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="13" fill="#667085">完成后减少进度条占用，把注意力放到结果和下一步动作。</text>
+
+  <g transform="translate(40 116)">
+    <text x="0" y="-18" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="14" font-weight="700" fill="#1e2430">A. 推荐：完成后隐藏进度条</text>
+    <rect x="0" y="0" width="840" height="92" rx="8" fill="#ffffff" stroke="#dfe5ee"/>
+    <text x="16" y="30" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="15" font-weight="700" fill="#1e2430">music</text>
+    <rect x="752" y="15" width="72" height="24" rx="7" fill="#e7f8ef"/>
+    <text x="771" y="31" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#087443">已完成</text>
+    <circle cx="22" cy="61" r="8" fill="#16a34a"/>
+    <path d="M18 61.5 L21 64.5 L27 57.5" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="40" y="66" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#5f6978">32 个文件 · 1.9 GB · 平均 48 MB/s</text>
+    <rect x="705" y="52" width="24" height="24" rx="12" fill="#eef4ff"/>
+    <path d="M712 65 H722 M717 60 V70" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+    <rect x="737" y="52" width="24" height="24" rx="12" fill="#eef2f7"/>
+    <path d="M744 59 L754 69 M754 59 L744 69" stroke="#687386" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="16" y="112" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#087443">优点：完成态很干净，不再被 100% 进度条占空间；适合我们的列表。</text>
+  </g>
+
+  <g transform="translate(40 256)">
+    <text x="0" y="-18" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="14" font-weight="700" fill="#1e2430">B. 保留弱化 100% 进度条</text>
+    <rect x="0" y="0" width="840" height="92" rx="8" fill="#ffffff" stroke="#dfe5ee"/>
+    <text x="16" y="30" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="15" font-weight="700" fill="#1e2430">album.zip</text>
+    <rect x="752" y="15" width="72" height="24" rx="7" fill="#e7f8ef"/>
+    <text x="771" y="31" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#087443">已完成</text>
+    <rect x="16" y="48" width="704" height="6" rx="3" fill="#e9eef5"/>
+    <rect x="16" y="48" width="704" height="6" rx="3" fill="#9bd8b4"/>
+    <text x="734" y="55" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#717b8b">100%</text>
+    <text x="16" y="76" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#5f6978">42 MB/s · 860 MB</text>
+    <text x="16" y="112" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#7c4a03">优点：状态连续；缺点：完成后视觉仍像“正在传”。</text>
+  </g>
+
+  <g transform="translate(40 396)">
+    <text x="0" y="-18" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="14" font-weight="700" fill="#1e2430">C. 极简完成记录</text>
+    <rect x="0" y="0" width="840" height="72" rx="8" fill="#ffffff" stroke="#dfe5ee"/>
+    <text x="16" y="30" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="15" font-weight="700" fill="#1e2430">screenshots</text>
+    <text x="16" y="54" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#5f6978">已完成 · 18 个文件 · 保存到接收目录</text>
+    <rect x="752" y="24" width="72" height="24" rx="7" fill="#e7f8ef"/>
+    <text x="771" y="40" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#087443">已完成</text>
+    <text x="16" y="92" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#475467">适合历史列表；当前传输列表里信息略少。</text>
+  </g>
+</svg>

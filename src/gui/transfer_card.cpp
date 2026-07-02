@@ -17,6 +17,7 @@ namespace lan::gui {
 namespace {
 
 constexpr int kTransferCardHeight = 92;
+constexpr int kCompletedTransferCardHeight = 72;
 
 QToolButton* make_task_tool_button(const QIcon& icon,
                                    const QString& tooltip,
@@ -45,6 +46,37 @@ QString stop_tooltip(const TransferCardActions& actions) {
                : QCoreApplication::translate("TransferCard", "Stop transfer");
 }
 
+bool use_resume_control(const TransferCardActions& actions) {
+    return actions.resume_enabled &&
+           (!actions.stop_enabled || actions.resume_queued || actions.change_target);
+}
+
+QString control_style_name(const TransferCardActions& actions) {
+    if (use_resume_control(actions)) {
+        if (actions.change_target) {
+            return QStringLiteral("change");
+        }
+        return QStringLiteral("resume");
+    }
+    if (actions.pause) {
+        return QStringLiteral("pause");
+    }
+    return QStringLiteral("stop");
+}
+
+QIcon control_icon(const TransferCardActions& actions) {
+    if (use_resume_control(actions)) {
+        return QApplication::style()->standardIcon(actions.change_target ? QStyle::SP_ComputerIcon
+                                                                         : QStyle::SP_ArrowForward);
+    }
+    return QApplication::style()->standardIcon(actions.pause ? QStyle::SP_MediaPause
+                                                            : QStyle::SP_MediaStop);
+}
+
+QString control_tooltip(const TransferCardActions& actions) {
+    return use_resume_control(actions) ? resume_tooltip(actions) : stop_tooltip(actions);
+}
+
 int progress_percent(const TransferSnapshot& snapshot) {
     if (snapshot.state == TransferState::completed) {
         return 100;
@@ -70,6 +102,10 @@ int progress_percent(const TransferSnapshot& snapshot) {
 
 bool has_known_progress(const TransferSnapshot& snapshot) {
     return snapshot.total_bytes > 0 || snapshot.total_files > 0 || snapshot.state == TransferState::completed;
+}
+
+bool should_show_progress(const TransferSnapshot& snapshot) {
+    return snapshot.state != TransferState::completed;
 }
 
 QString progress_text(const TransferSnapshot& snapshot) {
@@ -114,7 +150,8 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
                            QWidget* parent)
     : QWidget(parent) {
     setObjectName("transferCard");
-    setMinimumHeight(kTransferCardHeight);
+    setMinimumHeight(snapshot.state == TransferState::completed ? kCompletedTransferCardHeight
+                                                                : kTransferCardHeight);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto* root = new QVBoxLayout(this);
@@ -139,30 +176,33 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     header->addWidget(name, 1);
     header->addWidget(state);
 
-    auto* progress_row = new QHBoxLayout();
-    progress_row->setContentsMargins(0, 0, 0, 0);
-    progress_row->setSpacing(8);
+    QHBoxLayout* progress_row = nullptr;
+    if (should_show_progress(snapshot)) {
+        progress_row = new QHBoxLayout();
+        progress_row->setContentsMargins(0, 0, 0, 0);
+        progress_row->setSpacing(8);
 
-    auto* progress = new QProgressBar(this);
-    progress->setObjectName("transferProgress");
-    progress->setTextVisible(false);
-    progress->setFixedHeight(6);
-    progress->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    if (!has_known_progress(snapshot) && snapshot.state == TransferState::running) {
-        progress->setRange(0, 0);
-    } else {
-        progress->setRange(0, 100);
-        progress->setValue(progress_percent(snapshot));
+        auto* progress = new QProgressBar(this);
+        progress->setObjectName("transferProgress");
+        progress->setTextVisible(false);
+        progress->setFixedHeight(6);
+        progress->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        if (!has_known_progress(snapshot) && snapshot.state == TransferState::running) {
+            progress->setRange(0, 0);
+        } else {
+            progress->setRange(0, 100);
+            progress->setValue(progress_percent(snapshot));
+        }
+
+        auto* percent = new QLabel(progress_text(snapshot), this);
+        percent->setObjectName("transferProgressText");
+        percent->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        percent->setFixedWidth(38);
+        percent->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+        progress_row->addWidget(progress, 1);
+        progress_row->addWidget(percent);
     }
-
-    auto* percent = new QLabel(progress_text(snapshot), this);
-    percent->setObjectName("transferProgressText");
-    percent->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    percent->setFixedWidth(38);
-    percent->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-
-    progress_row->addWidget(progress, 1);
-    progress_row->addWidget(percent);
 
     auto* footer = new QHBoxLayout();
     footer->setContentsMargins(0, 0, 0, 0);
@@ -176,13 +216,13 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     action_layout->setContentsMargins(0, 0, 0, 0);
     action_layout->setSpacing(4);
 
-    auto* resume = make_task_tool_button(
-        QApplication::style()->standardIcon(actions.change_target ? QStyle::SP_ComputerIcon : QStyle::SP_ArrowForward),
-        resume_tooltip(actions),
-        this);
-    resume->setObjectName("taskResumeButton");
-    resume->setEnabled(actions.resume_enabled);
-    QObject::connect(resume, &QToolButton::clicked, this, [callback = std::move(callbacks.on_resume)] {
+    const auto control_is_resume = use_resume_control(actions);
+    auto* control = make_task_tool_button(control_icon(actions), control_tooltip(actions), this);
+    control->setObjectName("taskControlButton");
+    control->setProperty("controlState", control_style_name(actions));
+    control->setEnabled(control_is_resume ? actions.resume_enabled : actions.stop_enabled);
+    auto control_callback = control_is_resume ? std::move(callbacks.on_resume) : std::move(callbacks.on_stop);
+    QObject::connect(control, &QToolButton::clicked, this, [callback = std::move(control_callback)] {
         if (callback) {
             callback();
         }
@@ -200,18 +240,6 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
         }
     });
 
-    auto* stop = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_MediaStop),
-        stop_tooltip(actions),
-        this);
-    stop->setObjectName("taskStopButton");
-    stop->setEnabled(actions.stop_enabled);
-    QObject::connect(stop, &QToolButton::clicked, this, [callback = std::move(callbacks.on_stop)] {
-        if (callback) {
-            callback();
-        }
-    });
-
     auto* remove = make_task_tool_button(
         QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton),
         QCoreApplication::translate("TransferCard", "Clear from list"),
@@ -224,9 +252,8 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
         }
     });
 
-    action_layout->addWidget(resume);
+    action_layout->addWidget(control);
     action_layout->addWidget(open);
-    action_layout->addWidget(stop);
     action_layout->addWidget(remove);
     action_layout->setSizeConstraint(QLayout::SetFixedSize);
 
@@ -234,16 +261,20 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     footer->addLayout(action_layout);
 
     root->addLayout(header);
-    root->addLayout(progress_row);
+    if (progress_row != nullptr) {
+        root->addLayout(progress_row);
+    }
     root->addLayout(footer);
 }
 
 QSize TransferCard::sizeHint() const {
-    return QSize(360, kTransferCardHeight);
+    return QSize(360, minimumSizeHint().height());
 }
 
 QSize TransferCard::minimumSizeHint() const {
-    return QSize(220, kTransferCardHeight);
+    const auto progress = findChild<QProgressBar*>("transferProgress");
+    return QSize(220, progress != nullptr && progress->isVisible() ? kTransferCardHeight
+                                                                   : kCompletedTransferCardHeight);
 }
 
 }  // namespace lan::gui
