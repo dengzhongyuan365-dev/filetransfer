@@ -73,6 +73,7 @@ private:
     void stop_receiver();
     void show_settings();
     void show_debug_logs(QWidget* parent = nullptr);
+    void show_device_management(QWidget* parent = nullptr);
 
     void search_peers();
     void send_discovery_probe(bool extended);

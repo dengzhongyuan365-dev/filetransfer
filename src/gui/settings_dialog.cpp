@@ -20,7 +20,8 @@ namespace lan::gui {
 
 std::optional<SettingsDialogState> edit_settings(QWidget* parent,
                                                  const SettingsDialogState& state,
-                                                 std::function<void(QWidget*)> show_debug_logs) {
+                                                 std::function<void(QWidget*)> show_debug_logs,
+                                                 std::function<void(QWidget*)> show_devices) {
     QDialog dialog(parent);
     dialog.setWindowTitle(QCoreApplication::translate("SettingsDialog", "Settings"));
     dialog.resize(360, 500);
@@ -130,6 +131,17 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent,
     debug_row->addWidget(debug_label, 1);
     debug_row->addWidget(debug_logs);
 
+    auto* devices_row = new QHBoxLayout();
+    devices_row->setSpacing(8);
+    auto* devices_label = new QLabel(QCoreApplication::translate("SettingsDialog", "Devices"), &dialog);
+    devices_label->setObjectName("mutedText");
+    auto* devices = new QPushButton(QCoreApplication::translate("SettingsDialog", "Manage"), &dialog);
+    devices->setObjectName("secondaryButton");
+    devices->setMinimumWidth(86);
+    devices->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    devices_row->addWidget(devices_label, 1);
+    devices_row->addWidget(devices);
+
     auto* buttons = new QHBoxLayout();
     auto* cancel = new QPushButton(QCoreApplication::translate("SettingsDialog", "Cancel"), &dialog);
     cancel->setObjectName("secondaryButton");
@@ -156,6 +168,8 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent,
     content_layout->addWidget(tray_on_close);
     content_layout->addWidget(quit_on_close);
     content_layout->addSpacing(2);
+    content_layout->addLayout(devices_row);
+    content_layout->addSpacing(2);
     content_layout->addLayout(debug_row);
     content_layout->addStretch(1);
     scroll->setWidget(content);
@@ -175,6 +189,11 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent,
     QObject::connect(debug_logs, &QPushButton::clicked, &dialog, [show_debug_logs, &dialog] {
         if (show_debug_logs) {
             show_debug_logs(&dialog);
+        }
+    });
+    QObject::connect(devices, &QPushButton::clicked, &dialog, [show_devices, &dialog] {
+        if (show_devices) {
+            show_devices(&dialog);
         }
     });
     QObject::connect(save, &QPushButton::clicked, &dialog, [&dialog, &result, path, discovery_networks, ask_on_close, tray_on_close, max_global_sends, max_peer_sends] {

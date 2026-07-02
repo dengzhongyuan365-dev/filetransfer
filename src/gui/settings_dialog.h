@@ -24,6 +24,7 @@ struct SettingsDialogState {
 
 std::optional<SettingsDialogState> edit_settings(QWidget* parent,
                                                  const SettingsDialogState& state,
-                                                 std::function<void(QWidget*)> show_debug_logs = {});
+                                                 std::function<void(QWidget*)> show_debug_logs = {},
+                                                 std::function<void(QWidget*)> show_devices = {});
 
 }  // namespace lan::gui

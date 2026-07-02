@@ -111,6 +111,26 @@ QString kind_text(TransferKind kind) {
     return {};
 }
 
+QString display_peer_name(const Peer& peer) {
+    const auto alias = peer.alias.trimmed();
+    return alias.isEmpty() ? peer.name : alias;
+}
+
+QString peer_detail_text(const Peer& peer) {
+    auto detail = QString("%1:%2").arg(peer.host).arg(peer.port);
+    if (!peer.alias.trimmed().isEmpty() && !peer.name.isEmpty()) {
+        detail = QStringLiteral("%1 - %2").arg(peer.name, detail);
+    }
+    return detail;
+}
+
+QString timestamp_text(qint64 ms) {
+    if (ms <= 0) {
+        return QCoreApplication::translate("MainWindow", "Never");
+    }
+    return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+}
+
 bool is_terminal_state(TransferState state) {
     return state == TransferState::completed ||
            state == TransferState::failed ||
@@ -1245,6 +1265,7 @@ void MainWindow::load_remembered_peers() {
         Peer peer{
             .id = settings.value(QStringLiteral("id")).toString(),
             .name = settings.value(QStringLiteral("name"), QCoreApplication::translate("MainWindow", "Unknown")).toString(),
+            .alias = settings.value(QStringLiteral("alias")).toString(),
             .host = settings.value(QStringLiteral("host")).toString(),
             .trust_token = settings.value(QStringLiteral("trustToken")).toString(),
             .port = static_cast<std::uint16_t>(settings.value(QStringLiteral("port"), kTransferPort).toUInt()),
@@ -1276,7 +1297,7 @@ void MainWindow::remember_peer(const Peer& peer) {
 void MainWindow::save_remembered_peers() {
     auto peers = devices_.peers();
     peers.erase(std::remove_if(peers.begin(), peers.end(), [](const Peer& peer) {
-        return peer.last_linked_ms <= 0 && peer.trusted_at_ms <= 0;
+        return peer.last_linked_ms <= 0 && peer.trusted_at_ms <= 0 && peer.alias.trimmed().isEmpty();
     }), peers.end());
     std::sort(peers.begin(), peers.end(), [](const Peer& left, const Peer& right) {
         return std::max(left.last_linked_ms, left.trusted_at_ms) > std::max(right.last_linked_ms, right.trusted_at_ms);
@@ -1300,6 +1321,7 @@ void MainWindow::save_remembered_peers() {
         settings.setArrayIndex(i);
         settings.setValue(QStringLiteral("id"), peers.at(i).id);
         settings.setValue(QStringLiteral("name"), peers.at(i).name);
+        settings.setValue(QStringLiteral("alias"), peers.at(i).alias);
         settings.setValue(QStringLiteral("host"), peers.at(i).host);
         settings.setValue(QStringLiteral("trustToken"), peers.at(i).trust_token);
         settings.setValue(QStringLiteral("port"), static_cast<int>(peers.at(i).port));
@@ -1403,9 +1425,15 @@ void MainWindow::show_settings() {
         state.close_action = SettingsCloseAction::quit;
     }
 
-    const auto result = edit_settings(this, state, [this](QWidget* parent) {
-        show_debug_logs(parent);
-    });
+    const auto result = edit_settings(
+        this,
+        state,
+        [this](QWidget* parent) {
+            show_debug_logs(parent);
+        },
+        [this](QWidget* parent) {
+            show_device_management(parent);
+        });
     if (!result.has_value()) {
         return;
     }
@@ -1498,6 +1526,156 @@ void MainWindow::show_debug_logs(QWidget* parent) {
     dialog->show();
 }
 
+void MainWindow::show_device_management(QWidget* parent) {
+    QDialog dialog(parent != nullptr ? parent : this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Devices"));
+    dialog.resize(360, 420);
+    dialog.setMinimumSize(340, 360);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(9);
+
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Devices"), &dialog);
+    title->setObjectName("dialogTitle");
+    auto* hint = new QLabel(
+        QCoreApplication::translate("MainWindow", "Set display names and manage trusted reconnect."),
+        &dialog);
+    hint->setObjectName("mutedText");
+    hint->setWordWrap(true);
+
+    auto* scroll = new QScrollArea(&dialog);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* content = new QWidget(scroll);
+    auto* content_layout = new QVBoxLayout(content);
+    content_layout->setContentsMargins(0, 0, 8, 0);
+    content_layout->setSpacing(8);
+
+    QMap<QString, QLineEdit*> aliases;
+    QMap<QString, QCheckBox*> trusted_checks;
+    auto peers = devices_.peers();
+    peers.erase(std::remove_if(peers.begin(), peers.end(), [](const Peer& peer) {
+        return peer.id.isEmpty() || peer.host.isEmpty();
+    }), peers.end());
+    std::sort(peers.begin(), peers.end(), [](const Peer& left, const Peer& right) {
+        if (left.trusted != right.trusted) {
+            return left.trusted;
+        }
+        if (left.last_linked_ms != right.last_linked_ms) {
+            return left.last_linked_ms > right.last_linked_ms;
+        }
+        return display_peer_name(left).localeAwareCompare(display_peer_name(right)) < 0;
+    });
+
+    if (peers.isEmpty()) {
+        auto* empty = new QLabel(QCoreApplication::translate("MainWindow", "No known devices yet."), content);
+        empty->setObjectName("mutedText");
+        empty->setAlignment(Qt::AlignCenter);
+        empty->setMinimumHeight(180);
+        content_layout->addWidget(empty);
+    } else {
+        for (const auto& peer : peers) {
+            auto* card = new QFrame(content);
+            card->setObjectName("peerCard");
+            auto* card_layout = new QVBoxLayout(card);
+            card_layout->setContentsMargins(10, 9, 10, 9);
+            card_layout->setSpacing(6);
+
+            auto* name = new QLabel(display_peer_name(peer), card);
+            name->setObjectName("peerName");
+            auto meta_parts = QStringList{
+                peer_detail_text(peer),
+                QCoreApplication::translate("MainWindow", "Last linked: %1").arg(timestamp_text(peer.last_linked_ms)),
+            };
+            if (peer.trusted) {
+                meta_parts.append(QCoreApplication::translate("MainWindow", "Trusted: %1").arg(timestamp_text(peer.trusted_at_ms)));
+            }
+            auto* meta = new QLabel(meta_parts.join(QStringLiteral(" - ")), card);
+            meta->setObjectName("peerMeta");
+            meta->setWordWrap(true);
+
+            auto* alias = new QLineEdit(peer.alias, card);
+            alias->setObjectName("searchInput");
+            alias->setPlaceholderText(peer.name);
+            aliases.insert(peer.id, alias);
+
+            card_layout->addWidget(name);
+            card_layout->addWidget(meta);
+            card_layout->addWidget(alias);
+
+            if (peer.trusted) {
+                auto* trusted = new QCheckBox(QCoreApplication::translate("MainWindow", "Trusted reconnect"), card);
+                trusted->setChecked(true);
+                trusted_checks.insert(peer.id, trusted);
+                card_layout->addWidget(trusted);
+            } else {
+                auto* untrusted = new QLabel(QCoreApplication::translate("MainWindow", "Not trusted"), card);
+                untrusted->setObjectName("mutedText");
+                card_layout->addWidget(untrusted);
+            }
+            content_layout->addWidget(card);
+        }
+    }
+    content_layout->addStretch(1);
+    scroll->setWidget(content);
+
+    auto* buttons = new QHBoxLayout();
+    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
+    cancel->setObjectName("secondaryButton");
+    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Save"), &dialog);
+    save->setObjectName("primaryButton");
+    buttons->addStretch(1);
+    buttons->addWidget(cancel);
+    buttons->addWidget(save);
+
+    layout->addWidget(title);
+    layout->addWidget(hint);
+    layout->addWidget(scroll, 1);
+    layout->addLayout(buttons);
+
+    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(save, &QPushButton::clicked, &dialog, [this, &dialog, aliases, trusted_checks] {
+        bool changed = false;
+        for (auto it = aliases.cbegin(); it != aliases.cend(); ++it) {
+            if (!devices_.contains(it.key())) {
+                continue;
+            }
+            const auto next_alias = it.value()->text().trimmed();
+            if (devices_.peer(it.key()).alias == next_alias) {
+                continue;
+            }
+            Peer updated;
+            if (devices_.set_alias(it.key(), next_alias, &updated)) {
+                sync_scheduler_peer(updated);
+                changed = true;
+            }
+        }
+        for (auto it = trusted_checks.cbegin(); it != trusted_checks.cend(); ++it) {
+            if (it.value()->isChecked()) {
+                continue;
+            }
+            Peer updated;
+            if (devices_.untrust_peer(it.key(), &updated)) {
+                sync_scheduler_peer(updated);
+                log_event(QCoreApplication::translate("MainWindow", "Trust removed for %1").arg(display_peer_name(updated)));
+                changed = true;
+            }
+        }
+        if (changed) {
+            save_remembered_peers();
+            refresh_peer_list();
+            refresh_transfer_list();
+            update_linked_header();
+            log_event(QCoreApplication::translate("MainWindow", "Device settings updated."));
+        }
+        dialog.accept();
+    });
+
+    dialog.exec();
+}
+
 void MainWindow::search_peers() {
     for (const auto& peer : devices_.mark_all_offline()) {
         sync_scheduler_peer(peer);
@@ -1553,7 +1731,7 @@ void MainWindow::refresh_peer_presence() {
     const auto changed_peers = devices_.mark_stale_offline(now_ms(), kPeerStaleMs);
     for (const auto& peer : changed_peers) {
         sync_scheduler_peer(peer);
-        log_event(QCoreApplication::translate("MainWindow", "Machine went offline: %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Machine went offline: %1").arg(display_peer_name(peer)));
     }
     if (changed_peers.isEmpty()) {
         return;
@@ -1651,7 +1829,7 @@ void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
     }
 
     const auto peer = result.peer;
-    log_event(QCoreApplication::translate("MainWindow", "Peer available: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
+    log_event(QCoreApplication::translate("MainWindow", "Peer available: %1 %2:%3").arg(display_peer_name(peer), peer.host).arg(peer.port));
     if (peer.last_linked_ms > 0) {
         save_remembered_peers();
     }
@@ -1666,7 +1844,8 @@ bool MainWindow::peer_matches_filter(const Peer& peer) const {
         return true;
     }
     const auto needle = peer_filter_->text().trimmed();
-    return peer.name.contains(needle, Qt::CaseInsensitive) ||
+    return peer.alias.contains(needle, Qt::CaseInsensitive) ||
+           peer.name.contains(needle, Qt::CaseInsensitive) ||
            peer.host.contains(needle, Qt::CaseInsensitive) ||
            peer.id.contains(needle, Qt::CaseInsensitive);
 }
@@ -1688,7 +1867,7 @@ void MainWindow::refresh_peer_list() {
         if (left.last_linked_ms != right.last_linked_ms) {
             return left.last_linked_ms > right.last_linked_ms;
         }
-        return left.name.localeAwareCompare(right.name) < 0;
+        return display_peer_name(left).localeAwareCompare(display_peer_name(right)) < 0;
     });
     for (const auto& peer : peers) {
         if (!peer_matches_filter(peer)) {
@@ -1742,9 +1921,9 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     auto* text_box = new QVBoxLayout();
     text_box->setContentsMargins(0, 0, 0, 0);
     text_box->setSpacing(3);
-    auto* name = new QLabel(peer.name, card);
+    auto* name = new QLabel(display_peer_name(peer), card);
     name->setObjectName("peerName");
-    auto meta_text = QString("%1:%2").arg(peer.host).arg(peer.port);
+    auto meta_text = peer_detail_text(peer);
     if (scheduler_ != nullptr) {
         const auto stats = scheduler_->peer_stats(to_string(peer.id));
         if (stats.running > 0 || stats.queued > 0 || stats.paused > 0) {
@@ -2175,7 +2354,7 @@ void MainWindow::change_transfer_target(const QString& key) {
         const auto peer = devices_.peer(id);
         devices.append(TargetDevice{
             .id = id,
-            .name = peer.name,
+            .name = display_peer_name(peer),
             .host = peer.host,
             .port = peer.port,
             .selected = id == current_peer_id,
@@ -2194,7 +2373,7 @@ void MainWindow::change_transfer_target(const QString& key) {
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Moved queued transfer to %1.")
-                  .arg(devices_.peer(next_peer_id.value()).name));
+                  .arg(display_peer_name(devices_.peer(next_peer_id.value()))));
 }
 
 void MainWindow::pause_transfer(const QString& key) {
@@ -2308,9 +2487,9 @@ void MainWindow::request_link(const QString& id) {
     }
     const auto code = make_link_code();
     pending_link_codes_.insert(id, code);
-    status_->setText(QCoreApplication::translate("MainWindow", "Waiting for %1 to accept code %2...").arg(peer.name, code));
+    status_->setText(QCoreApplication::translate("MainWindow", "Waiting for %1 to accept code %2...").arg(display_peer_name(peer), code));
     log_event(QCoreApplication::translate("MainWindow", "Sending link request to %1 %2:%3 code=%4")
-                  .arg(peer.name, peer.host)
+                  .arg(display_peer_name(peer), peer.host)
                   .arg(peer.port)
                   .arg(code));
     QJsonObject fields{{"code", code}};
@@ -2333,11 +2512,11 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     const auto code = obj.value("code").toString();
     const auto trust_token = obj.value("trustToken").toString();
     log_event(QCoreApplication::translate("MainWindow", "Link request from %1 %2:%3 code=%4")
-                  .arg(peer.name, peer.host)
+                  .arg(display_peer_name(peer), peer.host)
                   .arg(peer.port)
                   .arg(code));
     if (devices_.can_auto_accept_peer(peer, trust_token)) {
-        log_event(QCoreApplication::translate("MainWindow", "Auto accepted trusted peer: %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Auto accepted trusted peer: %1").arg(display_peer_name(peer)));
         send_control(peer, "link_accept", QJsonObject{{"code", code}, {"trusted", true}, {"trustToken", peer.trust_token}});
         set_linked_peer(peer, !has_active_peer());
         return;
@@ -2345,17 +2524,17 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     const auto answer = QMessageBox::question(
         this,
         QCoreApplication::translate("MainWindow", "Link request"),
-        QCoreApplication::translate("MainWindow", "%1 wants to link with this machine.\nCode: %2").arg(peer.name, code),
+        QCoreApplication::translate("MainWindow", "%1 wants to link with this machine.\nCode: %2").arg(display_peer_name(peer), code),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::Yes);
     if (answer == QMessageBox::Yes) {
-        log_event(QCoreApplication::translate("MainWindow", "Accepted link request from %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Accepted link request from %1").arg(display_peer_name(peer)));
         const auto token = make_trust_token();
         const auto trusted = trust_peer(peer.id, token);
         send_control(trusted, "link_accept", QJsonObject{{"code", code}, {"trusted", true}, {"trustToken", token}});
         set_linked_peer(trusted, !has_active_peer());
     } else {
-        log_event(QCoreApplication::translate("MainWindow", "Rejected link request from %1").arg(peer.name));
+        log_event(QCoreApplication::translate("MainWindow", "Rejected link request from %1").arg(display_peer_name(peer)));
         send_control(peer, "link_reject", QJsonObject{{"code", code}});
     }
 }
@@ -2376,7 +2555,7 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
         log_event(QCoreApplication::translate("MainWindow", "Link request rejected by peer."));
         return;
     }
-    log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(devices_.peer(id).name));
+    log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(display_peer_name(devices_.peer(id))));
     const auto trusted = trust_peer(id, obj.value("trustToken").toString());
     set_linked_peer(trusted, true);
 }
@@ -2390,7 +2569,7 @@ void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJso
     if (!devices_.contains(id) || !devices_.peer(id).linked) {
         return;
     }
-    log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(devices_.peer(id).name));
+    log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(display_peer_name(devices_.peer(id))));
     disconnect_peer(id, false, false);
 }
 
@@ -2409,7 +2588,7 @@ Peer MainWindow::trust_peer(const QString& id, const QString& trust_token) {
     }
     save_remembered_peers();
     refresh_peer_list();
-    log_event(QCoreApplication::translate("MainWindow", "Trusted peer: %1").arg(peer.name));
+    log_event(QCoreApplication::translate("MainWindow", "Trusted peer: %1").arg(display_peer_name(peer)));
     return peer;
 }
 
@@ -2422,7 +2601,7 @@ void MainWindow::untrust_peer(const QString& id) {
         this,
         QCoreApplication::translate("MainWindow", "Forget trusted machine"),
         QCoreApplication::translate("MainWindow", "Forget trust for %1? You will need to confirm the next link request.")
-            .arg(peer.name),
+            .arg(display_peer_name(peer)),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
     if (answer != QMessageBox::Yes) {
@@ -2434,7 +2613,7 @@ void MainWindow::untrust_peer(const QString& id) {
     }
     save_remembered_peers();
     refresh_peer_list();
-    log_event(QCoreApplication::translate("MainWindow", "Trust removed for %1").arg(updated.name));
+    log_event(QCoreApplication::translate("MainWindow", "Trust removed for %1").arg(display_peer_name(updated)));
 }
 
 void MainWindow::link_peer(QListWidgetItem* item) {
@@ -2458,8 +2637,8 @@ void MainWindow::set_linked_peer(const Peer& peer, bool activate) {
     remember_peer(linked);
     update_linked_header();
     refresh_transfer_list();
-    status_->setText(QCoreApplication::translate("MainWindow", "Linked to %1.").arg(linked.name));
-    log_event(QCoreApplication::translate("MainWindow", "Linked peer: %1 %2:%3").arg(linked.name, linked.host).arg(linked.port));
+    status_->setText(QCoreApplication::translate("MainWindow", "Linked to %1.").arg(display_peer_name(linked)));
+    log_event(QCoreApplication::translate("MainWindow", "Linked peer: %1 %2:%3").arg(display_peer_name(linked), linked.host).arg(linked.port));
     refresh_peer_list();
     if (activate) {
         stack_->setCurrentWidget(transfer_page_);
@@ -2510,7 +2689,7 @@ void MainWindow::disconnect_peer(const QString& id, bool notify_peer, bool confi
     if (notify_peer && !peer.id.isEmpty() && peer.online) {
         send_control(peer, "link_disconnect");
     }
-    const auto name = peer.name;
+    const auto name = display_peer_name(peer);
     devices_.unlink_peer(id, &peer);
     sync_scheduler_peer(peer);
     pending_link_codes_.remove(id);
@@ -2564,7 +2743,7 @@ void MainWindow::show_send_targets() {
         const auto peer = devices_.peer(id);
         devices.append(TargetDevice{
             .id = id,
-            .name = peer.name,
+            .name = display_peer_name(peer),
             .host = peer.host,
             .port = peer.port,
             .selected = selected_ids.contains(id),
@@ -2604,7 +2783,7 @@ void MainWindow::update_linked_header() {
     }
     const auto peer = active_peer();
     const auto target_count = send_target_peer_ids().size();
-    linked_label_->setText(peer.name);
+    linked_label_->setText(display_peer_name(peer));
     if (back_to_transfer_ != nullptr) {
         back_to_transfer_->setVisible(true);
     }
@@ -2691,7 +2870,7 @@ void MainWindow::sync_scheduler_peer(const Peer& peer) {
     }
     scheduler_->upsert_peer(SchedulerPeer{
         .id = to_string(peer.id),
-        .name = to_string(peer.name),
+        .name = to_string(display_peer_name(peer)),
         .host = to_string(peer.host),
         .port = peer.port,
         .online = peer.online,

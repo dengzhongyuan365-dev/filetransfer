@@ -13,6 +13,7 @@ constexpr const char* kProtocol = "lan-file-transfer/1";
 struct Peer {
     QString id;
     QString name;
+    QString alias;
     QString host;
     QString trust_token;
     std::uint16_t port = kTransferPort;

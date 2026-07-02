@@ -14,6 +14,7 @@
 - UDP 局域网发现
 - 连接验证码确认
 - 连接过设备的轻量信任和免确认重连
+- 已知设备管理和设备备注名
 - 多设备连接和发送目标选择
 - 全局并发和单设备并发控制
 - 超出并发限制后的任务排队
@@ -56,6 +57,9 @@ graph TD
     J --> M["并发限制"]
     J --> N["关闭动作"]
     J --> O["调试日志"]
+    J --> Q["设备管理"]
+    Q --> R["备注名"]
+    Q --> S["取消信任"]
 ```
 
 页面职责：
@@ -221,6 +225,7 @@ graph TD
 
 - `id`：设备稳定 ID。
 - `name`：设备名。
+- `alias`：用户设置的显示备注名。
 - `host`：IP 地址。
 - `port`：TCP 接收端口。
 - `online`：最近发现是否在线。
@@ -231,6 +236,8 @@ graph TD
 - `trusted_at_ms`：首次或最近写入信任的时间。
 
 设备列表中可能出现 remembered 设备，即以前连接过但当前不在线的设备。这样用户可以知道历史设备，并且设备重新上线时能合并状态。
+
+设备显示名优先使用 `alias`，没有备注名时回退到 `name`。原始设备名不会被覆盖，会继续保存在 `name` 中，并在设备管理页或副信息里展示，方便用户确认真实机器。
 
 ### 5.2 设备信任模型
 
@@ -245,6 +252,8 @@ graph TD
 - 取消信任不会强制断开当前连接，只影响下一次连接请求。
 
 信任信息随 remembered peer 一起保存到 `QSettings`，字段包括 `trusted`、`trustedAt` 和 `trustToken`。如果手动添加的设备后来通过发现拿到了真实 `node_id`，`DeviceManager` 会按 endpoint 合并设备，并保留已有信任状态和 token。
+
+设备备注名也随 remembered peer 一起保存。只要用户设置了 `alias`，即使该设备当前未连接、未信任，也会被保留在已知设备列表里，避免用户备注丢失。
 
 ```mermaid
 sequenceDiagram
@@ -297,7 +306,7 @@ graph LR
 ```mermaid
 graph TD
     A["DeviceManager.linked_peer_count"] --> B["设备发现页右下角"]
-    C["active_peer.name"] --> D["传输页标题"]
+    C["display_peer_name(active_peer)"] --> D["传输页标题"]
     E["send_target_peer_ids.count"] --> F["Targets 按钮"]
 ```
 

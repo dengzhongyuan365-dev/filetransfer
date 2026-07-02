@@ -31,6 +31,9 @@ void DeviceManager::insert_peer(const Peer& peer) {
         inserted.trusted = inserted.trusted || existing.trusted;
         inserted.trusted_at_ms = std::max(inserted.trusted_at_ms, existing.trusted_at_ms);
         inserted.last_linked_ms = std::max(inserted.last_linked_ms, existing.last_linked_ms);
+        if (inserted.alias.isEmpty()) {
+            inserted.alias = existing.alias;
+        }
         if (inserted.trust_token.isEmpty()) {
             inserted.trust_token = existing.trust_token;
         }
@@ -41,6 +44,9 @@ void DeviceManager::insert_peer(const Peer& peer) {
         if (duplicate.last_linked_ms > peer.last_linked_ms) {
             duplicate.trusted = duplicate.trusted || inserted.trusted;
             duplicate.trusted_at_ms = std::max(duplicate.trusted_at_ms, inserted.trusted_at_ms);
+            if (duplicate.alias.isEmpty()) {
+                duplicate.alias = inserted.alias;
+            }
             if (duplicate.trust_token.isEmpty()) {
                 duplicate.trust_token = inserted.trust_token;
             }
@@ -50,6 +56,9 @@ void DeviceManager::insert_peer(const Peer& peer) {
         inserted.trusted = inserted.trusted || duplicate.trusted;
         inserted.trusted_at_ms = std::max(inserted.trusted_at_ms, duplicate.trusted_at_ms);
         inserted.last_linked_ms = std::max(inserted.last_linked_ms, duplicate.last_linked_ms);
+        if (inserted.alias.isEmpty()) {
+            inserted.alias = duplicate.alias;
+        }
         if (inserted.trust_token.isEmpty()) {
             inserted.trust_token = duplicate.trust_token;
         }
@@ -82,6 +91,9 @@ Peer DeviceManager::remember_peer(const Peer& peer, qint64 now_ms) {
     remembered.linked = existing.linked || peer.linked;
     remembered.trusted = existing.trusted || peer.trusted;
     remembered.trusted_at_ms = std::max(existing.trusted_at_ms, peer.trusted_at_ms);
+    if (remembered.alias.isEmpty()) {
+        remembered.alias = existing.alias;
+    }
     if (remembered.trust_token.isEmpty()) {
         remembered.trust_token = existing.trust_token;
     }
@@ -158,6 +170,7 @@ PeerUpsertResult DeviceManager::upsert_discovered_peer(const QString& host,
     Peer peer{
         .id = normalized_id,
         .name = name,
+        .alias = existing.alias,
         .host = host,
         .trust_token = existing.trust_token,
         .port = port,
@@ -188,6 +201,9 @@ Peer DeviceManager::set_linked_peer(const Peer& peer, bool activate, qint64 now_
     linked.last_linked_ms = now_ms;
     linked.trusted = linked.trusted || peer.trusted;
     linked.trusted_at_ms = std::max(linked.trusted_at_ms, peer.trusted_at_ms);
+    if (linked.alias.isEmpty()) {
+        linked.alias = peer.alias;
+    }
     if (linked.trust_token.isEmpty()) {
         linked.trust_token = peer.trust_token;
     }
@@ -301,6 +317,19 @@ bool DeviceManager::untrust_peer(const QString& id, Peer* updated_peer) {
     peer.trusted = false;
     peer.trusted_at_ms = 0;
     peer.trust_token.clear();
+    peers_.insert(id, peer);
+    if (updated_peer != nullptr) {
+        *updated_peer = peer;
+    }
+    return true;
+}
+
+bool DeviceManager::set_alias(const QString& id, const QString& alias, Peer* updated_peer) {
+    if (!peers_.contains(id)) {
+        return false;
+    }
+    auto peer = peers_.value(id);
+    peer.alias = alias.trimmed();
     peers_.insert(id, peer);
     if (updated_peer != nullptr) {
         *updated_peer = peer;

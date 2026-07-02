@@ -14,6 +14,7 @@ lan::gui::Peer make_peer(QString id,
     return lan::gui::Peer{
         .id = std::move(id),
         .name = std::move(name),
+        .alias = {},
         .host = std::move(host),
         .trust_token = {},
         .port = port,
@@ -64,6 +65,38 @@ TEST(DeviceManagerTrustTest, PreservesTrustWhenManualPeerBecomesDiscoveredPeer) 
     EXPECT_EQ(result.peer.trust_token, QStringLiteral("manual-token"));
     EXPECT_EQ(result.peer.trusted_at_ms, 20);
     EXPECT_TRUE(devices.is_trusted_peer(result.peer));
+}
+
+TEST(DeviceManagerAliasTest, SetsAndClearsAlias) {
+    lan::gui::DeviceManager devices;
+    const auto peer = make_peer(QStringLiteral("node-a"));
+    devices.insert_peer(peer);
+
+    lan::gui::Peer updated;
+    ASSERT_TRUE(devices.set_alias(peer.id, QStringLiteral("  Studio PC  "), &updated));
+    EXPECT_EQ(updated.alias, QStringLiteral("Studio PC"));
+    EXPECT_EQ(devices.peer(peer.id).alias, QStringLiteral("Studio PC"));
+
+    ASSERT_TRUE(devices.set_alias(peer.id, QString(), &updated));
+    EXPECT_TRUE(updated.alias.isEmpty());
+}
+
+TEST(DeviceManagerAliasTest, PreservesAliasWhenManualPeerBecomesDiscoveredPeer) {
+    lan::gui::DeviceManager devices;
+
+    const auto manual = devices.upsert_manual_peer(QStringLiteral("10.0.0.2"), lan::gui::kTransferPort, 10);
+    devices.set_alias(manual.id, QStringLiteral("Music Box"));
+
+    const auto result = devices.upsert_discovered_peer(
+        QStringLiteral("10.0.0.2"),
+        lan::gui::kTransferPort,
+        QStringLiteral("node-real"),
+        QStringLiteral("Desk"),
+        30);
+
+    EXPECT_EQ(result.previous_id, manual.id);
+    EXPECT_EQ(result.peer.alias, QStringLiteral("Music Box"));
+    EXPECT_EQ(devices.peer(QStringLiteral("node-real")).alias, QStringLiteral("Music Box"));
 }
 
 TEST(DeviceManagerTrustTest, PreservesTrustWhenOlderDuplicateEndpointIsIgnored) {

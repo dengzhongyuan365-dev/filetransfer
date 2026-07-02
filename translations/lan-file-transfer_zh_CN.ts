@@ -1200,6 +1200,14 @@ Code: %2</source>
         <translation>日志</translation>
     </message>
     <message>
+        <source>Devices</source>
+        <translation>设备</translation>
+    </message>
+    <message>
+        <source>Manage</source>
+        <translation>管理</translation>
+    </message>
+    <message>
         <location filename="../src/gui/settings_dialog.cpp" line="90"/>
         <source>Cancel</source>
         <translation>取消</translation>
@@ -1340,6 +1348,42 @@ Code: %2</source>
     <message>
         <source>Trust removed for %1</source>
         <translation>已取消对 %1 的信任</translation>
+    </message>
+    <message>
+        <source>Devices</source>
+        <translation>设备</translation>
+    </message>
+    <message>
+        <source>Set display names and manage trusted reconnect.</source>
+        <translation>设置显示名称并管理信任重连。</translation>
+    </message>
+    <message>
+        <source>Never</source>
+        <translation>从未</translation>
+    </message>
+    <message>
+        <source>No known devices yet.</source>
+        <translation>暂无已知设备。</translation>
+    </message>
+    <message>
+        <source>Last linked: %1</source>
+        <translation>上次连接：%1</translation>
+    </message>
+    <message>
+        <source>Trusted: %1</source>
+        <translation>信任时间：%1</translation>
+    </message>
+    <message>
+        <source>Trusted reconnect</source>
+        <translation>信任重连</translation>
+    </message>
+    <message>
+        <source>Not trusted</source>
+        <translation>未信任</translation>
+    </message>
+    <message>
+        <source>Device settings updated.</source>
+        <translation>设备设置已更新。</translation>
     </message>
 </context>
 </TS>

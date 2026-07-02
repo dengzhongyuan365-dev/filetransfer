@@ -49,6 +49,7 @@ public:
     bool can_auto_accept_peer(const Peer& peer, const QString& trust_token) const;
     Peer trust_peer(const QString& id, qint64 now_ms, const QString& trust_token = {});
     bool untrust_peer(const QString& id, Peer* updated_peer = nullptr);
+    bool set_alias(const QString& id, const QString& alias, Peer* updated_peer = nullptr);
 
     QStringList send_target_peer_ids() const;
     void reset_send_targets_to_active();
