@@ -977,7 +977,7 @@ void MainWindow::setup_scheduler() {
         .max_global_sends = remembered_max_global_sends(),
         .max_peer_sends = remembered_max_peer_sends(),
     });
-    for (const auto& peer : peers_) {
+    for (const auto& peer : devices_.peers()) {
         sync_scheduler_peer(peer);
     }
 }
@@ -1097,15 +1097,7 @@ void MainWindow::load_remembered_peers() {
             .last_linked_ms = settings.value(QStringLiteral("lastLinked"), 0).toLongLong(),
         };
         if (!peer.id.isEmpty() && !peer.host.isEmpty()) {
-            const auto duplicate_id = find_peer_id_by_endpoint(peer.host, peer.port);
-            if (!duplicate_id.isEmpty()) {
-                const auto duplicate = peers_.value(duplicate_id);
-                if (duplicate.last_linked_ms > peer.last_linked_ms) {
-                    continue;
-                }
-                peers_.remove(duplicate_id);
-            }
-            peers_.insert(peer.id, peer);
+            devices_.insert_peer(peer);
         }
     }
     settings.endArray();
@@ -1113,26 +1105,17 @@ void MainWindow::load_remembered_peers() {
 }
 
 QString MainWindow::find_peer_id_by_endpoint(const QString& host, std::uint16_t port) const {
-    for (auto it = peers_.cbegin(); it != peers_.cend(); ++it) {
-        if (it.value().host == host && it.value().port == port) {
-            return it.key();
-        }
-    }
-    return {};
+    return devices_.find_peer_id_by_endpoint(host, port);
 }
 
 void MainWindow::remember_peer(const Peer& peer) {
-    auto remembered = peer;
-    remembered.last_linked_ms = now_ms();
-    remembered.online = true;
-    remembered.linked = peers_.value(peer.id).linked || peer.linked;
-    peers_.insert(remembered.id, remembered);
+    devices_.remember_peer(peer, now_ms());
     save_remembered_peers();
     refresh_peer_list();
 }
 
 void MainWindow::save_remembered_peers() {
-    auto peers = peers_.values();
+    auto peers = devices_.peers();
     peers.erase(std::remove_if(peers.begin(), peers.end(), [](const Peer& peer) {
         return peer.last_linked_ms <= 0;
     }), peers.end());
@@ -1394,21 +1377,20 @@ void MainWindow::show_settings() {
 }
 
 void MainWindow::search_peers() {
-    for (auto it = peers_.begin(); it != peers_.end(); ++it) {
-        it.value().online = false;
-        sync_scheduler_peer(it.value());
+    for (const auto& peer : devices_.mark_all_offline()) {
+        sync_scheduler_peer(peer);
     }
     wake_scheduler();
     refresh_peer_list();
     status_->setText(QCoreApplication::translate("MainWindow", "Searching..."));
     send_discovery_probe(true);
     QTimer::singleShot(1200, this, [this] {
-        if (peers_.isEmpty()) {
+        if (devices_.empty()) {
             status_->setText(QCoreApplication::translate("MainWindow", "No machines found."));
             log_event(QCoreApplication::translate("MainWindow", "Discovery finished: no machines found."));
         } else {
-            status_->setText(QCoreApplication::translate("MainWindow", "%1 machine(s) found.").arg(peers_.size()));
-            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(peers_.size()));
+            status_->setText(QCoreApplication::translate("MainWindow", "%1 machine(s) found.").arg(devices_.count()));
+            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(devices_.count()));
         }
     });
 }
@@ -1448,22 +1430,12 @@ void MainWindow::send_discovery_probe(bool extended) {
 }
 
 void MainWindow::refresh_peer_presence() {
-    const auto now = now_ms();
-    bool changed = false;
-    for (auto it = peers_.begin(); it != peers_.end(); ++it) {
-        auto& peer = it.value();
-        if (!peer.online ||
-            peer.last_seen_ms <= 0 ||
-            peer.id.startsWith(QStringLiteral("manual:")) ||
-            now - peer.last_seen_ms <= kPeerStaleMs) {
-            continue;
-        }
-        peer.online = false;
-        changed = true;
+    const auto changed_peers = devices_.mark_stale_offline(now_ms(), kPeerStaleMs);
+    for (const auto& peer : changed_peers) {
         sync_scheduler_peer(peer);
         log_event(QCoreApplication::translate("MainWindow", "Machine went offline: %1").arg(peer.name));
     }
-    if (!changed) {
+    if (changed_peers.isEmpty()) {
         return;
     }
     wake_scheduler();
@@ -1479,18 +1451,7 @@ void MainWindow::add_manual_peer_from_filter() {
         return;
     }
 
-    auto id = find_peer_id_by_endpoint(host, port);
-    if (id.isEmpty()) {
-        id = QStringLiteral("manual:%1:%2").arg(host).arg(port);
-    }
-    auto peer = peers_.value(id);
-    peer.id = id;
-    peer.name = host;
-    peer.host = host;
-    peer.port = port;
-    peer.online = true;
-    peer.last_seen_ms = now_ms();
-    peers_.insert(id, peer);
+    const auto peer = devices_.upsert_manual_peer(host, port, now_ms());
     status_->setText(QCoreApplication::translate("MainWindow", "Manual machine added."));
     log_event(QCoreApplication::translate("MainWindow", "Manual peer added: %1:%2").arg(host).arg(port));
     refresh_peer_list();
@@ -1566,30 +1527,19 @@ void MainWindow::add_peer(const QHostAddress& address, const QJsonObject& obj) {
     const auto host = address.toString();
     const auto port = static_cast<std::uint16_t>(obj.value("port").toInt(kTransferPort));
     const auto id = obj.value("id").toString(host + ":" + QString::number(port));
-    const auto endpoint_peer_id = find_peer_id_by_endpoint(host, port);
-    auto existing = peers_.value(id);
-    if (!endpoint_peer_id.isEmpty() && endpoint_peer_id != id) {
-        existing = peers_.value(endpoint_peer_id);
-        peers_.remove(endpoint_peer_id);
-        if (active_peer_id_ == endpoint_peer_id) {
-            active_peer_id_ = id;
-        }
-        if (pending_link_codes_.contains(endpoint_peer_id)) {
-            pending_link_codes_.insert(id, pending_link_codes_.take(endpoint_peer_id));
+    const auto result = devices_.upsert_discovered_peer(
+        host,
+        port,
+        id,
+        obj.value("name").toString(QCoreApplication::translate("MainWindow", "Unknown")),
+        now_ms());
+    if (!result.previous_id.isEmpty()) {
+        if (pending_link_codes_.contains(result.previous_id)) {
+            pending_link_codes_.insert(result.peer.id, pending_link_codes_.take(result.previous_id));
         }
     }
 
-    Peer peer{
-        .id = id,
-        .name = obj.value("name").toString(QCoreApplication::translate("MainWindow", "Unknown")),
-        .host = host,
-        .port = port,
-        .online = true,
-        .linked = existing.linked,
-        .last_seen_ms = now_ms(),
-        .last_linked_ms = existing.last_linked_ms,
-    };
-    peers_.insert(id, peer);
+    const auto peer = result.peer;
     log_event(QCoreApplication::translate("MainWindow", "Peer available: %1 %2:%3").arg(peer.name, peer.host).arg(peer.port));
     if (peer.last_linked_ms > 0) {
         save_remembered_peers();
@@ -1616,7 +1566,7 @@ void MainWindow::refresh_peer_list() {
     }
     peer_list_->clear();
     int visible = 0;
-    auto peers = peers_.values();
+    auto peers = devices_.peers();
     std::sort(peers.begin(), peers.end(), [this](const Peer& left, const Peer& right) {
         if (is_linked_peer(left) != is_linked_peer(right)) {
             return is_linked_peer(left);
@@ -1641,7 +1591,7 @@ void MainWindow::refresh_peer_list() {
         ++visible;
     }
     if (visible == 0) {
-        const auto text = peers_.isEmpty() ? QCoreApplication::translate("MainWindow", "No machines yet. Refresh to search the LAN.")
+        const auto text = devices_.empty() ? QCoreApplication::translate("MainWindow", "No machines yet. Refresh to search the LAN.")
                                            : QCoreApplication::translate("MainWindow", "No matching machines.");
         auto* item = new QListWidgetItem();
         item->setFlags(Qt::NoItemFlags);
@@ -2146,7 +2096,7 @@ void MainWindow::resume_transfer(const QString& key) {
     }
 
     const auto path = to_qstring(snapshot.path);
-    const auto peer_id = transfer_peer_ids_.value(key, active_peer_id_);
+    const auto peer_id = transfer_peer_ids_.value(key, devices_.active_peer_id());
     if (peer_id.isEmpty()) {
         show_log(QCoreApplication::translate("MainWindow", "No linked machine for this transfer."));
         return;
@@ -2178,10 +2128,10 @@ void MainWindow::change_transfer_target(const QString& key) {
         return;
     }
 
-    const auto current_peer_id = transfer_peer_ids_.value(key, active_peer_id_);
+    const auto current_peer_id = transfer_peer_ids_.value(key, devices_.active_peer_id());
     QList<TargetDevice> devices;
     for (const auto& id : linked_peer_ids()) {
-        const auto peer = peers_.value(id);
+        const auto peer = devices_.peer(id);
         devices.append(TargetDevice{
             .id = id,
             .name = peer.name,
@@ -2205,7 +2155,7 @@ void MainWindow::change_transfer_target(const QString& key) {
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Moved queued transfer to %1.")
-                  .arg(peers_.value(next_peer_id.value()).name));
+                  .arg(devices_.peer(next_peer_id.value()).name));
 }
 
 void MainWindow::pause_transfer(const QString& key) {
@@ -2284,7 +2234,7 @@ bool MainWindow::transfer_belongs_to_active_peer(const QString& key) const {
     if (!has_active_peer()) {
         return false;
     }
-    return transfer_peer_ids_.value(key) == active_peer_id_;
+    return transfer_peer_ids_.value(key) == devices_.active_peer_id();
 }
 
 void MainWindow::clear_transfer_cards() {
@@ -2314,10 +2264,10 @@ void MainWindow::refresh_transfer_list() {
 }
 
 void MainWindow::request_link(const QString& id) {
-    if (!peers_.contains(id)) {
+    if (!devices_.contains(id)) {
         return;
     }
-    const auto peer = peers_.value(id);
+    const auto peer = devices_.peer(id);
     if (is_linked_peer(peer)) {
         set_active_peer(id);
         open_transfer_page();
@@ -2343,10 +2293,10 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     }
     add_peer(address, obj);
     const auto id = obj.value("id").toString();
-    if (!peers_.contains(id)) {
+    if (!devices_.contains(id)) {
         return;
     }
-    const auto peer = peers_.value(id);
+    const auto peer = devices_.peer(id);
     const auto code = obj.value("code").toString();
     log_event(QCoreApplication::translate("MainWindow", "Link request from %1 %2:%3 code=%4")
                   .arg(peer.name, peer.host)
@@ -2384,8 +2334,8 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
         log_event(QCoreApplication::translate("MainWindow", "Link request rejected by peer."));
         return;
     }
-    log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(peers_.value(id).name));
-    set_linked_peer(peers_.value(id), true);
+    log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(devices_.peer(id).name));
+    set_linked_peer(devices_.peer(id), true);
 }
 
 void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj) {
@@ -2394,10 +2344,10 @@ void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJso
     }
     add_peer(address, obj);
     const auto id = obj.value("id").toString();
-    if (!peers_.contains(id) || !peers_.value(id).linked) {
+    if (!devices_.contains(id) || !devices_.peer(id).linked) {
         return;
     }
-    log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(peers_.value(id).name));
+    log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(devices_.peer(id).name));
     disconnect_peer(id, false, false);
 }
 
@@ -2433,18 +2383,11 @@ void MainWindow::open_transfer_page() {
 }
 
 void MainWindow::set_linked_peer(const Peer& peer, bool activate) {
-    auto linked = peers_.value(peer.id, peer);
-    linked.linked = true;
-    linked.online = true;
-    linked.last_linked_ms = now_ms();
-    peers_.insert(linked.id, linked);
+    auto linked = devices_.set_linked_peer(peer, activate, now_ms());
     sync_scheduler_peer(linked);
     remember_peer(linked);
-    if (activate || !has_active_peer()) {
-        set_active_peer(linked.id);
-    } else {
-        update_linked_header();
-    }
+    update_linked_header();
+    refresh_transfer_list();
     status_->setText(QCoreApplication::translate("MainWindow", "Linked to %1.").arg(linked.name));
     log_event(QCoreApplication::translate("MainWindow", "Linked peer: %1 %2:%3").arg(linked.name, linked.host).arg(linked.port));
     refresh_peer_list();
@@ -2454,11 +2397,9 @@ void MainWindow::set_linked_peer(const Peer& peer, bool activate) {
 }
 
 void MainWindow::set_active_peer(const QString& id) {
-    if (!peers_.contains(id) || !peers_.value(id).linked) {
+    if (!devices_.set_active_peer(id)) {
         return;
     }
-    active_peer_id_ = id;
-    reset_send_targets_to_active();
     update_linked_header();
     refresh_transfer_list();
     refresh_peer_list();
@@ -2469,11 +2410,11 @@ void MainWindow::disconnect_peer(bool notify_peer, bool confirm_active_sends) {
         stack_->setCurrentWidget(peer_page_);
         return;
     }
-    disconnect_peer(active_peer_id_, notify_peer, confirm_active_sends);
+    disconnect_peer(devices_.active_peer_id(), notify_peer, confirm_active_sends);
 }
 
 void MainWindow::disconnect_peer(const QString& id, bool notify_peer, bool confirm_active_sends) {
-    if (!peers_.contains(id) || !peers_.value(id).linked) {
+    if (!devices_.contains(id) || !devices_.peer(id).linked) {
         return;
     }
     const auto has_sends_for_peer = scheduler_ != nullptr &&
@@ -2495,27 +2436,14 @@ void MainWindow::disconnect_peer(const QString& id, bool notify_peer, bool confi
         }
     }
 
-    auto peer = peers_.value(id);
+    auto peer = devices_.peer(id);
     if (notify_peer && !peer.id.isEmpty() && peer.online) {
         send_control(peer, "link_disconnect");
     }
     const auto name = peer.name;
-    peer.linked = false;
-    peers_.insert(id, peer);
+    devices_.unlink_peer(id, &peer);
     sync_scheduler_peer(peer);
     pending_link_codes_.remove(id);
-    if (active_peer_id_ == id) {
-        active_peer_id_.clear();
-        for (auto it = peers_.cbegin(); it != peers_.cend(); ++it) {
-            if (it.value().linked) {
-                active_peer_id_ = it.key();
-                break;
-            }
-        }
-        reset_send_targets_to_active();
-    } else {
-        send_target_peer_ids_.remove(id);
-    }
     update_linked_header();
     status_->setText(QCoreApplication::translate("MainWindow", "Disconnected."));
     log_event(QCoreApplication::translate("MainWindow", "Disconnected from %1").arg(name));
@@ -2526,56 +2454,31 @@ void MainWindow::disconnect_peer(const QString& id, bool notify_peer, bool confi
 }
 
 bool MainWindow::is_linked_peer(const Peer& peer) const {
-    return peer.linked;
+    return devices_.is_linked_peer(peer);
 }
 
 bool MainWindow::has_active_peer() const {
-    return peers_.contains(active_peer_id_) && peers_.value(active_peer_id_).linked;
+    return devices_.has_active_peer();
 }
 
 Peer MainWindow::active_peer() const {
-    return peers_.value(active_peer_id_);
+    return devices_.active_peer();
 }
 
 int MainWindow::linked_peer_count() const {
-    int count = 0;
-    for (auto it = peers_.cbegin(); it != peers_.cend(); ++it) {
-        if (it.value().linked) {
-            ++count;
-        }
-    }
-    return count;
+    return devices_.linked_peer_count();
 }
 
 QStringList MainWindow::linked_peer_ids() const {
-    QStringList ids;
-    for (auto it = peers_.cbegin(); it != peers_.cend(); ++it) {
-        if (it.value().linked) {
-            ids.append(it.key());
-        }
-    }
-    return ids;
+    return devices_.linked_peer_ids();
 }
 
 QStringList MainWindow::send_target_peer_ids() const {
-    QStringList ids;
-    for (const auto& id : send_target_peer_ids_) {
-        if (peers_.contains(id) && peers_.value(id).linked) {
-            ids.append(id);
-        }
-    }
-    if (ids.isEmpty() && has_active_peer()) {
-        ids.append(active_peer_id_);
-    }
-    ids.sort();
-    return ids;
+    return devices_.send_target_peer_ids();
 }
 
 void MainWindow::reset_send_targets_to_active() {
-    send_target_peer_ids_.clear();
-    if (has_active_peer()) {
-        send_target_peer_ids_.insert(active_peer_id_);
-    }
+    devices_.reset_send_targets_to_active();
 }
 
 void MainWindow::show_send_targets() {
@@ -2588,7 +2491,7 @@ void MainWindow::show_send_targets() {
     const auto selected_ids = send_target_peer_ids();
     QList<TargetDevice> devices;
     for (const auto& id : linked_ids) {
-        const auto peer = peers_.value(id);
+        const auto peer = devices_.peer(id);
         devices.append(TargetDevice{
             .id = id,
             .name = peer.name,
@@ -2603,13 +2506,10 @@ void MainWindow::show_send_targets() {
         return;
     }
 
-    send_target_peer_ids_.clear();
-    for (const auto& id : next_target_ids.value()) {
-        send_target_peer_ids_.insert(id);
-    }
+    devices_.set_send_target_peer_ids(next_target_ids.value());
     update_linked_header();
     log_event(QCoreApplication::translate("MainWindow", "Send targets updated: %1 machine(s).")
-                  .arg(send_target_peer_ids_.size()));
+                  .arg(send_target_peer_ids().size()));
 }
 
 void MainWindow::update_linked_header() {

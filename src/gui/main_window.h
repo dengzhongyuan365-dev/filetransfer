@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "gui/device_manager.h"
 #include "gui/types.h"
 #include "lan/app/receiver_server.h"
 #include "lan/app/transfer_scheduler.h"
@@ -158,14 +159,12 @@ private:
     QSystemTrayIcon* tray_icon_ = nullptr;
 
     std::unique_ptr<QUdpSocket> discovery_;
-    QMap<QString, Peer> peers_;
+    DeviceManager devices_;
     QMap<QString, QWidget*> transfer_cards_;
     QMap<QString, TransferSnapshot> transfer_snapshots_;
     QMap<QString, QString> transfer_peer_ids_;
     QSet<QString> dismissed_transfer_keys_;
     QSet<QString> recorded_history_keys_;
-    QSet<QString> send_target_peer_ids_;
-    QString active_peer_id_;
     QMap<QString, QString> pending_link_codes_;
     QString node_id_;
     bool receiver_ready_ = false;
