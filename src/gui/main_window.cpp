@@ -64,6 +64,7 @@
 
 #include "gui/drop_panel.h"
 #include "gui/qt_utils.h"
+#include "gui/target_dialogs.h"
 #include "gui/transfer_events.h"
 #include "lan/app/receiver_config.h"
 #include "lan/common/error.h"
@@ -2178,83 +2179,33 @@ void MainWindow::change_transfer_target(const QString& key) {
     }
 
     const auto current_peer_id = transfer_peer_ids_.value(key, active_peer_id_);
-    QDialog dialog(this);
-    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Change target machine"));
-    dialog.resize(340, 300);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(14, 14, 14, 14);
-    layout->setSpacing(9);
-
-    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Change target machine"), &dialog);
-    title->setObjectName("dialogTitle");
-    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Only queued sends can be moved to another linked machine."), &dialog);
-    hint->setObjectName("mutedText");
-    hint->setWordWrap(true);
-
-    auto* choices = new QWidget(&dialog);
-    auto* choices_layout = new QVBoxLayout(choices);
-    choices_layout->setContentsMargins(0, 0, 0, 0);
-    choices_layout->setSpacing(6);
-
-    QMap<QString, QRadioButton*> radios;
+    QList<TargetDevice> devices;
     for (const auto& id : linked_peer_ids()) {
         const auto peer = peers_.value(id);
-        auto* radio = new QRadioButton(QStringLiteral("%1  %2:%3").arg(peer.name, peer.host).arg(peer.port), choices);
-        radio->setChecked(id == current_peer_id);
-        radios.insert(id, radio);
-        choices_layout->addWidget(radio);
+        devices.append(TargetDevice{
+            .id = id,
+            .name = peer.name,
+            .host = peer.host,
+            .port = peer.port,
+            .selected = id == current_peer_id,
+        });
     }
-    choices_layout->addStretch(1);
 
-    auto* buttons = new QHBoxLayout();
-    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
-    cancel->setObjectName("secondaryButton");
-    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Move"), &dialog);
-    save->setObjectName("primaryButton");
-    buttons->addStretch(1);
-    buttons->addWidget(cancel);
-    buttons->addWidget(save);
-
-    layout->addWidget(title);
-    layout->addWidget(hint);
-    layout->addWidget(choices, 1);
-    layout->addLayout(buttons);
-
-    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(save, &QPushButton::clicked, this, [this, &dialog, radios, key, current_peer_id] {
-        QString next_peer_id;
-        for (auto it = radios.cbegin(); it != radios.cend(); ++it) {
-            if (it.value()->isChecked()) {
-                next_peer_id = it.key();
-                break;
-            }
-        }
-        if (next_peer_id.isEmpty()) {
-            QMessageBox::warning(this,
-                                 QCoreApplication::translate("MainWindow", "Change target machine"),
-                                 QCoreApplication::translate("MainWindow", "Choose a linked machine."));
-            return;
-        }
-        if (next_peer_id == current_peer_id) {
-            dialog.accept();
-            return;
-        }
-        const auto snapshot_it = transfer_snapshots_.find(key);
-        if (snapshot_it == transfer_snapshots_.end() ||
-            scheduler_ == nullptr ||
-            !scheduler_->move_queued_task(snapshot_it.value().transfer_id, to_string(next_peer_id))) {
-            QMessageBox::warning(this,
-                                 QCoreApplication::translate("MainWindow", "Change target machine"),
-                                 QCoreApplication::translate("MainWindow", "Only queued sends can be moved."));
-            return;
-        }
-        log_event(QCoreApplication::translate("MainWindow", "Moved queued transfer to %1.")
-                      .arg(peers_.value(next_peer_id).name));
-        dialog.accept();
-    });
-
-    dialog.exec();
+    const auto next_peer_id = choose_transfer_target(this, devices);
+    if (!next_peer_id.has_value() || next_peer_id.value() == current_peer_id) {
+        return;
+    }
+    const auto snapshot_it = transfer_snapshots_.find(key);
+    if (snapshot_it == transfer_snapshots_.end() ||
+        scheduler_ == nullptr ||
+        !scheduler_->move_queued_task(snapshot_it.value().transfer_id, to_string(next_peer_id.value()))) {
+        QMessageBox::warning(this,
+                             QCoreApplication::translate("MainWindow", "Change target machine"),
+                             QCoreApplication::translate("MainWindow", "Only queued sends can be moved."));
+        return;
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Moved queued transfer to %1.")
+                  .arg(peers_.value(next_peer_id.value()).name));
 }
 
 void MainWindow::pause_transfer(const QString& key) {
@@ -2634,72 +2585,31 @@ void MainWindow::show_send_targets() {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Send targets"));
-    dialog.resize(340, 320);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(14, 14, 14, 14);
-    layout->setSpacing(9);
-
-    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Send targets"), &dialog);
-    title->setObjectName("dialogTitle");
-    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Dropped and pasted files will be queued for selected machines."), &dialog);
-    hint->setObjectName("mutedText");
-    hint->setWordWrap(true);
-
-    auto* list = new QWidget(&dialog);
-    auto* list_layout = new QVBoxLayout(list);
-    list_layout->setContentsMargins(0, 0, 0, 0);
-    list_layout->setSpacing(6);
-
     const auto selected_ids = send_target_peer_ids();
-    QMap<QString, QCheckBox*> checks;
+    QList<TargetDevice> devices;
     for (const auto& id : linked_ids) {
         const auto peer = peers_.value(id);
-        auto* check = new QCheckBox(QStringLiteral("%1  %2:%3").arg(peer.name, peer.host).arg(peer.port), list);
-        check->setChecked(selected_ids.contains(id));
-        checks.insert(id, check);
-        list_layout->addWidget(check);
+        devices.append(TargetDevice{
+            .id = id,
+            .name = peer.name,
+            .host = peer.host,
+            .port = peer.port,
+            .selected = selected_ids.contains(id),
+        });
     }
-    list_layout->addStretch(1);
 
-    auto* buttons = new QHBoxLayout();
-    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
-    cancel->setObjectName("secondaryButton");
-    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Save"), &dialog);
-    save->setObjectName("primaryButton");
-    buttons->addStretch(1);
-    buttons->addWidget(cancel);
-    buttons->addWidget(save);
+    const auto next_target_ids = choose_send_targets(this, devices);
+    if (!next_target_ids.has_value()) {
+        return;
+    }
 
-    layout->addWidget(title);
-    layout->addWidget(hint);
-    layout->addWidget(list, 1);
-    layout->addLayout(buttons);
-
-    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(save, &QPushButton::clicked, this, [this, &dialog, checks] {
-        QSet<QString> next_targets;
-        for (auto it = checks.cbegin(); it != checks.cend(); ++it) {
-            if (it.value()->isChecked()) {
-                next_targets.insert(it.key());
-            }
-        }
-        if (next_targets.isEmpty()) {
-            QMessageBox::warning(this,
-                                 QCoreApplication::translate("MainWindow", "Send targets"),
-                                 QCoreApplication::translate("MainWindow", "Choose at least one linked machine."));
-            return;
-        }
-        send_target_peer_ids_ = std::move(next_targets);
-        update_linked_header();
-        log_event(QCoreApplication::translate("MainWindow", "Send targets updated: %1 machine(s).")
-                      .arg(send_target_peer_ids_.size()));
-        dialog.accept();
-    });
-
-    dialog.exec();
+    send_target_peer_ids_.clear();
+    for (const auto& id : next_target_ids.value()) {
+        send_target_peer_ids_.insert(id);
+    }
+    update_linked_header();
+    log_event(QCoreApplication::translate("MainWindow", "Send targets updated: %1 machine(s).")
+                  .arg(send_target_peer_ids_.size()));
 }
 
 void MainWindow::update_linked_header() {

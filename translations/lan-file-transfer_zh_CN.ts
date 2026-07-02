@@ -1026,4 +1026,55 @@ Code: %2</source>
         <translation>目录同步完成：%1 个文件</translation>
     </message>
 </context>
+<context>
+    <name>TargetDialogs</name>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="23"/>
+        <location filename="../src/gui/target_dialogs.cpp" line="84"/>
+        <source>Send targets</source>
+        <translation>发送目标</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="31"/>
+        <source>Dropped and pasted files will be queued for selected machines.</source>
+        <translation>拖拽或粘贴的文件会加入所选设备的发送队列。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="54"/>
+        <location filename="../src/gui/target_dialogs.cpp" line="135"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="56"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="85"/>
+        <source>Choose at least one linked machine.</source>
+        <translation>至少选择一台已连接设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="99"/>
+        <location filename="../src/gui/target_dialogs.cpp" line="165"/>
+        <source>Change target machine</source>
+        <translation>更换目标设备</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="107"/>
+        <source>Only queued sends can be moved to another linked machine.</source>
+        <translation>只有排队中的发送任务可以移动到另一台已连接设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="137"/>
+        <source>Move</source>
+        <translation>移动</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/target_dialogs.cpp" line="166"/>
+        <source>Choose a linked machine.</source>
+        <translation>请选择一台已连接设备。</translation>
+    </message>
+</context>
 </TS>
