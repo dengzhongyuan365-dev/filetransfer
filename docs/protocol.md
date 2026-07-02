@@ -192,6 +192,62 @@ The sender reports the operation count at the end so future implementations can 
 
 The receiver writes through `.part` files and verifies hashes before committing.
 
+## UDP Control Messages
+
+The GUI uses UDP discovery packets for lightweight control messages between
+known devices. These messages are separate from the TCP frame protocol above.
+
+Current control message types include:
+
+```text
+discover
+announce
+link_request
+link_accept
+link_reject
+link_disconnect
+resend_request
+resend_accept
+resend_reject
+```
+
+`link_*` messages establish or remove the GUI-level linked state. File bytes are
+still transferred over TCP after a send task starts.
+
+### resend_request
+
+When a receiver has a completed transfer record but the local received file or
+folder was later removed, it may ask the original sender to send the same item
+again.
+
+Body fields:
+
+```text
+name=<display name>
+kind=<file|directory enum value>
+totalBytes=<bytes>
+totalFiles=<file count>
+```
+
+The sender accepts the request only when:
+
+- the requester is still a linked device
+- a matching previous send record exists
+- the original source path still exists locally
+- the send scheduler is available
+
+Matching is intentionally best-effort in the current implementation. It uses the
+linked peer id plus the saved display name, transfer kind, total bytes and total
+file count. Future versions may add a stable transfer content id.
+
+### resend_accept and resend_reject
+
+`resend_accept` means the sender enqueued a new send task for the original
+source path.
+
+`resend_reject` includes a human-readable `reason`, for example when the
+original source path no longer exists on the sender.
+
 ## Error Handling
 
 `error` frames carry a text message. The peer should fail the current transfer and surface the message to the caller.

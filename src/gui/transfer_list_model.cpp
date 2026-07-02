@@ -45,6 +45,18 @@ bool TransferListModel::is_dismissed(const QString& key) const {
     return dismissed_keys_.contains(key);
 }
 
+QList<TransferListEntry> TransferListModel::entries() const {
+    QList<TransferListEntry> entries;
+    for (auto it = snapshots_.cbegin(); it != snapshots_.cend(); ++it) {
+        entries.append(TransferListEntry{.key = it.key(), .snapshot = it.value()});
+    }
+    return entries;
+}
+
+QString TransferListModel::peer_id(const QString& key) const {
+    return peer_ids_.value(key);
+}
+
 QString TransferListModel::peer_id_or(const QString& key, const QString& fallback) const {
     return peer_ids_.value(key, fallback);
 }

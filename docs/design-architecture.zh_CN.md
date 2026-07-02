@@ -426,6 +426,56 @@ graph TD
     K --> L
 ```
 
+### 6.4 传输记录持久化和再次请求
+
+传输列表不是纯内存 UI。GUI 会把最近的任务快照写入 `QSettings`，应用重启后恢复到对应设备的传输页面。
+
+保存策略：
+
+- 最多保留最近 200 条任务记录。
+- 记录所属设备 ID，恢复后仍然按设备页面隔离显示。
+- 已完成、失败、取消的任务按原状态恢复。
+- 运行中、排队中、暂停中的任务在退出时恢复为已取消，并标记为可重试。
+- 用户手动清除的任务会从持久化记录里删除。
+
+```mermaid
+graph TD
+    A["TransferSnapshot 更新"] --> B["TransferListModel"]
+    B --> C{"是否需要保存"}
+    C -->|运行中| D["暂不频繁保存"]
+    C -->|终态或非运行| E["写入 QSettings"]
+    F["应用启动"] --> G["读取 QSettings"]
+    G --> H["恢复 TransferSnapshot"]
+    H --> I{"是否非终态"}
+    I -->|是| J["转为 cancelled"]
+    I -->|否| K["保留原状态"]
+    J --> L["按 peer_id 放回列表"]
+    K --> L
+```
+
+再次请求用于解决一个真实使用场景：接收端曾经收到文件，但后来本地文件被删掉，希望从原发送设备再拿一次。
+
+```mermaid
+sequenceDiagram
+    participant R as Receiver GUI
+    participant S as Sender GUI
+    participant Q as Scheduler
+
+    R->>R: completed receive record exists
+    R->>R: local target missing
+    R->>S: resend_request
+    S->>S: find matching send record
+    S->>S: check source path exists
+    alt Can resend
+        S->>Q: enqueue send
+        S-->>R: resend_accept
+    else Cannot resend
+        S-->>R: resend_reject with reason
+    end
+```
+
+当前匹配规则是轻量级的：对端设备 ID、显示名称、类型、总大小和文件数量。它适合第一版恢复体验，但不是强一致内容 ID。后续如果要更稳，可以在首次发送时生成 `content_id`，保存到双方记录中，再用 `content_id` 做再次请求。
+
 ## 7. 启动和接收端流程
 
 GUI 启动后先确保本机接收端运行。只有 receiver 成功启动，其他机器才可以连接和发送。

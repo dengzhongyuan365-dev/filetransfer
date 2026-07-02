@@ -31,6 +31,9 @@ QToolButton* make_task_tool_button(const QIcon& icon,
 }
 
 QString resume_tooltip(const TransferCardActions& actions) {
+    if (actions.request_resend) {
+        return QCoreApplication::translate("TransferCard", "Request again");
+    }
     if (actions.resume_queued) {
         return QCoreApplication::translate("TransferCard", "Resume queued transfer");
     }

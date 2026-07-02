@@ -70,6 +70,8 @@ private:
     QString find_peer_id_by_endpoint(const QString& host, std::uint16_t port) const;
     void remember_peer(const Peer& peer);
     void save_remembered_peers();
+    void load_persisted_transfers();
+    void save_persisted_transfers();
     bool start_receiver();
     void stop_receiver();
     void show_settings();
@@ -96,6 +98,7 @@ private:
     bool can_clear_transfer(const TransferSnapshot& snapshot) const;
     bool can_open_transfer_dir(const TransferSnapshot& snapshot) const;
     bool can_resume_transfer(const TransferSnapshot& snapshot) const;
+    bool can_request_resend_transfer(const QString& key, const TransferSnapshot& snapshot) const;
     bool can_resume_queued_transfer(const TransferSnapshot& snapshot) const;
     bool can_change_transfer_target(const TransferSnapshot& snapshot) const;
     QString transfer_open_dir(const TransferSnapshot& snapshot) const;
@@ -104,6 +107,7 @@ private:
     void record_receive_history(const TransferSnapshot& snapshot);
     void copy_received_clipboard_image(const TransferSnapshot& snapshot);
     void resume_transfer(const QString& key);
+    void request_resend_transfer(const QString& key);
     void resume_queued_transfer(const QString& key);
     void change_transfer_target(const QString& key);
     void pause_transfer(const QString& key);
@@ -118,6 +122,8 @@ private:
     void receive_link_request(const QHostAddress& address, const QJsonObject& obj);
     void receive_link_response(const QHostAddress& address, const QJsonObject& obj, bool accepted);
     void receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj);
+    void receive_resend_request(const DiscoveryDatagram& datagram);
+    void receive_resend_response(const QJsonObject& obj, bool accepted);
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
     Peer trust_peer(const QString& id, const QString& trust_token = {});
     void untrust_peer(const QString& id);

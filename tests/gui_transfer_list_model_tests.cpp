@@ -41,4 +41,17 @@ TEST(TransferListModelTest, UnscopedSnapshotsAreNotGlobalDevicePageItems) {
     EXPECT_TRUE(model.visible_entries(QStringLiteral("node-a"), true).isEmpty());
 }
 
+TEST(TransferListModelTest, ExposesAllEntriesAndPeerIds) {
+    lan::gui::TransferListModel model;
+    const auto first = make_snapshot(3, lan::TransferDirection::send);
+    const auto second = make_snapshot(4, lan::TransferDirection::receive);
+
+    model.upsert(first, QStringLiteral("node-a"));
+    model.upsert(second, QStringLiteral("node-b"));
+
+    EXPECT_EQ(model.entries().size(), 2);
+    EXPECT_EQ(model.peer_id(lan::gui::transfer_snapshot_key(first)), QStringLiteral("node-a"));
+    EXPECT_EQ(model.peer_id(lan::gui::transfer_snapshot_key(second)), QStringLiteral("node-b"));
+}
+
 }  // namespace

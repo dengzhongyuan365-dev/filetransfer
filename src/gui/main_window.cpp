@@ -59,6 +59,7 @@
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -78,6 +79,7 @@ namespace {
 
 constexpr int kMaxRememberedPeers = 10;
 constexpr int kMaxReceiveHistory = 100;
+constexpr int kMaxRememberedTransfers = 200;
 constexpr int kPresenceProbeMs = 5000;
 constexpr qint64 kPeerStaleMs = 15000;
 constexpr const char* kClipboardImagePrefix = "lan-clipboard-image-";
@@ -337,6 +339,84 @@ std::string display_transfer_name(const TransferSnapshot& snapshot) {
     return QCoreApplication::translate("MainWindow", "Folder transfer").toStdString();
 }
 
+QVariantMap transfer_snapshot_to_settings(const TransferSnapshot& snapshot, const QString& peer_id) {
+    QVariantMap map;
+    map.insert(QStringLiteral("peerId"), peer_id);
+    map.insert(QStringLiteral("transferId"), QVariant::fromValue<qulonglong>(snapshot.transfer_id));
+    map.insert(QStringLiteral("state"), static_cast<int>(snapshot.state));
+    map.insert(QStringLiteral("direction"), static_cast<int>(snapshot.direction));
+    map.insert(QStringLiteral("kind"), static_cast<int>(snapshot.kind));
+    map.insert(QStringLiteral("path"), to_qstring(snapshot.path));
+    map.insert(QStringLiteral("name"), QString::fromStdString(snapshot.name));
+    map.insert(QStringLiteral("currentBytes"), QVariant::fromValue<qulonglong>(snapshot.current_bytes));
+    map.insert(QStringLiteral("totalBytes"), QVariant::fromValue<qulonglong>(snapshot.total_bytes));
+    map.insert(QStringLiteral("processedFiles"), QVariant::fromValue<qulonglong>(snapshot.processed_files));
+    map.insert(QStringLiteral("totalFiles"), QVariant::fromValue<qulonglong>(snapshot.total_files));
+    map.insert(QStringLiteral("skippedFiles"), QVariant::fromValue<qulonglong>(snapshot.skipped_files));
+    map.insert(QStringLiteral("fullFiles"), QVariant::fromValue<qulonglong>(snapshot.full_files));
+    map.insert(QStringLiteral("deltaFiles"), QVariant::fromValue<qulonglong>(snapshot.delta_files));
+    map.insert(QStringLiteral("payloadBytes"), QVariant::fromValue<qulonglong>(snapshot.payload_bytes));
+    map.insert(QStringLiteral("completionStatus"), static_cast<int>(snapshot.completion_status));
+    map.insert(QStringLiteral("resumedFrom"), QVariant::fromValue<qulonglong>(snapshot.resumed_from));
+    map.insert(QStringLiteral("elapsedSeconds"), snapshot.elapsed_seconds);
+    map.insert(QStringLiteral("source"), static_cast<int>(snapshot.source));
+    if (snapshot.error.has_value()) {
+        map.insert(QStringLiteral("errorCode"), static_cast<int>(snapshot.error->code));
+        map.insert(QStringLiteral("errorMessage"), to_qstring(snapshot.error->message));
+        map.insert(QStringLiteral("errorCategory"), static_cast<int>(snapshot.error_category));
+        map.insert(QStringLiteral("retryable"), snapshot.retryable);
+        map.insert(QStringLiteral("userActionRequired"), snapshot.user_action_required);
+    }
+    return map;
+}
+
+std::optional<TransferSnapshot> transfer_snapshot_from_settings(const QVariantMap& map, std::uint64_t restored_id) {
+    const auto name = map.value(QStringLiteral("name")).toString();
+    const auto path = map.value(QStringLiteral("path")).toString();
+    if (name.isEmpty() && path.isEmpty()) {
+        return std::nullopt;
+    }
+
+    TransferSnapshot snapshot;
+    snapshot.transfer_id = restored_id;
+    snapshot.state = static_cast<TransferState>(map.value(QStringLiteral("state")).toInt());
+    if (!is_terminal_state(snapshot.state)) {
+        snapshot.state = TransferState::cancelled;
+        snapshot.error = Error{
+            ErrorCode::cancelled,
+            QCoreApplication::translate("MainWindow", "Interrupted when the app closed.").toStdString(),
+        };
+        snapshot.error_category = ErrorCategory::cancellation;
+        snapshot.retryable = true;
+    }
+    snapshot.direction = static_cast<TransferDirection>(map.value(QStringLiteral("direction")).toInt());
+    snapshot.kind = static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt());
+    snapshot.path = std::filesystem::path(to_string(path));
+    snapshot.name = to_string(name);
+    snapshot.current_bytes = map.value(QStringLiteral("currentBytes")).toULongLong();
+    snapshot.total_bytes = map.value(QStringLiteral("totalBytes")).toULongLong();
+    snapshot.processed_files = map.value(QStringLiteral("processedFiles")).toULongLong();
+    snapshot.total_files = map.value(QStringLiteral("totalFiles")).toULongLong();
+    snapshot.skipped_files = map.value(QStringLiteral("skippedFiles")).toULongLong();
+    snapshot.full_files = map.value(QStringLiteral("fullFiles")).toULongLong();
+    snapshot.delta_files = map.value(QStringLiteral("deltaFiles")).toULongLong();
+    snapshot.payload_bytes = map.value(QStringLiteral("payloadBytes")).toULongLong();
+    snapshot.completion_status = static_cast<TransferCompletionStatus>(map.value(QStringLiteral("completionStatus")).toInt());
+    snapshot.resumed_from = map.value(QStringLiteral("resumedFrom")).toULongLong();
+    snapshot.elapsed_seconds = map.value(QStringLiteral("elapsedSeconds")).toDouble();
+    snapshot.source = static_cast<FileTransferSource>(map.value(QStringLiteral("source")).toInt());
+    if (map.contains(QStringLiteral("errorMessage"))) {
+        snapshot.error = Error{
+            static_cast<ErrorCode>(map.value(QStringLiteral("errorCode")).toInt()),
+            to_string(map.value(QStringLiteral("errorMessage")).toString()),
+        };
+        snapshot.error_category = static_cast<ErrorCategory>(map.value(QStringLiteral("errorCategory")).toInt());
+        snapshot.retryable = map.value(QStringLiteral("retryable")).toBool();
+        snapshot.user_action_required = map.value(QStringLiteral("userActionRequired")).toBool();
+    }
+    return snapshot;
+}
+
 QIcon application_icon() {
     auto icon = QIcon::fromTheme("lan-file-transfer");
     if (!icon.isNull()) {
@@ -368,12 +448,14 @@ MainWindow::MainWindow() : node_id_(load_or_create_node_id()) {
     setObjectName("app");
     build_ui();
     load_remembered_peers();
+    load_persisted_transfers();
     setup_tray();
     setup_scheduler();
     setup_discovery();
 }
 
 MainWindow::~MainWindow() {
+    save_persisted_transfers();
     stop_receiver();
     stop_sender();
 }
@@ -396,6 +478,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         }
         if (action == CloseAction::quit) {
             force_quit_ = true;
+            save_persisted_transfers();
             stop_receiver();
             stop_sender();
             event->accept();
@@ -414,6 +497,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         }
         return;
     }
+    save_persisted_transfers();
     stop_receiver();
     stop_sender();
     event->accept();
@@ -1480,6 +1564,60 @@ void MainWindow::save_remembered_peers() {
     settings.endArray();
 }
 
+void MainWindow::load_persisted_transfers() {
+    auto settings = app_settings();
+    const auto size = settings.beginReadArray(QStringLiteral("transfers"));
+    const auto restored_base = static_cast<std::uint64_t>(QDateTime::currentMSecsSinceEpoch()) << 16;
+    for (int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
+        QVariantMap map;
+        for (const auto& key : settings.childKeys()) {
+            map.insert(key, settings.value(key));
+        }
+        auto snapshot = transfer_snapshot_from_settings(map, restored_base + static_cast<std::uint64_t>(i + 1));
+        const auto peer_id = map.value(QStringLiteral("peerId")).toString();
+        if (!snapshot.has_value() || peer_id.isEmpty()) {
+            continue;
+        }
+        transfer_model_.upsert(snapshot.value(), peer_id);
+    }
+    settings.endArray();
+    refresh_transfer_list();
+}
+
+void MainWindow::save_persisted_transfers() {
+    auto entries = transfer_model_.entries();
+    std::sort(entries.begin(), entries.end(), [](const TransferListEntry& left, const TransferListEntry& right) {
+        return left.snapshot.transfer_id > right.snapshot.transfer_id;
+    });
+    if (entries.size() > kMaxRememberedTransfers) {
+        entries.erase(entries.begin() + kMaxRememberedTransfers, entries.end());
+    }
+
+    auto settings = app_settings();
+    settings.remove(QStringLiteral("transfers"));
+    settings.beginWriteArray(QStringLiteral("transfers"), entries.size());
+    for (int i = 0; i < entries.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.remove(QString{});
+        auto snapshot = entries.at(i).snapshot;
+        if (!is_terminal_state(snapshot.state)) {
+            snapshot.state = TransferState::cancelled;
+            snapshot.error = Error{
+                ErrorCode::cancelled,
+                QCoreApplication::translate("MainWindow", "Interrupted when the app closed.").toStdString(),
+            };
+            snapshot.error_category = ErrorCategory::cancellation;
+            snapshot.retryable = true;
+        }
+        const auto map = transfer_snapshot_to_settings(snapshot, transfer_model_.peer_id(entries.at(i).key));
+        for (auto it = map.cbegin(); it != map.cend(); ++it) {
+            settings.setValue(it.key(), it.value());
+        }
+    }
+    settings.endArray();
+}
+
 bool MainWindow::start_receiver() {
     receiver_ready_ = false;
     log_event(QCoreApplication::translate("MainWindow", "Starting receiver in %1").arg(receive_dir_->text()));
@@ -1946,6 +2084,19 @@ void MainWindow::handle_discovery_datagram(DiscoveryDatagram datagram) {
     if (datagram.message.type == "link_disconnect") {
         log_event(QCoreApplication::translate("MainWindow", "Received link disconnect from %1").arg(datagram.sender.toString()));
         receive_link_disconnect(datagram.sender, obj);
+        return;
+    }
+    if (datagram.message.type == "resend_request") {
+        log_event(QCoreApplication::translate("MainWindow", "Received resend request from %1").arg(datagram.sender.toString()));
+        receive_resend_request(datagram);
+        return;
+    }
+    if (datagram.message.type == "resend_accept") {
+        receive_resend_response(obj, true);
+        return;
+    }
+    if (datagram.message.type == "resend_reject") {
+        receive_resend_response(obj, false);
     }
 }
 
@@ -2152,6 +2303,7 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
 QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     const auto key = transfer_snapshot_key(snapshot);
     const auto can_change_target = can_change_transfer_target(snapshot);
+    const auto can_request_resend = can_request_resend_transfer(key, snapshot);
     const auto can_resume_queue = can_resume_queued_transfer(snapshot);
     const auto can_pause = can_pause_transfer(snapshot);
     auto display_snapshot = snapshot;
@@ -2165,12 +2317,13 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
             .state = state_text(snapshot.state),
         },
         TransferCardActions{
-            .resume_enabled = can_resume_queue || can_change_target || can_resume_transfer(snapshot),
+            .resume_enabled = can_resume_queue || can_change_target || can_request_resend || can_resume_transfer(snapshot),
             .open_enabled = can_open_transfer_dir(snapshot),
             .stop_enabled = can_pause || can_stop_transfer(snapshot),
             .remove_enabled = can_clear_transfer(snapshot),
             .resume_queued = can_resume_queue,
             .change_target = can_change_target,
+            .request_resend = can_request_resend,
             .pause = can_pause,
         },
         TransferCardCallbacks{
@@ -2182,6 +2335,10 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
                 }
                 if (transfer_model_.try_snapshot(key, &snapshot) && can_change_transfer_target(snapshot)) {
                     change_transfer_target(key);
+                    return;
+                }
+                if (transfer_model_.try_snapshot(key, &snapshot) && can_request_resend_transfer(key, snapshot)) {
+                    request_resend_transfer(key);
                     return;
                 }
                 resume_transfer(key);
@@ -2266,7 +2423,9 @@ bool MainWindow::can_open_transfer_dir(const TransferSnapshot& snapshot) const {
 
 bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
     if (snapshot.direction != TransferDirection::send ||
-        (snapshot.state != TransferState::failed && snapshot.state != TransferState::cancelled) ||
+        (snapshot.state != TransferState::failed &&
+         snapshot.state != TransferState::cancelled &&
+         snapshot.state != TransferState::completed) ||
         !has_active_peer() ||
         snapshot.path.empty()) {
         return false;
@@ -2274,6 +2433,20 @@ bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
 
     std::error_code ec;
     return std::filesystem::exists(snapshot.path, ec);
+}
+
+bool MainWindow::can_request_resend_transfer(const QString& key, const TransferSnapshot& snapshot) const {
+    if (snapshot.direction != TransferDirection::receive ||
+        snapshot.state != TransferState::completed ||
+        snapshot.path.empty()) {
+        return false;
+    }
+    const auto peer_id = transfer_model_.peer_id(key);
+    if (peer_id.isEmpty() || !devices_.contains(peer_id) || !is_linked_peer(devices_.peer(peer_id))) {
+        return false;
+    }
+    std::error_code ec;
+    return !std::filesystem::exists(snapshot.path, ec);
 }
 
 bool MainWindow::can_resume_queued_transfer(const TransferSnapshot& snapshot) const {
@@ -2461,6 +2634,26 @@ void MainWindow::resume_transfer(const QString& key) {
     }
 }
 
+void MainWindow::request_resend_transfer(const QString& key) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_request_resend_transfer(key, snapshot)) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be requested again."));
+        return;
+    }
+    const auto peer_id = transfer_model_.peer_id(key);
+    const auto peer = devices_.peer(peer_id);
+    send_control(peer,
+                 QStringLiteral("resend_request"),
+                 QJsonObject{
+                     {QStringLiteral("name"), QString::fromStdString(display_transfer_name(snapshot))},
+                     {QStringLiteral("kind"), static_cast<int>(snapshot.kind)},
+                     {QStringLiteral("totalBytes"), QString::number(snapshot.total_bytes)},
+                     {QStringLiteral("totalFiles"), QString::number(snapshot.total_files)},
+                 });
+    log_event(QCoreApplication::translate("MainWindow", "Requested %1 to send %2 again.")
+                  .arg(display_peer_name(peer), QString::fromStdString(display_transfer_name(snapshot))));
+}
+
 void MainWindow::resume_queued_transfer(const QString& key) {
     TransferSnapshot snapshot;
     if (!transfer_model_.try_snapshot(key, &snapshot) || !can_resume_queued_transfer(snapshot)) {
@@ -2567,6 +2760,7 @@ void MainWindow::remove_transfer_card(const QString& key) {
 
 void MainWindow::remove_transfer_snapshot(const QString& key) {
     transfer_model_.remove(key);
+    save_persisted_transfers();
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {
         transfers_layout_->removeWidget(card);
@@ -2713,6 +2907,92 @@ void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJso
     }
     log_event(QCoreApplication::translate("MainWindow", "%1 disconnected.").arg(display_peer_name(devices_.peer(id))));
     disconnect_peer(id, false, false);
+}
+
+void MainWindow::receive_resend_request(const DiscoveryDatagram& datagram) {
+    if (datagram.message.id == node_id_) {
+        return;
+    }
+    const auto requester_id = datagram.message.id;
+    if (requester_id.isEmpty()) {
+        return;
+    }
+    const auto peer = devices_.contains(requester_id)
+                          ? devices_.peer(requester_id)
+                          : devices_.upsert_discovered_peer(datagram.sender.toString(),
+                                                            datagram.message.port == 0 ? kTransferPort : datagram.message.port,
+                                                            requester_id,
+                                                            datagram.message.name,
+                                                            now_ms()).peer;
+    if (!is_linked_peer(peer)) {
+        send_control(peer,
+                     QStringLiteral("resend_reject"),
+                     QJsonObject{{QStringLiteral("reason"),
+                                  QCoreApplication::translate("MainWindow", "Machines are not linked.")}});
+        return;
+    }
+
+    const auto& obj = datagram.message.fields;
+    const auto requested_name = obj.value(QStringLiteral("name")).toString();
+    const auto requested_kind = static_cast<TransferKind>(obj.value(QStringLiteral("kind")).toInt());
+    const auto requested_bytes = obj.value(QStringLiteral("totalBytes")).toString().toULongLong();
+    const auto requested_files = obj.value(QStringLiteral("totalFiles")).toString().toULongLong();
+    TransferSnapshot matched;
+    bool found = false;
+    for (const auto& entry : transfer_model_.entries()) {
+        const auto peer_id = transfer_model_.peer_id(entry.key);
+        const auto candidate_name = QString::fromStdString(display_transfer_name(entry.snapshot));
+        if (peer_id != requester_id ||
+            entry.snapshot.direction != TransferDirection::send ||
+            entry.snapshot.kind != requested_kind ||
+            candidate_name != requested_name) {
+            continue;
+        }
+        if (requested_bytes > 0 && entry.snapshot.total_bytes > 0 && entry.snapshot.total_bytes != requested_bytes) {
+            continue;
+        }
+        if (requested_files > 0 && entry.snapshot.total_files > 0 && entry.snapshot.total_files != requested_files) {
+            continue;
+        }
+        matched = entry.snapshot;
+        found = true;
+        break;
+    }
+
+    std::error_code ec;
+    if (!found || matched.path.empty() || !std::filesystem::exists(matched.path, ec)) {
+        send_control(peer,
+                     QStringLiteral("resend_reject"),
+                     QJsonObject{{QStringLiteral("name"), requested_name},
+                                  {QStringLiteral("reason"),
+                                   QCoreApplication::translate("MainWindow", "Original file is no longer available.")}});
+        return;
+    }
+
+    if (scheduler_ == nullptr) {
+        send_control(peer,
+                     QStringLiteral("resend_reject"),
+                     QJsonObject{{QStringLiteral("name"), requested_name},
+                                  {QStringLiteral("reason"),
+                                   QCoreApplication::translate("MainWindow", "Transfer scheduler is not ready.")}});
+        return;
+    }
+
+    scheduler_->enqueue_send(to_string(requester_id), matched.path, matched.source);
+    send_control(peer,
+                 QStringLiteral("resend_accept"),
+                 QJsonObject{{QStringLiteral("name"), requested_name}});
+    log_event(QCoreApplication::translate("MainWindow", "Accepted resend request for %1.").arg(requested_name));
+}
+
+void MainWindow::receive_resend_response(const QJsonObject& obj, bool accepted) {
+    const auto name = obj.value(QStringLiteral("name")).toString();
+    if (accepted) {
+        log_event(QCoreApplication::translate("MainWindow", "Resend accepted: %1").arg(name));
+        return;
+    }
+    const auto reason = obj.value(QStringLiteral("reason")).toString();
+    show_log(QCoreApplication::translate("MainWindow", "Resend rejected: %1 %2").arg(name, reason));
 }
 
 void MainWindow::send_control(const Peer& peer, const QString& type, const QJsonObject& fields) {
@@ -3025,6 +3305,7 @@ void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
     if (transfer_model_.is_dismissed(key)) {
         if (snapshot.snapshot.state != TransferState::pending) {
             transfer_model_.remove(key);
+            save_persisted_transfers();
         }
         refresh_peer_list();
         return;
@@ -3085,6 +3366,9 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
         return;
     }
     transfer_model_.upsert(snapshot, peer_id);
+    if (snapshot.state != TransferState::running) {
+        save_persisted_transfers();
+    }
     if (!transfer_belongs_to_active_peer(key)) {
         pending_transfer_render_keys_.remove(key);
         auto* old = transfer_cards_.take(key);

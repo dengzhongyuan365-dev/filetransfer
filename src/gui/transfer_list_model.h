@@ -26,6 +26,8 @@ public:
     void clear_dismissed(const QString& key);
     bool is_dismissed(const QString& key) const;
 
+    QList<TransferListEntry> entries() const;
+    QString peer_id(const QString& key) const;
     QString peer_id_or(const QString& key, const QString& fallback) const;
     bool belongs_to_peer(const QString& key, const QString& active_peer_id, bool has_active_peer) const;
     QList<TransferListEntry> visible_entries(const QString& active_peer_id, bool has_active_peer) const;

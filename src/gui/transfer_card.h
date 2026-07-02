@@ -15,6 +15,7 @@ struct TransferCardActions {
     bool remove_enabled = false;
     bool resume_queued = false;
     bool change_target = false;
+    bool request_resend = false;
     bool pause = false;
 };
 

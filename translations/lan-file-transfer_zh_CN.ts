@@ -779,6 +779,46 @@ Send to selected machine(s)</source>
         <translation>这个任务无法继续传输。</translation>
     </message>
     <message>
+        <source>Interrupted when the app closed.</source>
+        <translation>应用关闭时传输已中断。</translation>
+    </message>
+    <message>
+        <source>This transfer cannot be requested again.</source>
+        <translation>这个任务无法重新获取。</translation>
+    </message>
+    <message>
+        <source>Requested %1 to send %2 again.</source>
+        <translation>已请求 %1 重新发送 %2。</translation>
+    </message>
+    <message>
+        <source>Received resend request from %1</source>
+        <translation>收到来自 %1 的重新发送请求</translation>
+    </message>
+    <message>
+        <source>Machines are not linked.</source>
+        <translation>设备尚未连接。</translation>
+    </message>
+    <message>
+        <source>Original file is no longer available.</source>
+        <translation>原始文件已不存在。</translation>
+    </message>
+    <message>
+        <source>Transfer scheduler is not ready.</source>
+        <translation>传输调度器尚未就绪。</translation>
+    </message>
+    <message>
+        <source>Accepted resend request for %1.</source>
+        <translation>已接受 %1 的重新发送请求。</translation>
+    </message>
+    <message>
+        <source>Resend accepted: %1</source>
+        <translation>重新发送已接受：%1</translation>
+    </message>
+    <message>
+        <source>Resend rejected: %1 %2</source>
+        <translation>重新发送被拒绝：%1 %2</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="2010"/>
         <source>Resuming transfer: %1</source>
         <translation>正在继续传输：%1</translation>
@@ -1344,6 +1384,10 @@ Code: %2</source>
 </context>
 <context>
     <name>TransferCard</name>
+    <message>
+        <source>Request again</source>
+        <translation>重新获取</translation>
+    </message>
     <message>
         <location filename="../src/gui/transfer_card.cpp" line="38"/>
         <source>Resume queued transfer</source>
