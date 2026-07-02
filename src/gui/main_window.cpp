@@ -721,7 +721,7 @@ void MainWindow::apply_style() {
         #transferMetric {
             line-height: 16px;
         }
-        #onlineBadge, #linkedBadge, #offlineBadge, #stateBadge {
+        #onlineBadge, #linkedBadge, #trustedBadge, #offlineBadge, #stateBadge {
             color: #087443;
             background: #e7f8ef;
             border-radius: 7px;
@@ -738,6 +738,12 @@ void MainWindow::apply_style() {
         #linkedBadge {
             color: #1d4ed8;
             background: #eaf1ff;
+            border: none;
+            min-height: 0px;
+        }
+        #trustedBadge {
+            color: #0f766e;
+            background: #e6f7f4;
             border: none;
             min-height: 0px;
         }
@@ -954,6 +960,10 @@ void MainWindow::apply_style() {
             #linkedBadge {
                 color: #9dc2ff;
                 background: #172a4c;
+            }
+            #trustedBadge {
+                color: #88e7dc;
+                background: #143834;
             }
             #linkedCountBadge {
                 color: #9dc2ff;
@@ -1235,8 +1245,10 @@ void MainWindow::load_remembered_peers() {
             .port = static_cast<std::uint16_t>(settings.value(QStringLiteral("port"), kTransferPort).toUInt()),
             .online = false,
             .linked = false,
+            .trusted = settings.value(QStringLiteral("trusted"), false).toBool(),
             .last_seen_ms = settings.value(QStringLiteral("lastSeen"), 0).toLongLong(),
             .last_linked_ms = settings.value(QStringLiteral("lastLinked"), 0).toLongLong(),
+            .trusted_at_ms = settings.value(QStringLiteral("trustedAt"), 0).toLongLong(),
         };
         if (!peer.id.isEmpty() && !peer.host.isEmpty()) {
             devices_.insert_peer(peer);
@@ -1259,10 +1271,10 @@ void MainWindow::remember_peer(const Peer& peer) {
 void MainWindow::save_remembered_peers() {
     auto peers = devices_.peers();
     peers.erase(std::remove_if(peers.begin(), peers.end(), [](const Peer& peer) {
-        return peer.last_linked_ms <= 0;
+        return peer.last_linked_ms <= 0 && peer.trusted_at_ms <= 0;
     }), peers.end());
     std::sort(peers.begin(), peers.end(), [](const Peer& left, const Peer& right) {
-        return left.last_linked_ms > right.last_linked_ms;
+        return std::max(left.last_linked_ms, left.trusted_at_ms) > std::max(right.last_linked_ms, right.trusted_at_ms);
     });
     std::set<QString> endpoints;
     peers.erase(std::remove_if(peers.begin(), peers.end(), [&endpoints](const Peer& peer) {
@@ -1285,8 +1297,10 @@ void MainWindow::save_remembered_peers() {
         settings.setValue(QStringLiteral("name"), peers.at(i).name);
         settings.setValue(QStringLiteral("host"), peers.at(i).host);
         settings.setValue(QStringLiteral("port"), static_cast<int>(peers.at(i).port));
+        settings.setValue(QStringLiteral("trusted"), peers.at(i).trusted);
         settings.setValue(QStringLiteral("lastSeen"), peers.at(i).last_seen_ms);
         settings.setValue(QStringLiteral("lastLinked"), peers.at(i).last_linked_ms);
+        settings.setValue(QStringLiteral("trustedAt"), peers.at(i).trusted_at_ms);
     }
     settings.endArray();
 }
@@ -1762,6 +1776,17 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         connect(button, &QToolButton::clicked, this, [this, id = peer.id] {
             disconnect_peer(id);
+        });
+        badge = button;
+    } else if (peer.trusted) {
+        auto* button = new QToolButton(card);
+        button->setObjectName("trustedBadge");
+        button->setText(QCoreApplication::translate("MainWindow", "trusted"));
+        button->setToolTip(QCoreApplication::translate("MainWindow", "Forget trust"));
+        button->setAutoRaise(false);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        connect(button, &QToolButton::clicked, this, [this, id = peer.id] {
+            untrust_peer(id);
         });
         badge = button;
     } else {
@@ -2300,6 +2325,12 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
                   .arg(peer.name, peer.host)
                   .arg(peer.port)
                   .arg(code));
+    if (devices_.is_trusted_peer(peer)) {
+        log_event(QCoreApplication::translate("MainWindow", "Auto accepted trusted peer: %1").arg(peer.name));
+        send_control(peer, "link_accept", QJsonObject{{"code", code}, {"trusted", true}});
+        set_linked_peer(peer, !has_active_peer());
+        return;
+    }
     const auto answer = QMessageBox::question(
         this,
         QCoreApplication::translate("MainWindow", "Link request"),
@@ -2309,7 +2340,8 @@ void MainWindow::receive_link_request(const QHostAddress& address, const QJsonOb
     if (answer == QMessageBox::Yes) {
         log_event(QCoreApplication::translate("MainWindow", "Accepted link request from %1").arg(peer.name));
         send_control(peer, "link_accept", QJsonObject{{"code", code}});
-        set_linked_peer(peer, !has_active_peer());
+        const auto trusted = trust_peer(peer.id);
+        set_linked_peer(trusted, !has_active_peer());
     } else {
         log_event(QCoreApplication::translate("MainWindow", "Rejected link request from %1").arg(peer.name));
         send_control(peer, "link_reject", QJsonObject{{"code", code}});
@@ -2333,7 +2365,8 @@ void MainWindow::receive_link_response(const QHostAddress& address, const QJsonO
         return;
     }
     log_event(QCoreApplication::translate("MainWindow", "Link accepted by %1").arg(devices_.peer(id).name));
-    set_linked_peer(devices_.peer(id), true);
+    const auto trusted = trust_peer(id);
+    set_linked_peer(trusted, true);
 }
 
 void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj) {
@@ -2355,6 +2388,41 @@ void MainWindow::send_control(const Peer& peer, const QString& type, const QJson
     }
     discovery_->send_control(peer, type, node_id_, machine_name(), fields);
     log_event(QCoreApplication::translate("MainWindow", "Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
+}
+
+Peer MainWindow::trust_peer(const QString& id) {
+    auto peer = devices_.trust_peer(id, now_ms());
+    if (peer.id.isEmpty()) {
+        return peer;
+    }
+    save_remembered_peers();
+    refresh_peer_list();
+    log_event(QCoreApplication::translate("MainWindow", "Trusted peer: %1").arg(peer.name));
+    return peer;
+}
+
+void MainWindow::untrust_peer(const QString& id) {
+    if (!devices_.contains(id)) {
+        return;
+    }
+    const auto peer = devices_.peer(id);
+    const auto answer = QMessageBox::question(
+        this,
+        QCoreApplication::translate("MainWindow", "Forget trusted machine"),
+        QCoreApplication::translate("MainWindow", "Forget trust for %1? You will need to confirm the next link request.")
+            .arg(peer.name),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+    Peer updated;
+    if (!devices_.untrust_peer(id, &updated)) {
+        return;
+    }
+    save_remembered_peers();
+    refresh_peer_list();
+    log_event(QCoreApplication::translate("MainWindow", "Trust removed for %1").arg(updated.name));
 }
 
 void MainWindow::link_peer(QListWidgetItem* item) {

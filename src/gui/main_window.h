@@ -117,6 +117,8 @@ private:
     void receive_link_response(const QHostAddress& address, const QJsonObject& obj, bool accepted);
     void receive_link_disconnect(const QHostAddress& address, const QJsonObject& obj);
     void send_control(const Peer& peer, const QString& type, const QJsonObject& fields = {});
+    Peer trust_peer(const QString& id);
+    void untrust_peer(const QString& id);
     void link_peer(QListWidgetItem* item);
     void open_transfer_page();
     void set_linked_peer(const Peer& peer, bool activate);

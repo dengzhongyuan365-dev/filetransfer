@@ -13,6 +13,7 @@
 - TCP 文件和目录传输
 - UDP 局域网发现
 - 连接验证码确认
+- 连接过设备的轻量信任和免确认重连
 - 多设备连接和发送目标选择
 - 全局并发和单设备并发控制
 - 超出并发限制后的任务排队
@@ -44,7 +45,8 @@ graph TD
     B --> C["设备发现页面"]
     C --> D["设备列表"]
     D --> E["连接确认"]
-    E --> F["传输页面"]
+    E --> P["保存信任"]
+    P --> F["传输页面"]
     F --> G["拖拽或粘贴发送"]
     F --> H["切换发送目标"]
     F --> I["查看接收历史"]
@@ -223,12 +225,46 @@ graph TD
 - `port`：TCP 接收端口。
 - `online`：最近发现是否在线。
 - `linked`：是否已经通过验证码确认连接。
+- `trusted`：是否已经通过首次确认并被本机信任。
 - `last_seen_ms`：最后发现时间。
 - `last_linked_ms`：最后连接时间。
+- `trusted_at_ms`：首次或最近写入信任的时间。
 
 设备列表中可能出现 remembered 设备，即以前连接过但当前不在线的设备。这样用户可以知道历史设备，并且设备重新上线时能合并状态。
 
-### 5.2 活动设备和发送目标
+### 5.2 设备信任模型
+
+设备信任用于减少重复弹窗。它不是完整的密码学身份认证，而是基于本机保存的设备稳定 ID 的轻量信任：
+
+- 首次连接仍然需要验证码弹窗确认。
+- 用户接受连接后，本机把对端 `node_id` 标记为 trusted。
+- 发起方收到接受后，也把对端标记为 trusted。
+- 下次同一个 `node_id` 发起连接时，接收方自动接受，不再弹窗。
+- 用户可以在设备列表点击“已信任”状态取消信任。
+- 取消信任不会强制断开当前连接，只影响下一次连接请求。
+
+信任信息随 remembered peer 一起保存到 `QSettings`，字段包括 `trusted` 和 `trustedAt`。如果手动添加的设备后来通过发现拿到了真实 `node_id`，`DeviceManager` 会按 endpoint 合并设备，并保留已有信任状态。
+
+```mermaid
+sequenceDiagram
+    participant A as Machine A
+    participant B as Machine B
+    A->>B: link_request with code
+    B->>B: check trusted by node_id
+    alt First link
+        B->>B: show confirm dialog
+        B->>B: save trusted peer
+        B->>A: link_accept
+        A->>A: save trusted peer
+    else Already trusted
+        B->>A: link_accept automatically
+    end
+    A->>B: file transfer tasks
+```
+
+后续如果要做更强的可信设备，应把 `node_id` 升级为设备公钥指纹，并在连接控制消息里加入 challenge 和 signature。这样即使 IP 或设备名变化，也能用密钥证明身份。
+
+### 5.3 活动设备和发送目标
 
 这两个概念分开：
 
@@ -251,7 +287,7 @@ graph LR
     D --> G["新发送任务复制到多个设备队列"]
 ```
 
-### 5.3 连接数量显示
+### 5.4 连接数量显示
 
 连接数量不是当前页面数量，而是本机已连接设备总数。
 

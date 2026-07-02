@@ -1313,5 +1313,33 @@ Code: %2</source>
         <source>Clear from list</source>
         <translation>从列表清除</translation>
     </message>
+    <message>
+        <source>trusted</source>
+        <translation>已信任</translation>
+    </message>
+    <message>
+        <source>Forget trust</source>
+        <translation>取消信任</translation>
+    </message>
+    <message>
+        <source>Forget trusted machine</source>
+        <translation>取消信任设备</translation>
+    </message>
+    <message>
+        <source>Forget trust for %1? You will need to confirm the next link request.</source>
+        <translation>取消对 %1 的信任吗？下次连接请求需要重新确认。</translation>
+    </message>
+    <message>
+        <source>Trusted peer: %1</source>
+        <translation>已信任设备：%1</translation>
+    </message>
+    <message>
+        <source>Auto accepted trusted peer: %1</source>
+        <translation>已自动接受信任设备：%1</translation>
+    </message>
+    <message>
+        <source>Trust removed for %1</source>
+        <translation>已取消对 %1 的信任</translation>
+    </message>
 </context>
 </TS>

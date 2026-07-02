@@ -17,8 +17,10 @@ struct Peer {
     std::uint16_t port = kTransferPort;
     bool online = true;
     bool linked = false;
+    bool trusted = false;
     qint64 last_seen_ms = 0;
     qint64 last_linked_ms = 0;
+    qint64 trusted_at_ms = 0;
 };
 
 }  // namespace lan::gui

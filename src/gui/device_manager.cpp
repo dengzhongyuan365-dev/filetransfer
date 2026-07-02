@@ -25,12 +25,22 @@ QList<Peer> DeviceManager::peers() const {
 }
 
 void DeviceManager::insert_peer(const Peer& peer) {
+    auto inserted = peer;
+    if (peers_.contains(peer.id)) {
+        const auto existing = peers_.value(peer.id);
+        inserted.trusted = inserted.trusted || existing.trusted;
+        inserted.trusted_at_ms = std::max(inserted.trusted_at_ms, existing.trusted_at_ms);
+        inserted.last_linked_ms = std::max(inserted.last_linked_ms, existing.last_linked_ms);
+    }
     const auto duplicate_id = find_peer_id_by_endpoint(peer.host, peer.port);
     if (!duplicate_id.isEmpty() && duplicate_id != peer.id) {
         const auto duplicate = peers_.value(duplicate_id);
         if (duplicate.last_linked_ms > peer.last_linked_ms) {
             return;
         }
+        inserted.trusted = inserted.trusted || duplicate.trusted;
+        inserted.trusted_at_ms = std::max(inserted.trusted_at_ms, duplicate.trusted_at_ms);
+        inserted.last_linked_ms = std::max(inserted.last_linked_ms, duplicate.last_linked_ms);
         peers_.remove(duplicate_id);
         if (active_peer_id_ == duplicate_id) {
             active_peer_id_ = peer.id;
@@ -40,7 +50,7 @@ void DeviceManager::insert_peer(const Peer& peer) {
             send_target_peer_ids_.append(peer.id);
         }
     }
-    peers_.insert(peer.id, peer);
+    peers_.insert(inserted.id, inserted);
 }
 
 QString DeviceManager::find_peer_id_by_endpoint(const QString& host, std::uint16_t port) const {
@@ -54,9 +64,12 @@ QString DeviceManager::find_peer_id_by_endpoint(const QString& host, std::uint16
 
 Peer DeviceManager::remember_peer(const Peer& peer, qint64 now_ms) {
     auto remembered = peer;
+    const auto existing = peers_.value(peer.id);
     remembered.last_linked_ms = now_ms;
     remembered.online = true;
-    remembered.linked = peers_.value(peer.id).linked || peer.linked;
+    remembered.linked = existing.linked || peer.linked;
+    remembered.trusted = existing.trusted || peer.trusted;
+    remembered.trusted_at_ms = std::max(existing.trusted_at_ms, peer.trusted_at_ms);
     peers_.insert(remembered.id, remembered);
     return remembered;
 }
@@ -134,8 +147,10 @@ PeerUpsertResult DeviceManager::upsert_discovered_peer(const QString& host,
         .port = port,
         .online = true,
         .linked = existing.linked,
+        .trusted = existing.trusted,
         .last_seen_ms = now_ms,
         .last_linked_ms = existing.last_linked_ms,
+        .trusted_at_ms = existing.trusted_at_ms,
     };
     peers_.insert(normalized_id, peer);
     return PeerUpsertResult{.peer = peer, .previous_id = previous_id};
@@ -155,6 +170,8 @@ Peer DeviceManager::set_linked_peer(const Peer& peer, bool activate, qint64 now_
     linked.linked = true;
     linked.online = true;
     linked.last_linked_ms = now_ms;
+    linked.trusted = linked.trusted || peer.trusted;
+    linked.trusted_at_ms = std::max(linked.trusted_at_ms, peer.trusted_at_ms);
     peers_.insert(linked.id, linked);
     if (activate || !has_active_peer()) {
         set_active_peer(linked.id);
@@ -222,6 +239,42 @@ QStringList DeviceManager::linked_peer_ids() const {
 
 bool DeviceManager::is_linked_peer(const Peer& peer) const {
     return peer.linked;
+}
+
+bool DeviceManager::is_trusted_peer(const Peer& peer) const {
+    const auto stored = peers_.value(peer.id, peer);
+    return stored.trusted && stored.trusted_at_ms > 0;
+}
+
+Peer DeviceManager::trust_peer(const QString& id, qint64 now_ms) {
+    auto peer = peers_.value(id);
+    if (peer.id.isEmpty()) {
+        return peer;
+    }
+    peer.trusted = true;
+    peer.trusted_at_ms = now_ms;
+    peers_.insert(id, peer);
+    return peer;
+}
+
+bool DeviceManager::untrust_peer(const QString& id, Peer* updated_peer) {
+    if (!peers_.contains(id)) {
+        return false;
+    }
+    auto peer = peers_.value(id);
+    if (!peer.trusted && peer.trusted_at_ms <= 0) {
+        if (updated_peer != nullptr) {
+            *updated_peer = peer;
+        }
+        return false;
+    }
+    peer.trusted = false;
+    peer.trusted_at_ms = 0;
+    peers_.insert(id, peer);
+    if (updated_peer != nullptr) {
+        *updated_peer = peer;
+    }
+    return true;
 }
 
 QStringList DeviceManager::send_target_peer_ids() const {
