@@ -62,6 +62,7 @@ if(Qt6_FOUND)
     find_package(Qt6LinguistTools QUIET)
 
     add_executable(lan-gui
+        gui/control_message.cpp
         gui/drop_panel.cpp
         gui/device_manager.cpp
         gui/main_window.cpp

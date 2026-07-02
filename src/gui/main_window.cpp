@@ -16,7 +16,6 @@
 #include <QHostAddress>
 #include <QIcon>
 #include <QImage>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
@@ -63,6 +62,7 @@
 #include <utility>
 
 #include "gui/drop_panel.h"
+#include "gui/control_message.h"
 #include "gui/qt_utils.h"
 #include "gui/target_dialogs.h"
 #include "gui/transfer_events.h"
@@ -1399,13 +1399,7 @@ void MainWindow::send_discovery_probe(bool extended) {
     if (discovery_ == nullptr) {
         return;
     }
-    const auto message = QJsonDocument(QJsonObject{
-        {"protocol", kProtocol},
-        {"type", "discover"},
-        {"id", node_id_},
-        {"name", machine_name()},
-        {"port", static_cast<int>(kTransferPort)},
-    }).toJson(QJsonDocument::Compact);
+    const auto message = encode_control_message(QStringLiteral("discover"), node_id_, machine_name(), kTransferPort);
     const auto targets = discovery_targets();
     QStringList target_labels;
     for (const auto& target : targets) {
@@ -1465,17 +1459,13 @@ void MainWindow::read_discovery() {
         quint16 sender_port = 0;
         discovery_->readDatagram(datagram.data(), datagram.size(), &sender, &sender_port);
 
-        const auto doc = QJsonDocument::fromJson(datagram);
-        if (!doc.isObject()) {
+        const auto message = decode_control_message(datagram);
+        if (!message.has_value()) {
             continue;
         }
-        const auto obj = doc.object();
-        if (obj.value("protocol").toString() != kProtocol) {
-            continue;
-        }
-        const auto type = obj.value("type").toString();
-        if (type == "discover") {
-            if (obj.value("id").toString() != node_id_) {
+        const auto& obj = message->fields;
+        if (message->type == "discover") {
+            if (message->id != node_id_) {
                 if (!receiver_ready_) {
                     log_event(QCoreApplication::translate("MainWindow", "Ignored discover from %1 because receiver is not ready.")
                                   .arg(sender.toString()));
@@ -1484,10 +1474,10 @@ void MainWindow::read_discovery() {
                 log_event(QCoreApplication::translate("MainWindow", "Received discover from %1:%2").arg(sender.toString()).arg(sender_port));
                 reply_to_discovery(sender, sender_port);
             }
-        } else if (type == "announce") {
+        } else if (message->type == "announce") {
             log_event(QCoreApplication::translate("MainWindow", "Received announce from %1").arg(sender.toString()));
             add_peer(sender, obj);
-        } else if (type == "link_request") {
+        } else if (message->type == "link_request") {
             if (!receiver_ready_) {
                 log_event(QCoreApplication::translate("MainWindow", "Ignored link request from %1 because receiver is not ready.")
                               .arg(sender.toString()));
@@ -1495,13 +1485,13 @@ void MainWindow::read_discovery() {
             }
             log_event(QCoreApplication::translate("MainWindow", "Received link request from %1").arg(sender.toString()));
             receive_link_request(sender, obj);
-        } else if (type == "link_accept") {
+        } else if (message->type == "link_accept") {
             log_event(QCoreApplication::translate("MainWindow", "Received link accept from %1").arg(sender.toString()));
             receive_link_response(sender, obj, true);
-        } else if (type == "link_reject") {
+        } else if (message->type == "link_reject") {
             log_event(QCoreApplication::translate("MainWindow", "Received link reject from %1").arg(sender.toString()));
             receive_link_response(sender, obj, false);
-        } else if (type == "link_disconnect") {
+        } else if (message->type == "link_disconnect") {
             log_event(QCoreApplication::translate("MainWindow", "Received link disconnect from %1").arg(sender.toString()));
             receive_link_disconnect(sender, obj);
         }
@@ -1509,13 +1499,7 @@ void MainWindow::read_discovery() {
 }
 
 void MainWindow::reply_to_discovery(const QHostAddress& target, quint16 port) {
-    const auto message = QJsonDocument(QJsonObject{
-        {"protocol", kProtocol},
-        {"type", "announce"},
-        {"id", node_id_},
-        {"name", machine_name()},
-        {"port", static_cast<int>(kTransferPort)},
-    }).toJson(QJsonDocument::Compact);
+    const auto message = encode_control_message(QStringLiteral("announce"), node_id_, machine_name(), kTransferPort);
     discovery_->writeDatagram(message, target, port);
     log_event(QCoreApplication::translate("MainWindow", "Sent announce to %1:%2").arg(target.toString()).arg(port));
 }
@@ -2352,17 +2336,7 @@ void MainWindow::receive_link_disconnect(const QHostAddress& address, const QJso
 }
 
 void MainWindow::send_control(const Peer& peer, const QString& type, const QJsonObject& fields) {
-    QJsonObject message{
-        {"protocol", kProtocol},
-        {"type", type},
-        {"id", node_id_},
-        {"name", machine_name()},
-        {"port", static_cast<int>(kTransferPort)},
-    };
-    for (auto it = fields.begin(); it != fields.end(); ++it) {
-        message.insert(it.key(), it.value());
-    }
-    const auto payload = QJsonDocument(message).toJson(QJsonDocument::Compact);
+    const auto payload = encode_control_message(type, node_id_, machine_name(), kTransferPort, fields);
     discovery_->writeDatagram(payload, QHostAddress(peer.host), kDiscoveryPort);
     log_event(QCoreApplication::translate("MainWindow", "Sent control '%1' to %2:%3").arg(type, peer.host).arg(kDiscoveryPort));
 }
