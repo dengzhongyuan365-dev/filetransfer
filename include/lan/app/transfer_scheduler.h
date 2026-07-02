@@ -67,6 +67,16 @@ struct SchedulerCallbacks {
     std::function<void()> on_wakeup;
 };
 
+class SchedulerSendRunner {
+public:
+    virtual ~SchedulerSendRunner() = default;
+
+    virtual Result<SenderTransferReport> run(const SenderConfig& config, SenderTransferEvents& events) = 0;
+    virtual void cancel() = 0;
+};
+
+using SchedulerSendRunnerFactory = std::function<std::unique_ptr<SchedulerSendRunner>()>;
+
 class TransferScheduler {
 public:
     explicit TransferScheduler(SchedulerCallbacks callbacks = {});
@@ -76,6 +86,7 @@ public:
     TransferScheduler& operator=(const TransferScheduler&) = delete;
 
     void set_callbacks(SchedulerCallbacks callbacks);
+    void set_runner_factory(SchedulerSendRunnerFactory factory);
     void set_limits(SchedulerLimits limits);
     SchedulerLimits limits() const;
 
@@ -110,7 +121,7 @@ private:
         std::string peer_id;
         std::filesystem::path source_path;
         SenderConfig config;
-        std::unique_ptr<SenderTransferRunner> runner;
+        std::unique_ptr<SchedulerSendRunner> runner;
         std::shared_ptr<SenderTransferEvents> events;
         std::thread thread;
         bool completed = false;
@@ -131,6 +142,7 @@ private:
     SchedulerTaskStatus queued_status_locked(const QueuedSend& item) const;
     void mark_completed(SchedulerTaskId task_id);
     SchedulerCallbacks callbacks() const;
+    std::unique_ptr<SchedulerSendRunner> make_runner_locked() const;
     void flush_emissions(SchedulerEmissions emissions);
     void emit_snapshot(SchedulerSnapshot snapshot);
     void emit_log(std::string line);
@@ -147,6 +159,7 @@ private:
     mutable std::mutex mutex_;
     mutable std::mutex callbacks_mutex_;
     SchedulerCallbacks callbacks_;
+    SchedulerSendRunnerFactory runner_factory_;
     SchedulerLimits limits_;
     std::map<std::string, SchedulerPeer> peers_;
     std::deque<QueuedSend> queue_;

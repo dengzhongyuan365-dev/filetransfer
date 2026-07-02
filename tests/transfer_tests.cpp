@@ -75,6 +75,48 @@ void copy_mtime(const std::filesystem::path& from, const std::filesystem::path& 
     std::filesystem::last_write_time(to, std::filesystem::last_write_time(from));
 }
 
+struct BlockingSendRunnerState {
+    std::mutex mutex;
+    std::condition_variable cv;
+    int running = 0;
+    int max_running = 0;
+    int started = 0;
+    bool release = false;
+    std::vector<std::uint16_t> started_ports;
+};
+
+class BlockingSendRunner final : public lan::SchedulerSendRunner {
+public:
+    explicit BlockingSendRunner(std::shared_ptr<BlockingSendRunnerState> state)
+        : state_(std::move(state)) {}
+
+    lan::Result<lan::SenderTransferReport> run(const lan::SenderConfig& config,
+                                               lan::SenderTransferEvents&) override {
+        std::unique_lock lock(state_->mutex);
+        ++state_->running;
+        ++state_->started;
+        state_->max_running = std::max(state_->max_running, state_->running);
+        state_->started_ports.push_back(config.target.port);
+        state_->cv.notify_all();
+        state_->cv.wait(lock, [this] {
+            return state_->release || cancelled_;
+        });
+        --state_->running;
+        state_->cv.notify_all();
+        return lan::Result<lan::SenderTransferReport>::success(lan::SenderTransferReport{});
+    }
+
+    void cancel() override {
+        std::lock_guard lock(state_->mutex);
+        cancelled_ = true;
+        state_->cv.notify_all();
+    }
+
+private:
+    std::shared_ptr<BlockingSendRunnerState> state_;
+    bool cancelled_ = false;
+};
+
 void make_source_newer_than_target(const std::filesystem::path& source,
                                    const std::filesystem::path& target) {
     const auto now = std::filesystem::file_time_type::clock::now();
@@ -645,6 +687,98 @@ TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {
     stats = scheduler.peer_stats("peer-1");
     EXPECT_EQ(stats.queued, 0);
     EXPECT_EQ(stats.running, 0);
+}
+
+TEST(TransferSchedulerTest, RespectsGlobalAndPerPeerConcurrencyLimits) {
+    TempDir temp("transfer-scheduler-concurrency");
+    const auto source = temp.path() / "song.txt";
+    write_text(source, "audio");
+
+    auto state = std::make_shared<BlockingSendRunnerState>();
+    lan::TransferScheduler scheduler;
+    scheduler.set_runner_factory([state] {
+        return std::make_unique<BlockingSendRunner>(state);
+    });
+    scheduler.set_limits(lan::SchedulerLimits{
+        .max_global_sends = 2,
+        .max_peer_sends = 1,
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 41001,
+        .online = true,
+        .linked = true,
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-2",
+        .name = "Peer 2",
+        .host = "127.0.0.1",
+        .port = 41002,
+        .online = true,
+        .linked = true,
+    });
+
+    const auto peer1_first = scheduler.enqueue_send("peer-1", source);
+    const auto peer1_second = scheduler.enqueue_send("peer-1", source);
+    const auto peer2_first = scheduler.enqueue_send("peer-2", source);
+
+    {
+        std::unique_lock lock(state->mutex);
+        ASSERT_TRUE(state->cv.wait_for(lock, std::chrono::seconds(1), [state] {
+            return state->started == 2;
+        }));
+        EXPECT_EQ(state->running, 2);
+        EXPECT_EQ(state->max_running, 2);
+        EXPECT_EQ(state->started_ports.size(), 2U);
+        EXPECT_NE(std::find(state->started_ports.begin(), state->started_ports.end(), 41001), state->started_ports.end());
+        EXPECT_NE(std::find(state->started_ports.begin(), state->started_ports.end(), 41002), state->started_ports.end());
+    }
+
+    auto peer1_stats = scheduler.peer_stats("peer-1");
+    auto peer2_stats = scheduler.peer_stats("peer-2");
+    EXPECT_EQ(peer1_stats.running, 1);
+    EXPECT_EQ(peer1_stats.queued, 1);
+    EXPECT_EQ(peer2_stats.running, 1);
+    EXPECT_EQ(peer2_stats.queued, 0);
+
+    const auto tasks = scheduler.tasks();
+    auto peer1_second_it = std::find_if(tasks.begin(), tasks.end(), [peer1_second](const lan::SchedulerTaskInfo& task) {
+        return task.task_id == peer1_second;
+    });
+    ASSERT_NE(peer1_second_it, tasks.end());
+    EXPECT_EQ(peer1_second_it->status, lan::SchedulerTaskStatus::queued);
+    EXPECT_NE(peer1_first, peer1_second);
+    EXPECT_NE(peer2_first, peer1_second);
+
+    {
+        std::lock_guard lock(state->mutex);
+        state->release = true;
+        state->cv.notify_all();
+    }
+    {
+        std::unique_lock lock(state->mutex);
+        ASSERT_TRUE(state->cv.wait_for(lock, std::chrono::seconds(1), [state] {
+            return state->running == 0;
+        }));
+    }
+
+    scheduler.pump();
+    {
+        std::unique_lock lock(state->mutex);
+        ASSERT_TRUE(state->cv.wait_for(lock, std::chrono::seconds(1), [state] {
+            return state->started == 3 && state->running == 0;
+        }));
+    }
+    scheduler.pump();
+
+    peer1_stats = scheduler.peer_stats("peer-1");
+    peer2_stats = scheduler.peer_stats("peer-2");
+    EXPECT_EQ(peer1_stats.running, 0);
+    EXPECT_EQ(peer1_stats.queued, 0);
+    EXPECT_EQ(peer2_stats.running, 0);
+    EXPECT_EQ(peer2_stats.queued, 0);
 }
 
 struct MemoryPipe {

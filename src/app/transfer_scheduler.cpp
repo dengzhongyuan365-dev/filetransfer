@@ -126,10 +126,27 @@ private:
     std::function<void(SchedulerSnapshot)> on_snapshot_;
 };
 
+class DefaultSchedulerSendRunner final : public SchedulerSendRunner {
+public:
+    Result<SenderTransferReport> run(const SenderConfig& config, SenderTransferEvents& events) override {
+        return runner_.run(config, events);
+    }
+
+    void cancel() override {
+        runner_.cancel();
+    }
+
+private:
+    SenderTransferRunner runner_;
+};
+
 }  // namespace
 
 TransferScheduler::TransferScheduler(SchedulerCallbacks callbacks)
-    : callbacks_(std::move(callbacks)) {}
+    : callbacks_(std::move(callbacks)),
+      runner_factory_([] {
+          return std::make_unique<DefaultSchedulerSendRunner>();
+      }) {}
 
 TransferScheduler::~TransferScheduler() {
     stop_all();
@@ -138,6 +155,16 @@ TransferScheduler::~TransferScheduler() {
 void TransferScheduler::set_callbacks(SchedulerCallbacks callbacks) {
     std::lock_guard<std::mutex> lock(callbacks_mutex_);
     callbacks_ = std::move(callbacks);
+}
+
+void TransferScheduler::set_runner_factory(SchedulerSendRunnerFactory factory) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    runner_factory_ = std::move(factory);
+    if (!runner_factory_) {
+        runner_factory_ = [] {
+            return std::make_unique<DefaultSchedulerSendRunner>();
+        };
+    }
 }
 
 void TransferScheduler::set_limits(SchedulerLimits limits) {
@@ -569,7 +596,16 @@ bool TransferScheduler::start_sender_locked(const QueuedSend& item, SchedulerEmi
     running->peer_id = item.peer_id;
     running->source_path = item.source_path;
     running->config = std::move(validated).value();
-    running->runner = std::make_unique<SenderTransferRunner>();
+    running->runner = make_runner_locked();
+    if (running->runner == nullptr) {
+        const Error error{ErrorCode::internal_error, "send runner factory returned null"};
+        emissions.snapshots.push_back(SchedulerSnapshot{
+            .task_id = item.task_id,
+            .peer_id = item.peer_id,
+            .snapshot = make_failed_snapshot(item.task_id, item.source_path, error),
+        });
+        return false;
+    }
     running->events = std::make_shared<TaskScopedEvents>(
         item.task_id,
         item.peer_id,
@@ -679,6 +715,13 @@ void TransferScheduler::mark_completed(SchedulerTaskId task_id) {
 SchedulerCallbacks TransferScheduler::callbacks() const {
     std::lock_guard<std::mutex> lock(callbacks_mutex_);
     return callbacks_;
+}
+
+std::unique_ptr<SchedulerSendRunner> TransferScheduler::make_runner_locked() const {
+    if (!runner_factory_) {
+        return std::make_unique<DefaultSchedulerSendRunner>();
+    }
+    return runner_factory_();
 }
 
 void TransferScheduler::flush_emissions(SchedulerEmissions emissions) {
