@@ -21,6 +21,7 @@ if(Qt6_FOUND)
         gui_transfer_list_model_tests.cpp
         ../src/gui/device_manager.cpp
         ../src/gui/transfer_list_model.cpp
+        ../src/gui/transfer_record_matcher.cpp
     )
 
     target_include_directories(gui_unit_tests PRIVATE

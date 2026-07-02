@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "gui/transfer_list_model.h"
+#include "gui/transfer_record_matcher.h"
 
 namespace {
 
@@ -52,6 +53,50 @@ TEST(TransferListModelTest, ExposesAllEntriesAndPeerIds) {
     EXPECT_EQ(model.entries().size(), 2);
     EXPECT_EQ(model.peer_id(lan::gui::transfer_snapshot_key(first)), QStringLiteral("node-a"));
     EXPECT_EQ(model.peer_id(lan::gui::transfer_snapshot_key(second)), QStringLiteral("node-b"));
+}
+
+TEST(TransferRecordMatcherTest, MatchesResendRequestForOriginalSenderRecord) {
+    auto snapshot = make_snapshot(5, lan::TransferDirection::send);
+    snapshot.kind = lan::TransferKind::directory;
+    snapshot.total_bytes = 1024;
+    snapshot.total_files = 7;
+    const auto entry = lan::gui::TransferListEntry{.key = lan::gui::transfer_snapshot_key(snapshot),
+                                                   .snapshot = snapshot};
+    const auto request = lan::gui::TransferResendRequest{
+        .peer_id = QStringLiteral("node-a"),
+        .name = QStringLiteral("Music"),
+        .kind = lan::TransferKind::directory,
+        .total_bytes = 1024,
+        .total_files = 7,
+    };
+
+    EXPECT_TRUE(lan::gui::transfer_matches_resend_request(entry,
+                                                          QStringLiteral("node-a"),
+                                                          QStringLiteral("Music"),
+                                                          request));
+}
+
+TEST(TransferRecordMatcherTest, RejectsDifferentPeerOrMetadata) {
+    auto snapshot = make_snapshot(6, lan::TransferDirection::send);
+    snapshot.total_bytes = 2048;
+    const auto entry = lan::gui::TransferListEntry{.key = lan::gui::transfer_snapshot_key(snapshot),
+                                                   .snapshot = snapshot};
+    const auto request = lan::gui::TransferResendRequest{
+        .peer_id = QStringLiteral("node-a"),
+        .name = QStringLiteral("demo.txt"),
+        .kind = lan::TransferKind::file,
+        .total_bytes = 2048,
+        .total_files = 0,
+    };
+
+    EXPECT_FALSE(lan::gui::transfer_matches_resend_request(entry,
+                                                           QStringLiteral("node-b"),
+                                                           QStringLiteral("demo.txt"),
+                                                           request));
+    EXPECT_FALSE(lan::gui::transfer_matches_resend_request(entry,
+                                                           QStringLiteral("node-a"),
+                                                           QStringLiteral("other.txt"),
+                                                           request));
 }
 
 }  // namespace

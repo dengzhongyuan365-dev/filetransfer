@@ -70,6 +70,7 @@
 #include "gui/target_dialogs.h"
 #include "gui/transfer_card.h"
 #include "gui/transfer_events.h"
+#include "gui/transfer_record_matcher.h"
 #include "lan/app/receiver_config.h"
 #include "lan/common/error.h"
 #include "lan/common/size.h"
@@ -2933,25 +2934,18 @@ void MainWindow::receive_resend_request(const DiscoveryDatagram& datagram) {
     }
 
     const auto& obj = datagram.message.fields;
-    const auto requested_name = obj.value(QStringLiteral("name")).toString();
-    const auto requested_kind = static_cast<TransferKind>(obj.value(QStringLiteral("kind")).toInt());
-    const auto requested_bytes = obj.value(QStringLiteral("totalBytes")).toString().toULongLong();
-    const auto requested_files = obj.value(QStringLiteral("totalFiles")).toString().toULongLong();
+    const auto request = TransferResendRequest{
+        .peer_id = requester_id,
+        .name = obj.value(QStringLiteral("name")).toString(),
+        .kind = static_cast<TransferKind>(obj.value(QStringLiteral("kind")).toInt()),
+        .total_bytes = obj.value(QStringLiteral("totalBytes")).toString().toULongLong(),
+        .total_files = obj.value(QStringLiteral("totalFiles")).toString().toULongLong(),
+    };
     TransferSnapshot matched;
     bool found = false;
     for (const auto& entry : transfer_model_.entries()) {
-        const auto peer_id = transfer_model_.peer_id(entry.key);
         const auto candidate_name = QString::fromStdString(display_transfer_name(entry.snapshot));
-        if (peer_id != requester_id ||
-            entry.snapshot.direction != TransferDirection::send ||
-            entry.snapshot.kind != requested_kind ||
-            candidate_name != requested_name) {
-            continue;
-        }
-        if (requested_bytes > 0 && entry.snapshot.total_bytes > 0 && entry.snapshot.total_bytes != requested_bytes) {
-            continue;
-        }
-        if (requested_files > 0 && entry.snapshot.total_files > 0 && entry.snapshot.total_files != requested_files) {
+        if (!transfer_matches_resend_request(entry, transfer_model_.peer_id(entry.key), candidate_name, request)) {
             continue;
         }
         matched = entry.snapshot;
@@ -2963,7 +2957,7 @@ void MainWindow::receive_resend_request(const DiscoveryDatagram& datagram) {
     if (!found || matched.path.empty() || !std::filesystem::exists(matched.path, ec)) {
         send_control(peer,
                      QStringLiteral("resend_reject"),
-                     QJsonObject{{QStringLiteral("name"), requested_name},
+                     QJsonObject{{QStringLiteral("name"), request.name},
                                   {QStringLiteral("reason"),
                                    QCoreApplication::translate("MainWindow", "Original file is no longer available.")}});
         return;
@@ -2972,7 +2966,7 @@ void MainWindow::receive_resend_request(const DiscoveryDatagram& datagram) {
     if (scheduler_ == nullptr) {
         send_control(peer,
                      QStringLiteral("resend_reject"),
-                     QJsonObject{{QStringLiteral("name"), requested_name},
+                     QJsonObject{{QStringLiteral("name"), request.name},
                                   {QStringLiteral("reason"),
                                    QCoreApplication::translate("MainWindow", "Transfer scheduler is not ready.")}});
         return;
@@ -2981,8 +2975,8 @@ void MainWindow::receive_resend_request(const DiscoveryDatagram& datagram) {
     scheduler_->enqueue_send(to_string(requester_id), matched.path, matched.source);
     send_control(peer,
                  QStringLiteral("resend_accept"),
-                 QJsonObject{{QStringLiteral("name"), requested_name}});
-    log_event(QCoreApplication::translate("MainWindow", "Accepted resend request for %1.").arg(requested_name));
+                 QJsonObject{{QStringLiteral("name"), request.name}});
+    log_event(QCoreApplication::translate("MainWindow", "Accepted resend request for %1.").arg(request.name));
 }
 
 void MainWindow::receive_resend_response(const QJsonObject& obj, bool accepted) {

@@ -74,6 +74,7 @@ if(Qt6_FOUND)
         gui/transfer_card.cpp
         gui/transfer_events.cpp
         gui/transfer_list_model.cpp
+        gui/transfer_record_matcher.cpp
         gui_main.cpp
     )
     target_include_directories(lan-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
