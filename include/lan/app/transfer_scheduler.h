@@ -42,6 +42,21 @@ struct SchedulerSnapshot {
 struct SchedulerPeerStats {
     int queued = 0;
     int running = 0;
+    int waiting = 0;
+};
+
+enum class SchedulerTaskStatus {
+    queued,
+    waiting_for_peer,
+    running,
+};
+
+struct SchedulerTaskInfo {
+    SchedulerTaskId task_id = 0;
+    std::string peer_id;
+    std::filesystem::path source_path;
+    SchedulerTaskStatus status = SchedulerTaskStatus::queued;
+    TransferSnapshot snapshot;
 };
 
 struct SchedulerCallbacks {
@@ -66,6 +81,9 @@ public:
     void remove_peer(const std::string& peer_id);
 
     SchedulerTaskId enqueue_send(const std::string& peer_id, std::filesystem::path source_path);
+    std::vector<SchedulerTaskId> enqueue_send_to_peers(const std::vector<std::string>& peer_ids,
+                                                       std::filesystem::path source_path);
+    bool move_queued_task(SchedulerTaskId task_id, const std::string& peer_id);
     void cancel_task(SchedulerTaskId task_id);
     void cancel_peer(const std::string& peer_id);
     void stop_all();
@@ -73,6 +91,8 @@ public:
 
     bool has_pending_or_running_for_peer(const std::string& peer_id) const;
     SchedulerPeerStats peer_stats(const std::string& peer_id) const;
+    std::vector<SchedulerTaskInfo> tasks() const;
+    std::vector<SchedulerTaskInfo> peer_tasks(const std::string& peer_id) const;
 
 private:
     struct QueuedSend {
@@ -103,6 +123,7 @@ private:
     void cancel_running_locked(SchedulerTaskId task_id);
     void cancel_queued_locked(SchedulerTaskId task_id, SchedulerEmissions& emissions);
     int running_count_for_peer_locked(const std::string& peer_id) const;
+    SchedulerTaskStatus queued_status_locked(const QueuedSend& item) const;
     void mark_completed(SchedulerTaskId task_id);
     SchedulerCallbacks callbacks() const;
     void flush_emissions(SchedulerEmissions emissions);
@@ -110,6 +131,8 @@ private:
     void emit_log(std::string line);
     void emit_wakeup();
     TransferSnapshot make_pending_snapshot(SchedulerTaskId task_id,
+                                           const std::filesystem::path& source_path) const;
+    TransferSnapshot make_running_snapshot(SchedulerTaskId task_id,
                                            const std::filesystem::path& source_path) const;
     TransferSnapshot make_cancelled_snapshot(SchedulerTaskId task_id,
                                              const std::filesystem::path& source_path) const;

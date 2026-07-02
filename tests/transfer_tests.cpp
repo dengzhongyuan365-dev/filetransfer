@@ -436,6 +436,112 @@ TEST(TransferSchedulerTest, QueuesAndCancelsOfflinePeerSend) {
     stats = scheduler.peer_stats("peer-1");
     EXPECT_EQ(stats.queued, 0);
     EXPECT_EQ(stats.running, 0);
+    EXPECT_EQ(stats.waiting, 0);
+}
+
+TEST(TransferSchedulerTest, ExposesPerPeerWaitingTasks) {
+    TempDir temp("transfer-scheduler-topology");
+    const auto source = temp.path() / "album.txt";
+    write_text(source, "audio");
+
+    lan::TransferScheduler scheduler;
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = false,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", source);
+    const auto tasks = scheduler.peer_tasks("peer-1");
+
+    ASSERT_EQ(tasks.size(), 1U);
+    EXPECT_EQ(tasks.front().task_id, task_id);
+    EXPECT_EQ(tasks.front().peer_id, "peer-1");
+    EXPECT_EQ(tasks.front().source_path, source);
+    EXPECT_EQ(tasks.front().status, lan::SchedulerTaskStatus::waiting_for_peer);
+    EXPECT_EQ(tasks.front().snapshot.state, lan::TransferState::pending);
+
+    const auto stats = scheduler.peer_stats("peer-1");
+    EXPECT_EQ(stats.queued, 1);
+    EXPECT_EQ(stats.waiting, 1);
+    EXPECT_EQ(stats.running, 0);
+}
+
+TEST(TransferSchedulerTest, EnqueuesOneSourceForManyPeers) {
+    TempDir temp("transfer-scheduler-many-peers");
+    const auto source = temp.path() / "mix.txt";
+    write_text(source, "audio");
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+
+    const auto task_ids = scheduler.enqueue_send_to_peers({"peer-1", "peer-2", "peer-1", ""}, source);
+
+    ASSERT_EQ(task_ids.size(), 2U);
+    ASSERT_EQ(snapshots.size(), 2U);
+    EXPECT_EQ(snapshots[0].peer_id, "peer-1");
+    EXPECT_EQ(snapshots[1].peer_id, "peer-2");
+
+    const auto peer1_tasks = scheduler.peer_tasks("peer-1");
+    const auto peer2_tasks = scheduler.peer_tasks("peer-2");
+    ASSERT_EQ(peer1_tasks.size(), 1U);
+    ASSERT_EQ(peer2_tasks.size(), 1U);
+    EXPECT_EQ(peer1_tasks.front().task_id, task_ids[0]);
+    EXPECT_EQ(peer2_tasks.front().task_id, task_ids[1]);
+    EXPECT_EQ(peer1_tasks.front().status, lan::SchedulerTaskStatus::waiting_for_peer);
+    EXPECT_EQ(peer2_tasks.front().status, lan::SchedulerTaskStatus::waiting_for_peer);
+}
+
+TEST(TransferSchedulerTest, MovesQueuedTaskBetweenPeers) {
+    TempDir temp("transfer-scheduler-move");
+    const auto source = temp.path() / "song.txt";
+    write_text(source, "audio");
+
+    std::vector<lan::SchedulerSnapshot> snapshots;
+    lan::TransferScheduler scheduler(lan::SchedulerCallbacks{
+        .on_snapshot = [&snapshots](lan::SchedulerSnapshot snapshot) {
+            snapshots.push_back(std::move(snapshot));
+        },
+        .on_log = {},
+        .on_wakeup = {},
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-1",
+        .name = "Peer 1",
+        .host = "127.0.0.1",
+        .port = 39123,
+        .online = false,
+        .linked = true,
+    });
+    scheduler.upsert_peer(lan::SchedulerPeer{
+        .id = "peer-2",
+        .name = "Peer 2",
+        .host = "127.0.0.1",
+        .port = 39124,
+        .online = false,
+        .linked = true,
+    });
+
+    const auto task_id = scheduler.enqueue_send("peer-1", source);
+    ASSERT_TRUE(scheduler.move_queued_task(task_id, "peer-2"));
+
+    EXPECT_TRUE(scheduler.peer_tasks("peer-1").empty());
+    const auto peer2_tasks = scheduler.peer_tasks("peer-2");
+    ASSERT_EQ(peer2_tasks.size(), 1U);
+    EXPECT_EQ(peer2_tasks.front().task_id, task_id);
+    EXPECT_EQ(peer2_tasks.front().peer_id, "peer-2");
+    ASSERT_EQ(snapshots.size(), 2U);
+    EXPECT_EQ(snapshots.back().peer_id, "peer-2");
+    EXPECT_FALSE(scheduler.move_queued_task(999999, "peer-1"));
 }
 
 TEST(TransferSchedulerTest, StartsQueuedSendWhenPeerComesOnline) {

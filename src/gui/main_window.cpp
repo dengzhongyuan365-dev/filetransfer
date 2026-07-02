@@ -1631,16 +1631,19 @@ QWidget* MainWindow::make_peer_card(const Peer& peer) {
     if (scheduler_ != nullptr) {
         const auto stats = scheduler_->peer_stats(to_string(peer.id));
         if (stats.running > 0 || stats.queued > 0) {
-            meta_text += QStringLiteral(" - ");
-            if (stats.running > 0 && stats.queued > 0) {
-                meta_text += QCoreApplication::translate("MainWindow", "%1 running, %2 queued")
-                                 .arg(stats.running)
-                                 .arg(stats.queued);
-            } else if (stats.running > 0) {
-                meta_text += QCoreApplication::translate("MainWindow", "%1 running").arg(stats.running);
-            } else {
-                meta_text += QCoreApplication::translate("MainWindow", "%1 queued").arg(stats.queued);
+            QStringList parts;
+            const auto queued_ready = std::max(0, stats.queued - stats.waiting);
+            if (stats.running > 0) {
+                parts.append(QCoreApplication::translate("MainWindow", "%1 running").arg(stats.running));
             }
+            if (queued_ready > 0) {
+                parts.append(QCoreApplication::translate("MainWindow", "%1 queued").arg(queued_ready));
+            }
+            if (stats.waiting > 0) {
+                parts.append(QCoreApplication::translate("MainWindow", "%1 waiting").arg(stats.waiting));
+            }
+            meta_text += QStringLiteral(" - ");
+            meta_text += parts.join(QStringLiteral(", "));
         }
     }
     auto* meta = new QLabel(meta_text, card);
@@ -2496,7 +2499,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     dismissed_transfer_keys_.remove(key);
     if (snapshot.direction == TransferDirection::send &&
         !peer_id.isEmpty() &&
-        !transfer_peer_ids_.contains(key)) {
+        transfer_peer_ids_.value(key) != peer_id) {
         transfer_peer_ids_.insert(key, peer_id);
     }
     transfer_snapshots_.insert(key, snapshot);

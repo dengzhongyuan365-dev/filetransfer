@@ -345,6 +345,21 @@ Send to the linked machine</source>
         <translation>在线</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1639"/>
+        <source>%1 running</source>
+        <translation>%1 个传输中</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1642"/>
+        <source>%1 queued</source>
+        <translation>%1 个排队中</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1645"/>
+        <source>%1 waiting</source>
+        <translation>%1 个等待设备上线</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1645"/>
         <source>Link</source>
         <translation>连接</translation>
