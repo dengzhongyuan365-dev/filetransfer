@@ -59,7 +59,6 @@
 #include <filesystem>
 #include <future>
 #include <memory>
-#include <optional>
 #include <set>
 #include <utility>
 
@@ -71,6 +70,7 @@
 #include "gui/transfer_card.h"
 #include "gui/transfer_events.h"
 #include "gui/transfer_record_matcher.h"
+#include "gui/transfer_record_store.h"
 #include "lan/app/receiver_config.h"
 #include "lan/common/error.h"
 #include "lan/common/size.h"
@@ -340,82 +340,8 @@ std::string display_transfer_name(const TransferSnapshot& snapshot) {
     return QCoreApplication::translate("MainWindow", "Folder transfer").toStdString();
 }
 
-QVariantMap transfer_snapshot_to_settings(const TransferSnapshot& snapshot, const QString& peer_id) {
-    QVariantMap map;
-    map.insert(QStringLiteral("peerId"), peer_id);
-    map.insert(QStringLiteral("transferId"), QVariant::fromValue<qulonglong>(snapshot.transfer_id));
-    map.insert(QStringLiteral("state"), static_cast<int>(snapshot.state));
-    map.insert(QStringLiteral("direction"), static_cast<int>(snapshot.direction));
-    map.insert(QStringLiteral("kind"), static_cast<int>(snapshot.kind));
-    map.insert(QStringLiteral("path"), to_qstring(snapshot.path));
-    map.insert(QStringLiteral("name"), QString::fromStdString(snapshot.name));
-    map.insert(QStringLiteral("currentBytes"), QVariant::fromValue<qulonglong>(snapshot.current_bytes));
-    map.insert(QStringLiteral("totalBytes"), QVariant::fromValue<qulonglong>(snapshot.total_bytes));
-    map.insert(QStringLiteral("processedFiles"), QVariant::fromValue<qulonglong>(snapshot.processed_files));
-    map.insert(QStringLiteral("totalFiles"), QVariant::fromValue<qulonglong>(snapshot.total_files));
-    map.insert(QStringLiteral("skippedFiles"), QVariant::fromValue<qulonglong>(snapshot.skipped_files));
-    map.insert(QStringLiteral("fullFiles"), QVariant::fromValue<qulonglong>(snapshot.full_files));
-    map.insert(QStringLiteral("deltaFiles"), QVariant::fromValue<qulonglong>(snapshot.delta_files));
-    map.insert(QStringLiteral("payloadBytes"), QVariant::fromValue<qulonglong>(snapshot.payload_bytes));
-    map.insert(QStringLiteral("completionStatus"), static_cast<int>(snapshot.completion_status));
-    map.insert(QStringLiteral("resumedFrom"), QVariant::fromValue<qulonglong>(snapshot.resumed_from));
-    map.insert(QStringLiteral("elapsedSeconds"), snapshot.elapsed_seconds);
-    map.insert(QStringLiteral("source"), static_cast<int>(snapshot.source));
-    if (snapshot.error.has_value()) {
-        map.insert(QStringLiteral("errorCode"), static_cast<int>(snapshot.error->code));
-        map.insert(QStringLiteral("errorMessage"), to_qstring(snapshot.error->message));
-        map.insert(QStringLiteral("errorCategory"), static_cast<int>(snapshot.error_category));
-        map.insert(QStringLiteral("retryable"), snapshot.retryable);
-        map.insert(QStringLiteral("userActionRequired"), snapshot.user_action_required);
-    }
-    return map;
-}
-
-std::optional<TransferSnapshot> transfer_snapshot_from_settings(const QVariantMap& map, std::uint64_t restored_id) {
-    const auto name = map.value(QStringLiteral("name")).toString();
-    const auto path = map.value(QStringLiteral("path")).toString();
-    if (name.isEmpty() && path.isEmpty()) {
-        return std::nullopt;
-    }
-
-    TransferSnapshot snapshot;
-    snapshot.transfer_id = restored_id;
-    snapshot.state = static_cast<TransferState>(map.value(QStringLiteral("state")).toInt());
-    if (!is_terminal_state(snapshot.state)) {
-        snapshot.state = TransferState::cancelled;
-        snapshot.error = Error{
-            ErrorCode::cancelled,
-            QCoreApplication::translate("MainWindow", "Interrupted when the app closed.").toStdString(),
-        };
-        snapshot.error_category = ErrorCategory::cancellation;
-        snapshot.retryable = true;
-    }
-    snapshot.direction = static_cast<TransferDirection>(map.value(QStringLiteral("direction")).toInt());
-    snapshot.kind = static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt());
-    snapshot.path = std::filesystem::path(to_string(path));
-    snapshot.name = to_string(name);
-    snapshot.current_bytes = map.value(QStringLiteral("currentBytes")).toULongLong();
-    snapshot.total_bytes = map.value(QStringLiteral("totalBytes")).toULongLong();
-    snapshot.processed_files = map.value(QStringLiteral("processedFiles")).toULongLong();
-    snapshot.total_files = map.value(QStringLiteral("totalFiles")).toULongLong();
-    snapshot.skipped_files = map.value(QStringLiteral("skippedFiles")).toULongLong();
-    snapshot.full_files = map.value(QStringLiteral("fullFiles")).toULongLong();
-    snapshot.delta_files = map.value(QStringLiteral("deltaFiles")).toULongLong();
-    snapshot.payload_bytes = map.value(QStringLiteral("payloadBytes")).toULongLong();
-    snapshot.completion_status = static_cast<TransferCompletionStatus>(map.value(QStringLiteral("completionStatus")).toInt());
-    snapshot.resumed_from = map.value(QStringLiteral("resumedFrom")).toULongLong();
-    snapshot.elapsed_seconds = map.value(QStringLiteral("elapsedSeconds")).toDouble();
-    snapshot.source = static_cast<FileTransferSource>(map.value(QStringLiteral("source")).toInt());
-    if (map.contains(QStringLiteral("errorMessage"))) {
-        snapshot.error = Error{
-            static_cast<ErrorCode>(map.value(QStringLiteral("errorCode")).toInt()),
-            to_string(map.value(QStringLiteral("errorMessage")).toString()),
-        };
-        snapshot.error_category = static_cast<ErrorCategory>(map.value(QStringLiteral("errorCategory")).toInt());
-        snapshot.retryable = map.value(QStringLiteral("retryable")).toBool();
-        snapshot.user_action_required = map.value(QStringLiteral("userActionRequired")).toBool();
-    }
-    return snapshot;
+QString interrupted_transfer_message() {
+    return QCoreApplication::translate("MainWindow", "Interrupted when the app closed.");
 }
 
 QIcon application_icon() {
@@ -1575,12 +1501,13 @@ void MainWindow::load_persisted_transfers() {
         for (const auto& key : settings.childKeys()) {
             map.insert(key, settings.value(key));
         }
-        auto snapshot = transfer_snapshot_from_settings(map, restored_base + static_cast<std::uint64_t>(i + 1));
-        const auto peer_id = map.value(QStringLiteral("peerId")).toString();
-        if (!snapshot.has_value() || peer_id.isEmpty()) {
+        const auto record = transfer_record_from_settings(map,
+                                                          restored_base + static_cast<std::uint64_t>(i + 1),
+                                                          interrupted_transfer_message());
+        if (!record.has_value()) {
             continue;
         }
-        transfer_model_.upsert(snapshot.value(), peer_id);
+        transfer_model_.upsert(record->snapshot, record->peer_id);
     }
     settings.endArray();
     refresh_transfer_list();
@@ -1601,17 +1528,12 @@ void MainWindow::save_persisted_transfers() {
     for (int i = 0; i < entries.size(); ++i) {
         settings.setArrayIndex(i);
         settings.remove(QString{});
-        auto snapshot = entries.at(i).snapshot;
-        if (!is_terminal_state(snapshot.state)) {
-            snapshot.state = TransferState::cancelled;
-            snapshot.error = Error{
-                ErrorCode::cancelled,
-                QCoreApplication::translate("MainWindow", "Interrupted when the app closed.").toStdString(),
-            };
-            snapshot.error_category = ErrorCategory::cancellation;
-            snapshot.retryable = true;
-        }
-        const auto map = transfer_snapshot_to_settings(snapshot, transfer_model_.peer_id(entries.at(i).key));
+        const auto map = transfer_record_to_settings(
+            PersistedTransferRecord{
+                .peer_id = transfer_model_.peer_id(entries.at(i).key),
+                .snapshot = entries.at(i).snapshot,
+            },
+            interrupted_transfer_message());
         for (auto it = map.cbegin(); it != map.cend(); ++it) {
             settings.setValue(it.key(), it.value());
         }

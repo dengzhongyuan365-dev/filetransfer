@@ -2,6 +2,7 @@
 
 #include "gui/transfer_list_model.h"
 #include "gui/transfer_record_matcher.h"
+#include "gui/transfer_record_store.h"
 
 namespace {
 
@@ -97,6 +98,36 @@ TEST(TransferRecordMatcherTest, RejectsDifferentPeerOrMetadata) {
                                                            QStringLiteral("node-a"),
                                                            QStringLiteral("other.txt"),
                                                            request));
+}
+
+TEST(TransferRecordStoreTest, ConvertsRunningSnapshotsToRetryableCancelledRecords) {
+    auto snapshot = make_snapshot(7, lan::TransferDirection::send);
+    snapshot.state = lan::TransferState::running;
+    snapshot.path = "/tmp/demo.txt";
+
+    const auto map = lan::gui::transfer_record_to_settings(
+        lan::gui::PersistedTransferRecord{.peer_id = QStringLiteral("node-a"), .snapshot = snapshot},
+        QStringLiteral("interrupted"));
+    const auto record = lan::gui::transfer_record_from_settings(map, 700, QStringLiteral("interrupted"));
+
+    ASSERT_TRUE(record.has_value());
+    EXPECT_EQ(record->peer_id, QStringLiteral("node-a"));
+    EXPECT_EQ(record->snapshot.transfer_id, 700);
+    EXPECT_EQ(record->snapshot.state, lan::TransferState::cancelled);
+    ASSERT_TRUE(record->snapshot.error.has_value());
+    EXPECT_EQ(record->snapshot.error->message, "interrupted");
+    EXPECT_TRUE(record->snapshot.retryable);
+}
+
+TEST(TransferRecordStoreTest, RejectsRecordsWithoutPeerOrDisplayablePath) {
+    QVariantMap missing_peer;
+    missing_peer.insert(QStringLiteral("name"), QStringLiteral("demo.txt"));
+
+    QVariantMap missing_name_and_path;
+    missing_name_and_path.insert(QStringLiteral("peerId"), QStringLiteral("node-a"));
+
+    EXPECT_FALSE(lan::gui::transfer_record_from_settings(missing_peer, 1, QStringLiteral("interrupted")).has_value());
+    EXPECT_FALSE(lan::gui::transfer_record_from_settings(missing_name_and_path, 2, QStringLiteral("interrupted")).has_value());
 }
 
 }  // namespace
