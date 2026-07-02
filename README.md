@@ -87,7 +87,7 @@ build/tests/unit_tests
 ctest --test-dir build --output-on-failure
 ```
 
-当前测试数量：`66` 个。
+当前测试数量：`67` 个。
 
 ## GUI 使用方式
 
@@ -172,6 +172,10 @@ scripts/package_deb.sh
 协议说明见：
 
 - [协议文档](docs/protocol.md)
+
+设计和架构说明见：
+
+- [设计与架构文档](docs/design-architecture.zh_CN.md)
 
 技术优化路线见：
 

@@ -2,3 +2,4 @@ build/
 *.part
 _CPack_Packages/
 *.deb
+.codegraph/
