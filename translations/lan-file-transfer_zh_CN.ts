@@ -539,6 +539,11 @@ Send to selected machine(s)</source>
         <translation>已向 %1 个地址发送扩展发现探测。</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1428"/>
+        <source>Machine went offline: %1</source>
+        <translation>设备已离线：%1</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1409"/>
         <source>Enter an IPv4 address in the search box, for example 10.8.7.203.</source>
         <translation>请在搜索框输入 IPv4 地址，例如 10.8.7.203。</translation>

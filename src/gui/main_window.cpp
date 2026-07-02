@@ -74,6 +74,8 @@ namespace {
 
 constexpr int kMaxRememberedPeers = 10;
 constexpr int kMaxReceiveHistory = 100;
+constexpr int kPresenceProbeMs = 5000;
+constexpr qint64 kPeerStaleMs = 15000;
 
 QString snapshot_key(const TransferSnapshot& snapshot) {
     const auto direction = snapshot.direction == TransferDirection::receive ? "receive" : "send";
@@ -1055,6 +1057,15 @@ void MainWindow::setup_discovery() {
     connect(discovery_.get(), &QUdpSocket::readyRead, this, [this] {
         read_discovery();
     });
+
+    auto* presence = new QTimer(this);
+    connect(presence, &QTimer::timeout, this, [this] {
+        refresh_peer_presence();
+        if (receiver_ready_) {
+            send_discovery_probe(false);
+        }
+    });
+    presence->start(kPresenceProbeMs);
 }
 
 QString MainWindow::load_or_create_node_id() {
@@ -1387,6 +1398,22 @@ void MainWindow::search_peers() {
     wake_scheduler();
     refresh_peer_list();
     status_->setText(QCoreApplication::translate("MainWindow", "Searching..."));
+    send_discovery_probe(true);
+    QTimer::singleShot(1200, this, [this] {
+        if (peers_.isEmpty()) {
+            status_->setText(QCoreApplication::translate("MainWindow", "No machines found."));
+            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: no machines found."));
+        } else {
+            status_->setText(QCoreApplication::translate("MainWindow", "%1 machine(s) found.").arg(peers_.size()));
+            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(peers_.size()));
+        }
+    });
+}
+
+void MainWindow::send_discovery_probe(bool extended) {
+    if (discovery_ == nullptr) {
+        return;
+    }
     const auto message = QJsonDocument(QJsonObject{
         {"protocol", kProtocol},
         {"type", "discover"},
@@ -1400,9 +1427,14 @@ void MainWindow::search_peers() {
         discovery_->writeDatagram(message, target, kDiscoveryPort);
         target_labels.push_back(target.toString());
     }
-    log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1 to %2")
-                  .arg(kDiscoveryPort)
-                  .arg(target_labels.join(QStringLiteral(", "))));
+    if (extended) {
+        log_event(QCoreApplication::translate("MainWindow", "Broadcast discover on UDP %1 to %2")
+                      .arg(kDiscoveryPort)
+                      .arg(target_labels.join(QStringLiteral(", "))));
+    }
+    if (!extended) {
+        return;
+    }
     const auto extended_targets = extended_discovery_targets();
     for (const auto& target : extended_targets) {
         discovery_->writeDatagram(message, target, kDiscoveryPort);
@@ -1410,15 +1442,30 @@ void MainWindow::search_peers() {
     if (!extended_targets.isEmpty()) {
         log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(extended_targets.size()));
     }
-    QTimer::singleShot(1200, this, [this] {
-        if (peers_.isEmpty()) {
-            status_->setText(QCoreApplication::translate("MainWindow", "No machines found."));
-            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: no machines found."));
-        } else {
-            status_->setText(QCoreApplication::translate("MainWindow", "%1 machine(s) found.").arg(peers_.size()));
-            log_event(QCoreApplication::translate("MainWindow", "Discovery finished: %1 machine(s) found.").arg(peers_.size()));
+}
+
+void MainWindow::refresh_peer_presence() {
+    const auto now = now_ms();
+    bool changed = false;
+    for (auto it = peers_.begin(); it != peers_.end(); ++it) {
+        auto& peer = it.value();
+        if (!peer.online ||
+            peer.last_seen_ms <= 0 ||
+            peer.id.startsWith(QStringLiteral("manual:")) ||
+            now - peer.last_seen_ms <= kPeerStaleMs) {
+            continue;
         }
-    });
+        peer.online = false;
+        changed = true;
+        sync_scheduler_peer(peer);
+        log_event(QCoreApplication::translate("MainWindow", "Machine went offline: %1").arg(peer.name));
+    }
+    if (!changed) {
+        return;
+    }
+    wake_scheduler();
+    update_linked_header();
+    refresh_peer_list();
 }
 
 void MainWindow::add_manual_peer_from_filter() {

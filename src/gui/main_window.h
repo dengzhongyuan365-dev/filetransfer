@@ -69,6 +69,8 @@ private:
     void show_settings();
 
     void search_peers();
+    void send_discovery_probe(bool extended);
+    void refresh_peer_presence();
     void add_manual_peer_from_filter();
     void read_discovery();
     void reply_to_discovery(const QHostAddress& target, quint16 port);
