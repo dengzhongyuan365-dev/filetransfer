@@ -12,3 +12,23 @@ target_link_libraries(unit_tests PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(unit_tests)
+
+find_package(Qt6 COMPONENTS Core QUIET)
+
+if(Qt6_FOUND)
+    add_executable(gui_unit_tests
+        gui_device_manager_tests.cpp
+        ../src/gui/device_manager.cpp
+    )
+
+    target_include_directories(gui_unit_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(gui_unit_tests PRIVATE
+        Qt6::Core
+        GTest::gtest_main
+    )
+
+    gtest_discover_tests(gui_unit_tests)
+endif()

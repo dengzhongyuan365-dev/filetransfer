@@ -34,8 +34,11 @@ void DeviceManager::insert_peer(const Peer& peer) {
     }
     const auto duplicate_id = find_peer_id_by_endpoint(peer.host, peer.port);
     if (!duplicate_id.isEmpty() && duplicate_id != peer.id) {
-        const auto duplicate = peers_.value(duplicate_id);
+        auto duplicate = peers_.value(duplicate_id);
         if (duplicate.last_linked_ms > peer.last_linked_ms) {
+            duplicate.trusted = duplicate.trusted || inserted.trusted;
+            duplicate.trusted_at_ms = std::max(duplicate.trusted_at_ms, inserted.trusted_at_ms);
+            peers_.insert(duplicate_id, duplicate);
             return;
         }
         inserted.trusted = inserted.trusted || duplicate.trusted;
