@@ -1734,11 +1734,20 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
     auto* actions = new QHBoxLayout();
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(4);
+    const auto can_change_target = can_change_transfer_target(snapshot);
     auto* resume = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_ArrowForward), QCoreApplication::translate("MainWindow", "Resume transfer"), card);
+        QApplication::style()->standardIcon(can_change_target ? QStyle::SP_ComputerIcon : QStyle::SP_ArrowForward),
+        can_change_target ? QCoreApplication::translate("MainWindow", "Change target machine")
+                          : QCoreApplication::translate("MainWindow", "Resume transfer"),
+        card);
     resume->setObjectName("taskResumeButton");
-    resume->setEnabled(can_resume_transfer(snapshot));
+    resume->setEnabled(can_change_target || can_resume_transfer(snapshot));
     connect(resume, &QToolButton::clicked, this, [this, key] {
+        const auto it = transfer_snapshots_.find(key);
+        if (it != transfer_snapshots_.end() && can_change_transfer_target(it.value())) {
+            change_transfer_target(key);
+            return;
+        }
         resume_transfer(key);
     });
     auto* open = make_task_tool_button(
@@ -1872,6 +1881,13 @@ bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
 
     std::error_code ec;
     return std::filesystem::exists(snapshot.path, ec);
+}
+
+bool MainWindow::can_change_transfer_target(const TransferSnapshot& snapshot) const {
+    return scheduler_ != nullptr &&
+           snapshot.direction == TransferDirection::send &&
+           snapshot.state == TransferState::pending &&
+           linked_peer_count() > 1;
 }
 
 QString MainWindow::transfer_open_dir(const TransferSnapshot& snapshot) const {
@@ -2056,6 +2072,93 @@ void MainWindow::resume_transfer(const QString& key) {
     if (scheduler_ != nullptr) {
         scheduler_->enqueue_send(to_string(peer_id), std::filesystem::path(to_string(path)));
     }
+}
+
+void MainWindow::change_transfer_target(const QString& key) {
+    const auto it = transfer_snapshots_.find(key);
+    if (it == transfer_snapshots_.end() || !can_change_transfer_target(it.value())) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer target cannot be changed."));
+        return;
+    }
+
+    const auto current_peer_id = transfer_peer_ids_.value(key, active_peer_id_);
+    QDialog dialog(this);
+    dialog.setWindowTitle(QCoreApplication::translate("MainWindow", "Change target machine"));
+    dialog.resize(340, 300);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(14, 14, 14, 14);
+    layout->setSpacing(9);
+
+    auto* title = new QLabel(QCoreApplication::translate("MainWindow", "Change target machine"), &dialog);
+    title->setObjectName("dialogTitle");
+    auto* hint = new QLabel(QCoreApplication::translate("MainWindow", "Only queued sends can be moved to another linked machine."), &dialog);
+    hint->setObjectName("mutedText");
+    hint->setWordWrap(true);
+
+    auto* choices = new QWidget(&dialog);
+    auto* choices_layout = new QVBoxLayout(choices);
+    choices_layout->setContentsMargins(0, 0, 0, 0);
+    choices_layout->setSpacing(6);
+
+    QMap<QString, QRadioButton*> radios;
+    for (const auto& id : linked_peer_ids()) {
+        const auto peer = peers_.value(id);
+        auto* radio = new QRadioButton(QStringLiteral("%1  %2:%3").arg(peer.name, peer.host).arg(peer.port), choices);
+        radio->setChecked(id == current_peer_id);
+        radios.insert(id, radio);
+        choices_layout->addWidget(radio);
+    }
+    choices_layout->addStretch(1);
+
+    auto* buttons = new QHBoxLayout();
+    auto* cancel = new QPushButton(QCoreApplication::translate("MainWindow", "Cancel"), &dialog);
+    cancel->setObjectName("secondaryButton");
+    auto* save = new QPushButton(QCoreApplication::translate("MainWindow", "Move"), &dialog);
+    save->setObjectName("primaryButton");
+    buttons->addStretch(1);
+    buttons->addWidget(cancel);
+    buttons->addWidget(save);
+
+    layout->addWidget(title);
+    layout->addWidget(hint);
+    layout->addWidget(choices, 1);
+    layout->addLayout(buttons);
+
+    connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(save, &QPushButton::clicked, this, [this, &dialog, radios, key, current_peer_id] {
+        QString next_peer_id;
+        for (auto it = radios.cbegin(); it != radios.cend(); ++it) {
+            if (it.value()->isChecked()) {
+                next_peer_id = it.key();
+                break;
+            }
+        }
+        if (next_peer_id.isEmpty()) {
+            QMessageBox::warning(this,
+                                 QCoreApplication::translate("MainWindow", "Change target machine"),
+                                 QCoreApplication::translate("MainWindow", "Choose a linked machine."));
+            return;
+        }
+        if (next_peer_id == current_peer_id) {
+            dialog.accept();
+            return;
+        }
+        const auto snapshot_it = transfer_snapshots_.find(key);
+        if (snapshot_it == transfer_snapshots_.end() ||
+            scheduler_ == nullptr ||
+            !scheduler_->move_queued_task(snapshot_it.value().transfer_id, to_string(next_peer_id))) {
+            QMessageBox::warning(this,
+                                 QCoreApplication::translate("MainWindow", "Change target machine"),
+                                 QCoreApplication::translate("MainWindow", "Only queued sends can be moved."));
+            return;
+        }
+        log_event(QCoreApplication::translate("MainWindow", "Moved queued transfer to %1.")
+                      .arg(peers_.value(next_peer_id).name));
+        dialog.accept();
+    });
+
+    dialog.exec();
 }
 
 void MainWindow::stop_transfer(const QString& key) {
@@ -2647,6 +2750,14 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     }
     transfer_snapshots_.insert(key, snapshot);
     if (!transfer_belongs_to_active_peer(key)) {
+        auto* old = transfer_cards_.take(key);
+        if (old != nullptr) {
+            transfers_layout_->removeWidget(old);
+            old->deleteLater();
+        }
+        if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
+            empty_transfer_label_->show();
+        }
         return;
     }
     if (empty_transfer_label_ != nullptr) {

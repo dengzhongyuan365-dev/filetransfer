@@ -428,6 +428,36 @@ Send to selected machine(s)</source>
         <translation>这个传输任务没有运行。</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="2044"/>
+        <source>This transfer target cannot be changed.</source>
+        <translation>这个传输任务不能更换目标设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2060"/>
+        <source>Only queued sends can be moved to another linked machine.</source>
+        <translation>只有排队中的发送任务可以移动到另一台已连接设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2080"/>
+        <source>Move</source>
+        <translation>移动</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2105"/>
+        <source>Choose a linked machine.</source>
+        <translation>请选择一台已连接设备。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2116"/>
+        <source>Only queued sends can be moved.</source>
+        <translation>只有排队中的发送任务可以移动。</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="2121"/>
+        <source>Moved queued transfer to %1.</source>
+        <translation>已将排队任务移动到 %1。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="2035"/>
         <source>No active sender for this transfer.</source>
         <translation>这个传输任务没有活动的发送端。</translation>
@@ -547,6 +577,14 @@ Send to selected machine(s)</source>
         <location filename="../src/gui/main_window.cpp" line="1699"/>
         <source>Resume transfer</source>
         <translation>继续传输</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1698"/>
+        <location filename="../src/gui/main_window.cpp" line="2050"/>
+        <location filename="../src/gui/main_window.cpp" line="2058"/>
+        <location filename="../src/gui/main_window.cpp" line="2104"/>
+        <source>Change target machine</source>
+        <translation>更换目标设备</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1778"/>
