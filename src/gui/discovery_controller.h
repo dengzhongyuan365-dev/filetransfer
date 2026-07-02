@@ -25,6 +25,8 @@ struct DiscoveryDatagram {
 
 struct DiscoveryProbeReport {
     QStringList broadcast_targets;
+    QStringList directed_broadcast_targets;
+    QStringList extended_ranges;
     int extended_target_count = 0;
 };
 

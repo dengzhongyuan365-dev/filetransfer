@@ -44,6 +44,10 @@ QList<QHostAddress> discovery_targets() {
     return targets;
 }
 
+QString ipv4_text(quint32 address) {
+    return QHostAddress(address).toString();
+}
+
 bool is_private_ipv4(quint32 address) {
     const auto first = (address >> 24) & 0xffU;
     const auto second = (address >> 16) & 0xffU;
@@ -52,7 +56,14 @@ bool is_private_ipv4(quint32 address) {
            (first == 192U && second == 168U);
 }
 
-QList<QHostAddress> extended_discovery_targets() {
+struct ExtendedDiscoveryTargets {
+    QList<QHostAddress> host_targets;
+    QList<QHostAddress> directed_broadcast_targets;
+    QStringList ranges;
+};
+
+ExtendedDiscoveryTargets extended_discovery_targets() {
+    ExtendedDiscoveryTargets result;
     QList<QHostAddress> targets;
     QSet<QString> seen;
     const auto add_target = [&targets, &seen](quint32 address) {
@@ -67,6 +78,16 @@ QList<QHostAddress> extended_discovery_targets() {
         }
         seen.insert(key);
         targets.push_back(target);
+    };
+    const auto add_broadcast = [&result](quint32 address) {
+        const auto target = QHostAddress(address);
+        const auto key = target.toString();
+        for (const auto& existing : result.directed_broadcast_targets) {
+            if (existing.toString() == key) {
+                return;
+            }
+        }
+        result.directed_broadcast_targets.push_back(target);
     };
 
     const auto interfaces = QNetworkInterface::allInterfaces();
@@ -90,14 +111,19 @@ QList<QHostAddress> extended_discovery_targets() {
             const auto local_subnet = static_cast<int>((local >> 8) & 0xffU);
             const auto begin_subnet = std::max(0, local_subnet - 16);
             const auto end_subnet = std::min(255, local_subnet + 16);
+            result.ranges.push_back(QStringLiteral("%1-%2")
+                                        .arg(ipv4_text(prefix | (static_cast<quint32>(begin_subnet) << 8) | 1U),
+                                             ipv4_text(prefix | (static_cast<quint32>(end_subnet) << 8) | 254U)));
             for (int subnet = begin_subnet; subnet <= end_subnet; ++subnet) {
+                add_broadcast(prefix | (static_cast<quint32>(subnet) << 8) | 255U);
                 for (quint32 host = 1; host <= 254; ++host) {
                     add_target(prefix | (static_cast<quint32>(subnet) << 8) | host);
                 }
             }
         }
     }
-    return targets;
+    result.host_targets = std::move(targets);
+    return result;
 }
 
 }  // namespace
@@ -143,10 +169,15 @@ DiscoveryProbeReport DiscoveryController::send_discovery_probe(const QString& no
     }
 
     const auto extended_targets = extended_discovery_targets();
-    for (const auto& target : extended_targets) {
+    for (const auto& target : extended_targets.directed_broadcast_targets) {
+        socket_->writeDatagram(message, target, kDiscoveryPort);
+        report.directed_broadcast_targets.push_back(target.toString());
+    }
+    for (const auto& target : extended_targets.host_targets) {
         socket_->writeDatagram(message, target, kDiscoveryPort);
     }
-    report.extended_target_count = extended_targets.size();
+    report.extended_ranges = extended_targets.ranges;
+    report.extended_target_count = extended_targets.host_targets.size();
     return report;
 }
 

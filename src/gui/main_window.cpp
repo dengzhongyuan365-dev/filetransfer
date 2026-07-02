@@ -461,20 +461,28 @@ QWidget* MainWindow::build_peer_page() {
 QWidget* MainWindow::build_transfer_page() {
     transfer_page_ = new QWidget(this);
     auto* layout = new QVBoxLayout(transfer_page_);
-    layout->setContentsMargins(24, 22, 24, 18);
+    layout->setContentsMargins(20, 20, 20, 18);
     layout->setSpacing(12);
 
-    linked_label_ = new QLabel(QCoreApplication::translate("MainWindow", "Not linked"), transfer_page_);
+    linked_label_ = new ElidedLabel(QCoreApplication::translate("MainWindow", "Not linked"), transfer_page_);
     linked_label_->setObjectName("title");
     auto* back = new QPushButton(QCoreApplication::translate("MainWindow", "Change"), transfer_page_);
     back->setObjectName("secondaryButton");
     auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
     disconnect->setObjectName("secondaryButton");
 
-    auto* header = new QHBoxLayout();
-    header->addWidget(linked_label_, 1);
-    header->addWidget(disconnect);
-    header->addWidget(back);
+    auto* header = new QVBoxLayout();
+    header->setSpacing(8);
+    auto* title_row = new QHBoxLayout();
+    title_row->setSpacing(8);
+    title_row->addWidget(linked_label_, 1);
+    auto* action_row = new QHBoxLayout();
+    action_row->setSpacing(8);
+    action_row->addStretch(1);
+    action_row->addWidget(disconnect);
+    action_row->addWidget(back);
+    header->addLayout(title_row);
+    header->addLayout(action_row);
 
     drop_panel_ = new DropPanel(transfer_page_);
     drop_panel_->setMinimumHeight(360);
@@ -1192,6 +1200,14 @@ void MainWindow::send_discovery_probe(bool extended) {
     }
     if (extended && report.extended_target_count > 0) {
         log_event(QCoreApplication::translate("MainWindow", "Extended discovery sent to %1 address(es).").arg(report.extended_target_count));
+    }
+    if (extended && !report.directed_broadcast_targets.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Directed subnet broadcast sent to %1")
+                      .arg(report.directed_broadcast_targets.join(QStringLiteral(", "))));
+    }
+    if (extended && !report.extended_ranges.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Extended discovery range: %1")
+                      .arg(report.extended_ranges.join(QStringLiteral(", "))));
     }
 }
 

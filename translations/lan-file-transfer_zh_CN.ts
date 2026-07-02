@@ -569,6 +569,16 @@ Send to selected machine(s)</source>
         <translation>已向 %1 个地址发送扩展发现探测。</translation>
     </message>
     <message>
+        <location filename="../src/gui/main_window.cpp" line="1395"/>
+        <source>Directed subnet broadcast sent to %1</source>
+        <translation>已向 %1 发送定向网段广播</translation>
+    </message>
+    <message>
+        <location filename="../src/gui/main_window.cpp" line="1399"/>
+        <source>Extended discovery range: %1</source>
+        <translation>扩展发现扫描范围：%1</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="1428"/>
         <source>Machine went offline: %1</source>
         <translation>设备已离线：%1</translation>

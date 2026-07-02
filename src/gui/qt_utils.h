@@ -18,6 +18,8 @@ class ElidedLabel final : public QLabel {
 public:
     explicit ElidedLabel(QString text, QWidget* parent = nullptr);
 
+    void setText(const QString& text);
+    QString text() const;
     QSize minimumSizeHint() const override;
 
 protected:

@@ -32,8 +32,21 @@ QString machine_name() {
 }
 
 ElidedLabel::ElidedLabel(QString text, QWidget* parent) : QLabel(parent), full_text_(std::move(text)) {
+    QLabel::setText(full_text_);
     setToolTip(full_text_);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+}
+
+void ElidedLabel::setText(const QString& text) {
+    full_text_ = text;
+    QLabel::setText(text);
+    setToolTip(text);
+    updateGeometry();
+    update();
+}
+
+QString ElidedLabel::text() const {
+    return full_text_;
 }
 
 QSize ElidedLabel::minimumSizeHint() const {

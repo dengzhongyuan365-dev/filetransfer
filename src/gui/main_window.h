@@ -32,6 +32,7 @@ class QVBoxLayout;
 namespace lan::gui {
 
 class DropPanel;
+class ElidedLabel;
 class GuiReceiverEvents;
 
 enum class CloseAction {
@@ -150,7 +151,7 @@ private:
     QListWidget* peer_list_ = nullptr;
     QPushButton* back_to_transfer_ = nullptr;
     QPushButton* target_button_ = nullptr;
-    QLabel* linked_label_ = nullptr;
+    ElidedLabel* linked_label_ = nullptr;
     DropPanel* drop_panel_ = nullptr;
     QVBoxLayout* transfers_layout_ = nullptr;
     QLabel* empty_transfer_label_ = nullptr;

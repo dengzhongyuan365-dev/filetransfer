@@ -12,12 +12,14 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include "gui/qt_utils.h"
+
 namespace lan::gui {
 
 std::optional<SettingsDialogState> edit_settings(QWidget* parent, const SettingsDialogState& state) {
     QDialog dialog(parent);
     dialog.setWindowTitle(QCoreApplication::translate("SettingsDialog", "Settings"));
-    dialog.resize(360, 390);
+    dialog.resize(360, 410);
 
     auto* layout = new QVBoxLayout(&dialog);
     layout->setContentsMargins(14, 14, 14, 14);
@@ -34,9 +36,8 @@ std::optional<SettingsDialogState> edit_settings(QWidget* parent, const Settings
     path_row->setContentsMargins(10, 8, 8, 8);
     path_row->setSpacing(8);
 
-    auto* path = new QLabel(state.receive_dir, path_box);
+    auto* path = new ElidedLabel(state.receive_dir, path_box);
     path->setObjectName("pathLabel");
-    path->setWordWrap(true);
     auto* choose = new QPushButton(QCoreApplication::translate("SettingsDialog", "Choose"), path_box);
     choose->setObjectName("secondaryButton");
     path_row->addWidget(path, 1);
