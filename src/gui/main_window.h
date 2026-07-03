@@ -114,6 +114,9 @@ private:
     void stop_transfer(const QString& key);
     void remove_transfer_card(const QString& key);
     void remove_transfer_snapshot(const QString& key);
+    bool can_bulk_clear_transfer(const TransferSnapshot& snapshot) const;
+    void clear_visible_transfers();
+    void update_clear_transfers_button();
     bool transfer_belongs_to_active_peer(const QString& key) const;
     void clear_transfer_cards();
     void refresh_transfer_list();
@@ -169,6 +172,7 @@ private:
     QListWidget* peer_list_ = nullptr;
     QPushButton* back_to_transfer_ = nullptr;
     QPushButton* target_button_ = nullptr;
+    QPushButton* clear_transfers_button_ = nullptr;
     QLabel* linked_count_label_ = nullptr;
     ElidedLabel* linked_label_ = nullptr;
     DropPanel* drop_panel_ = nullptr;

@@ -598,10 +598,16 @@ QWidget* MainWindow::build_transfer_page() {
     auto* disconnect = new QPushButton(QCoreApplication::translate("MainWindow", "Disconnect"), transfer_page_);
     disconnect->setObjectName("secondaryButton");
     disconnect->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    clear_transfers_button_ = new QPushButton(QCoreApplication::translate("MainWindow", "Clear list"), transfer_page_);
+    clear_transfers_button_->setObjectName("secondaryButton");
+    clear_transfers_button_->setToolTip(QCoreApplication::translate("MainWindow", "Clear completed, failed and cancelled transfers in this machine view."));
+    clear_transfers_button_->setEnabled(false);
+    clear_transfers_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     auto* header = new QHBoxLayout();
     header->setSpacing(8);
     header->addWidget(linked_label_, 1);
+    header->addWidget(clear_transfers_button_, 0, Qt::AlignRight);
     header->addWidget(disconnect, 0, Qt::AlignRight);
     header->addWidget(back, 0, Qt::AlignRight);
 
@@ -621,11 +627,11 @@ QWidget* MainWindow::build_transfer_page() {
     scroll->setObjectName("transferScroll");
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     auto* transfer_list = new QWidget(scroll);
     transfer_list->setObjectName("transferListSurface");
-    transfer_list->setMinimumWidth(380);
+    transfer_list->setMinimumWidth(0);
     transfer_list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     transfers_layout_ = new QVBoxLayout(transfer_list);
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
@@ -657,6 +663,9 @@ QWidget* MainWindow::build_transfer_page() {
     });
     connect(target_button_, &QPushButton::clicked, this, [this] {
         show_send_targets();
+    });
+    connect(clear_transfers_button_, &QPushButton::clicked, this, [this] {
+        clear_visible_transfers();
     });
     connect(disconnect, &QPushButton::clicked, this, [this] {
         disconnect_peer();
@@ -918,107 +927,6 @@ void MainWindow::apply_style() {
             border-color: #e2e7ef;
             color: #9aa3b2;
         }
-        #taskControlButton, #taskOpenButton, #taskRemoveButton {
-            min-width: 24px;
-            max-width: 24px;
-            min-height: 24px;
-            max-height: 24px;
-            padding: 0;
-            border-radius: 12px;
-            border: 1px solid transparent;
-            background: #f3f4f6;
-        }
-        #taskOpenButton {
-            color: #2563eb;
-        }
-        #taskOpenButton:hover {
-            background: #eef4ff;
-            color: #1d4ed8;
-        }
-        #taskOpenButton:pressed {
-            background: #dbe8ff;
-            color: #1e40af;
-        }
-        #taskOpenButton:disabled {
-            color: #a6adb8;
-            background: #f3f4f6;
-        }
-        #taskControlButton[controlState="resume"] {
-            color: #087443;
-            background: #e7f8ef;
-            border-color: #b8e7cc;
-        }
-        #taskControlButton[controlState="resume"]:hover {
-            background: #d7f2e4;
-            color: #06643a;
-            border-color: #8ed6ad;
-        }
-        #taskControlButton[controlState="resume"]:pressed {
-            background: #d4f1e1;
-            color: #055730;
-        }
-        #taskControlButton[controlState="change"] {
-            color: #1d4ed8;
-            background: #eaf1ff;
-            border-color: #bed2ff;
-        }
-        #taskControlButton[controlState="change"]:hover {
-            background: #dce9ff;
-            color: #1e40af;
-            border-color: #9dbdff;
-        }
-        #taskControlButton[controlState="change"]:pressed {
-            background: #c9dcff;
-            color: #1e3a8a;
-        }
-        #taskControlButton[controlState="pause"] {
-            color: #7c4a03;
-            background: #fff4d6;
-            border-color: #f5d98b;
-        }
-        #taskControlButton[controlState="pause"]:hover {
-            background: #ffedb3;
-            color: #623b05;
-            border-color: #e7c662;
-        }
-        #taskControlButton[controlState="pause"]:pressed {
-            background: #ffe49a;
-            color: #523006;
-        }
-        #taskControlButton[controlState="stop"] {
-            color: #9f2f2f;
-            background: #fdecec;
-            border-color: #f2b7b7;
-        }
-        #taskControlButton[controlState="stop"]:hover {
-            background: #fbdada;
-            color: #8a2424;
-            border-color: #e89b9b;
-        }
-        #taskControlButton[controlState="stop"]:pressed {
-            background: #f9dada;
-            color: #7f1d1d;
-        }
-        #taskControlButton:disabled {
-            color: #a6adb8;
-            background: #f3f4f6;
-            border-color: transparent;
-        }
-        #taskRemoveButton {
-            color: #687386;
-        }
-        #taskRemoveButton:hover {
-            background: #eef2f7;
-            color: #1e2430;
-        }
-        #taskRemoveButton:pressed {
-            background: #dfe5ee;
-            color: #111827;
-        }
-        #taskRemoveButton:disabled {
-            color: #a6adb8;
-            background: #f3f4f6;
-        }
     )";
 
     if (dark) {
@@ -1180,72 +1088,6 @@ void MainWindow::apply_style() {
             #secondaryButton:pressed {
                 background: #202631;
                 border-color: #59657a;
-            }
-            #taskControlButton, #taskOpenButton, #taskRemoveButton {
-                background: #2a303d;
-                border-color: transparent;
-            }
-            #taskOpenButton {
-                color: #8bb7ff;
-            }
-            #taskOpenButton:hover {
-                background: #1d355f;
-                color: #b6d2ff;
-            }
-            #taskControlButton[controlState="resume"] {
-                color: #8ff0b7;
-                background: #173625;
-                border-color: #24543a;
-            }
-            #taskControlButton[controlState="resume"]:hover {
-                background: #1f4731;
-                color: #b6f6cd;
-            }
-            #taskControlButton[controlState="change"] {
-                color: #9dc2ff;
-                background: #172a4c;
-                border-color: #294775;
-            }
-            #taskControlButton[controlState="change"]:hover {
-                background: #1d355f;
-                color: #c5dbff;
-            }
-            #taskControlButton[controlState="change"]:pressed {
-                background: #14294d;
-                color: #d9e8ff;
-            }
-            #taskControlButton[controlState="pause"] {
-                color: #ffd987;
-                background: #3d2f12;
-                border-color: #5c4618;
-            }
-            #taskControlButton[controlState="pause"]:hover {
-                background: #4b3a17;
-                color: #ffe6a9;
-            }
-            #taskControlButton[controlState="pause"]:pressed {
-                background: #35270e;
-                color: #ffecc0;
-            }
-            #taskControlButton[controlState="stop"] {
-                color: #ffaaa5;
-                background: #4a2022;
-                border-color: #6a3033;
-            }
-            #taskControlButton[controlState="stop"]:hover {
-                background: #5a272a;
-                color: #ffc3bf;
-            }
-            #taskRemoveButton {
-                color: #b7c0ce;
-            }
-            #taskRemoveButton:hover {
-                background: #343b4a;
-                color: #f1f4f8;
-            }
-            #taskControlButton:disabled, #taskOpenButton:disabled, #taskRemoveButton:disabled {
-                color: #6d7583;
-                background: #252b36;
             }
         )";
     }
@@ -2356,6 +2198,12 @@ bool MainWindow::can_clear_transfer(const TransferSnapshot& snapshot) const {
            snapshot.state == TransferState::cancelled;
 }
 
+bool MainWindow::can_bulk_clear_transfer(const TransferSnapshot& snapshot) const {
+    return snapshot.state == TransferState::completed ||
+           snapshot.state == TransferState::failed ||
+           snapshot.state == TransferState::cancelled;
+}
+
 bool MainWindow::can_open_transfer_dir(const TransferSnapshot& snapshot) const {
     return snapshot.direction == TransferDirection::receive &&
            !transfer_open_dir(snapshot).isEmpty();
@@ -2618,6 +2466,39 @@ void MainWindow::remove_transfer_snapshot(const QString& key) {
     if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
         empty_transfer_label_->show();
     }
+    update_clear_transfers_button();
+}
+
+void MainWindow::clear_visible_transfers() {
+    QStringList keys;
+    for (const auto& entry : transfer_model_.visible_entries(devices_.active_peer_id(), has_active_peer())) {
+        if (can_bulk_clear_transfer(entry.snapshot)) {
+            keys.append(entry.key);
+        }
+    }
+    if (keys.isEmpty()) {
+        update_clear_transfers_button();
+        return;
+    }
+    for (const auto& key : keys) {
+        remove_transfer_snapshot(key);
+    }
+    log_event(QCoreApplication::translate("MainWindow", "Cleared %1 transfer(s) from the list.").arg(keys.size()));
+    update_clear_transfers_button();
+}
+
+void MainWindow::update_clear_transfers_button() {
+    if (clear_transfers_button_ == nullptr) {
+        return;
+    }
+    bool has_clearable = false;
+    for (const auto& entry : transfer_model_.visible_entries(devices_.active_peer_id(), has_active_peer())) {
+        if (can_bulk_clear_transfer(entry.snapshot)) {
+            has_clearable = true;
+            break;
+        }
+    }
+    clear_transfers_button_->setEnabled(has_clearable);
 }
 
 bool MainWindow::transfer_belongs_to_active_peer(const QString& key) const {
@@ -2645,6 +2526,7 @@ void MainWindow::refresh_transfer_list() {
     if (empty_transfer_label_ != nullptr) {
         empty_transfer_label_->setVisible(transfer_cards_.isEmpty());
     }
+    update_clear_transfers_button();
 }
 
 void MainWindow::request_link(const QString& id) {
@@ -3204,6 +3086,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
         if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
             empty_transfer_label_->show();
         }
+        update_clear_transfers_button();
         return;
     }
     transfer_model_.upsert(snapshot, peer_id);
@@ -3220,6 +3103,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
         if (transfer_cards_.isEmpty() && empty_transfer_label_ != nullptr) {
             empty_transfer_label_->show();
         }
+        update_clear_transfers_button();
         return;
     }
     if (!is_terminal_state(snapshot.state)) {
@@ -3245,6 +3129,7 @@ void MainWindow::render_transfer_snapshot(const QString& key, const TransferSnap
     auto* card = make_transfer_card(snapshot);
     transfer_cards_.insert(key, card);
     transfers_layout_->insertWidget(0, card);
+    update_clear_transfers_button();
 }
 
 void MainWindow::schedule_transfer_render(const QString& key) {

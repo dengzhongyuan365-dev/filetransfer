@@ -133,6 +133,14 @@
         <translation>目标</translation>
     </message>
     <message>
+        <source>Clear list</source>
+        <translation>清除列表</translation>
+    </message>
+    <message>
+        <source>Clear completed, failed and cancelled transfers in this machine view.</source>
+        <translation>清除当前设备页面中已完成、失败和已取消的传输记录。</translation>
+    </message>
+    <message>
         <location filename="../src/gui/main_window.cpp" line="606"/>
         <source>Change</source>
         <translation>更换</translation>
@@ -439,6 +447,10 @@ Send to selected machine(s)</source>
         <location filename="../src/gui/main_window.cpp" line="2022"/>
         <source>This transfer is not running.</source>
         <translation>这个传输任务没有运行。</translation>
+    </message>
+    <message>
+        <source>Cleared %1 transfer(s) from the list.</source>
+        <translation>已从列表清除 %1 个传输记录。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="2044"/>
@@ -1362,6 +1374,14 @@ Code: %2</source>
         <location filename="../src/gui/transfer_card.cpp" line="49"/>
         <source>Stop transfer</source>
         <translation>停止传输</translation>
+    </message>
+    <message>
+        <source>received</source>
+        <translation>已接收</translation>
+    </message>
+    <message>
+        <source>transferred</source>
+        <translation>已传输</translation>
     </message>
     <message>
         <location filename="../src/gui/transfer_card.cpp" line="80"/>

@@ -1,0 +1,293 @@
+<svg width="1280" height="980" viewBox="0 0 1280 980" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .font { font-family: Inter, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; }
+      .title { font-size: 28px; font-weight: 750; fill: #172033; }
+      .subtitle { font-size: 14px; fill: #667085; }
+      .section-title { font-size: 19px; font-weight: 750; fill: #172033; }
+      .section-copy { font-size: 13px; fill: #667085; }
+      .state-label { font-size: 12px; font-weight: 700; fill: #667085; }
+      .card-title { font-size: 15px; font-weight: 750; fill: #172033; }
+      .card-meta { font-size: 12px; fill: #667085; }
+      .tiny { font-size: 11px; fill: #667085; }
+      .panel { fill: #ffffff; stroke: #dde4ee; stroke-width: 1; }
+      .preview { fill: #ffffff; stroke: #dfe5ee; stroke-width: 1; }
+    </style>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#101828" flood-opacity="0.09"/>
+    </filter>
+    <filter id="buttonShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#101828" flood-opacity="0.18"/>
+    </filter>
+
+    <symbol id="icon-stop" viewBox="0 0 24 24">
+      <rect x="7" y="7" width="10" height="10" rx="2"/>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24">
+      <path d="M9 6 L18 12 L9 18 Z"/>
+    </symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24">
+      <path d="M4 8 H10 L12 10 H20 V18 H4 Z"/>
+    </symbol>
+    <symbol id="icon-clear" viewBox="0 0 24 24">
+      <path d="M8 8 L16 16 M16 8 L8 16" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+
+  <rect width="1280" height="980" fill="#f4f6fa"/>
+  <text x="44" y="54" class="font title">方案 A 颜色强化版本</text>
+  <text x="44" y="84" class="font subtitle">形态不变：仍然是独立圆形图标按钮。这里专门比较颜色策略，让 normal / hover / pressed / disabled 更容易看出来。</text>
+
+  <g transform="translate(44 118)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="250" rx="10"/>
+  </g>
+  <text x="68" y="154" class="font section-title">A1：轻量彩色，保持克制</text>
+  <text x="68" y="178" class="font section-copy">优点是清爽；缺点是 normal 和 hover 差别仍然偏细。适合不想让按钮抢主内容的版本。</text>
+
+  <g transform="translate(68 208)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#fff1f1" stroke="#ffc9c9"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#b42318"/>
+        <circle cx="51" cy="15" r="15" fill="#eff6ff" stroke="#bfdbfe"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#2563eb"/>
+        <circle cx="87" cy="15" r="15" fill="#f8fafc" stroke="#d7dce5"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#64748b"/>
+      </g>
+    </g>
+
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)" filter="url(#buttonShadow)">
+        <circle cx="15" cy="15" r="15" fill="#ffe4e6" stroke="#fb7185"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#9f1239"/>
+        <circle cx="51" cy="15" r="15" fill="#dbeafe" stroke="#60a5fa"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#1d4ed8"/>
+        <circle cx="87" cy="15" r="15" fill="#eef2f7" stroke="#cbd5e1"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#334155"/>
+      </g>
+    </g>
+
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 76)">
+        <circle cx="15" cy="15" r="15" fill="#fecdd3" stroke="#e11d48"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#881337"/>
+        <circle cx="51" cy="15" r="15" fill="#bfdbfe" stroke="#2563eb"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#1e3a8a"/>
+        <circle cx="87" cy="15" r="15" fill="#dbe3ee" stroke="#94a3b8"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#0f172a"/>
+      </g>
+    </g>
+
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9" fill="#fbfcfe"/>
+      <text x="14" y="30" class="font card-title" fill="#667085">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#eef2f7"/>
+      <text x="202" y="33" class="font tiny" font-weight="700" fill="#98a2b3">失败</text>
+      <text x="14" y="82" class="font card-meta">暂无可用操作</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="51" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="87" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(44 398)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="250" rx="10"/>
+  </g>
+  <text x="68" y="434" class="font section-title">A2：实心 hover / pressed，状态最明显</text>
+  <text x="68" y="458" class="font section-copy">Normal 仍然轻，Hover 直接上实心色，Pressed 更深。这套三态最容易感知，适合你说的“要明显”。</text>
+  <rect x="1046" y="420" width="138" height="28" rx="14" fill="#e7f8ef" stroke="#b8e7cc"/>
+  <text x="1075" y="439" class="font tiny" font-weight="700" fill="#087443">推荐</text>
+
+  <g transform="translate(68 488)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#fff1f2" stroke="#fecdd3"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#e11d48"/>
+        <circle cx="51" cy="15" r="15" fill="#eff6ff" stroke="#bfdbfe"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#2563eb"/>
+        <circle cx="87" cy="15" r="15" fill="#f8fafc" stroke="#d7dce5"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#64748b"/>
+      </g>
+    </g>
+
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)" filter="url(#buttonShadow)">
+        <circle cx="15" cy="15" r="15" fill="#e11d48"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="51" cy="15" r="15" fill="#2563eb"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="87" cy="15" r="15" fill="#475569"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 76)">
+        <circle cx="15" cy="15" r="15" fill="#be123c"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="51" cy="15" r="15" fill="#1d4ed8"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="87" cy="15" r="15" fill="#334155"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9" fill="#fbfcfe"/>
+      <text x="14" y="30" class="font card-title" fill="#667085">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#eef2f7"/>
+      <text x="202" y="33" class="font tiny" font-weight="700" fill="#98a2b3">失败</text>
+      <text x="14" y="82" class="font card-meta">暂无可用操作</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="51" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="87" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(44 678)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="250" rx="10"/>
+  </g>
+  <text x="68" y="714" class="font section-title">A3：统一蓝灰体系，只把危险操作标红</text>
+  <text x="68" y="738" class="font section-copy">整体更安静，只有停止使用红色；打开和清除使用同一蓝灰体系。适合长期使用但识别不如 A2 强。</text>
+
+  <g transform="translate(68 768)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#fff1f2" stroke="#fecdd3"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#e11d48"/>
+        <circle cx="51" cy="15" r="15" fill="#f1f5f9" stroke="#cbd5e1"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#2563eb"/>
+        <circle cx="87" cy="15" r="15" fill="#f1f5f9" stroke="#cbd5e1"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#64748b"/>
+      </g>
+    </g>
+
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 74)" filter="url(#buttonShadow)">
+        <circle cx="15" cy="15" r="15" fill="#e11d48"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="51" cy="15" r="15" fill="#eaf1ff" stroke="#93b4ff"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#1d4ed8"/>
+        <circle cx="87" cy="15" r="15" fill="#e2e8f0" stroke="#94a3b8"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#334155"/>
+      </g>
+    </g>
+
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9"/>
+      <text x="14" y="30" class="font card-title">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#fee4e2"/>
+      <text x="205" y="33" class="font tiny" font-weight="700" fill="#b42318">失败</text>
+      <rect x="14" y="52" width="154" height="6" rx="3" fill="#e9eef5"/>
+      <rect x="14" y="52" width="58" height="6" rx="3" fill="#2563eb"/>
+      <text x="14" y="82" class="font card-meta">1.68 MiB/s | 13/152</text>
+      <g transform="translate(148 76)">
+        <circle cx="15" cy="15" r="15" fill="#be123c"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#ffffff"/>
+        <circle cx="51" cy="15" r="15" fill="#c7d8ff" stroke="#4f7ff0"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#1e40af"/>
+        <circle cx="87" cy="15" r="15" fill="#cbd5e1" stroke="#64748b"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#0f172a"/>
+      </g>
+    </g>
+
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="112" rx="9" fill="#fbfcfe"/>
+      <text x="14" y="30" class="font card-title" fill="#667085">Draw</text>
+      <rect x="190" y="16" width="54" height="24" rx="8" fill="#eef2f7"/>
+      <text x="202" y="33" class="font tiny" font-weight="700" fill="#98a2b3">失败</text>
+      <text x="14" y="82" class="font card-meta">暂无可用操作</text>
+      <g transform="translate(148 74)">
+        <circle cx="15" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-stop" x="3" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="51" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-folder" x="39" y="3" width="24" height="24" fill="#a6adb8"/>
+        <circle cx="87" cy="15" r="15" fill="#f1f5f9" stroke="#e2e8f0"/>
+        <use href="#icon-clear" x="75" y="3" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+
+  <text x="44" y="958" class="font subtitle">我的建议：如果你想明显，就选 A2；如果你想克制耐看，就选 A3。A1 只是比当前略好，不建议作为最终版。</text>
+</svg>

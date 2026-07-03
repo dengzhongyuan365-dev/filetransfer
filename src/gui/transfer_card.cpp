@@ -1,13 +1,16 @@
 #include "gui/transfer_card.h"
 
-#include <QApplication>
+#include <QColor>
 #include <QCoreApplication>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPalette>
 #include <QProgressBar>
 #include <QSize>
 #include <QSizePolicy>
-#include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -17,18 +20,202 @@ namespace lan::gui {
 namespace {
 
 constexpr int kTransferCardHeight = 92;
-constexpr int kCompletedTransferCardHeight = 72;
-constexpr int kTransferCardMinWidth = 360;
+constexpr int kCompletedTransferCardHeight = 88;
+constexpr int kTransferCardMinWidth = 280;
+constexpr int kTransferCardPreferredWidth = 360;
+constexpr int kTransferActionRailWidth = 84;
 
-QToolButton* make_task_tool_button(const QIcon& icon,
+enum class TaskButtonGlyph {
+    stop,
+    play,
+    pause,
+    folder,
+    clear,
+};
+
+struct TaskButtonColors {
+    QColor foreground;
+    QColor background;
+    QColor border;
+};
+
+enum class TaskButtonState {
+    normal,
+    hover,
+    pressed,
+    disabled,
+};
+
+TaskButtonState task_button_state(const QToolButton& button) {
+    if (!button.isEnabled()) {
+        return TaskButtonState::disabled;
+    }
+    if (button.isDown()) {
+        return TaskButtonState::pressed;
+    }
+    if (button.underMouse()) {
+        return TaskButtonState::hover;
+    }
+    return TaskButtonState::normal;
+}
+
+bool is_dark_widget(const QWidget& widget) {
+    return widget.palette().color(QPalette::Window).lightness() < 128;
+}
+
+TaskButtonColors action_colors(const QToolButton& button) {
+    const auto state = task_button_state(button);
+    const auto dark = is_dark_widget(button);
+    const auto object = button.objectName();
+    const auto control = button.property("controlState").toString();
+
+    if (state == TaskButtonState::disabled) {
+        return dark
+                   ? TaskButtonColors{QColor("#6d7583"), QColor("#252b36"), QColor(Qt::transparent)}
+                   : TaskButtonColors{QColor("#a6adb8"), QColor("#f3f4f6"), QColor(Qt::transparent)};
+    }
+
+    auto solid = [](const QString& normal_fg,
+                    const QString& normal_bg,
+                    const QString& normal_border,
+                    const QString& hover_bg,
+                    const QString& pressed_bg,
+                    TaskButtonState state) {
+        if (state == TaskButtonState::pressed) {
+            return TaskButtonColors{QColor("#ffffff"), QColor(pressed_bg), QColor(pressed_bg)};
+        }
+        if (state == TaskButtonState::hover) {
+            return TaskButtonColors{QColor("#ffffff"), QColor(hover_bg), QColor(hover_bg)};
+        }
+        return TaskButtonColors{QColor(normal_fg), QColor(normal_bg), QColor(normal_border)};
+    };
+
+    if (object == QStringLiteral("taskOpenButton") || control == QStringLiteral("change")) {
+        return dark
+                   ? solid("#93c5fd", "#172a4c", "#294775", "#3b82f6", "#2563eb", state)
+                   : solid("#2563eb", "#eff6ff", "#bfdbfe", "#2563eb", "#1d4ed8", state);
+    }
+    if (object == QStringLiteral("taskRemoveButton")) {
+        return dark
+                   ? solid("#fda4af", "#4a1720", "#7f1d2d", "#e11d48", "#be123c", state)
+                   : solid("#be123c", "#fff1f2", "#fecdd3", "#e11d48", "#be123c", state);
+    }
+    if (control == QStringLiteral("resume")) {
+        return dark
+                   ? solid("#86efac", "#16351f", "#256f3b", "#16a34a", "#15803d", state)
+                   : solid("#047857", "#ecfdf3", "#bbf7d0", "#059669", "#047857", state);
+    }
+    if (control == QStringLiteral("pause")) {
+        return dark
+                   ? solid("#fcd34d", "#3d2f12", "#5c4618", "#d97706", "#b45309", state)
+                   : solid("#b45309", "#fffbeb", "#fde68a", "#d97706", "#b45309", state);
+    }
+    return dark
+               ? solid("#fda4af", "#4a1720", "#7f1d2d", "#e11d48", "#be123c", state)
+               : solid("#e11d48", "#fff1f2", "#fecdd3", "#e11d48", "#be123c", state);
+}
+
+class TaskToolButton final : public QToolButton {
+public:
+    TaskToolButton(TaskButtonGlyph glyph, const QString& tooltip, QWidget* parent)
+        : QToolButton(parent), glyph_(glyph) {
+        setToolTip(tooltip);
+        setFixedSize(24, 24);
+        setAutoRaise(true);
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setCursor(Qt::PointingHandCursor);
+    }
+
+protected:
+    bool event(QEvent* event) override {
+        const bool handled = QToolButton::event(event);
+        switch (event->type()) {
+            case QEvent::Enter:
+            case QEvent::Leave:
+            case QEvent::MouseButtonPress:
+            case QEvent::MouseButtonRelease:
+            case QEvent::EnabledChange:
+                update();
+                break;
+            default:
+                break;
+        }
+        return handled;
+    }
+
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+        const auto colors = action_colors(*this);
+        const QRectF circle = QRectF(rect()).adjusted(2.0, 2.0, -2.0, -2.0);
+        painter.setPen(QPen(colors.border, 1.0));
+        painter.setBrush(colors.background);
+        painter.drawEllipse(circle);
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(colors.foreground);
+        draw_glyph(painter, colors.foreground);
+    }
+
+private:
+    void draw_glyph(QPainter& painter, const QColor& color) const {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+
+        switch (glyph_) {
+            case TaskButtonGlyph::stop:
+                painter.drawRoundedRect(QRectF(8, 8, 8, 8), 1.8, 1.8);
+                break;
+            case TaskButtonGlyph::play: {
+                QPainterPath path;
+                path.moveTo(9.2, 7.1);
+                path.lineTo(17.2, 12.0);
+                path.lineTo(9.2, 16.9);
+                path.closeSubpath();
+                painter.drawPath(path);
+                break;
+            }
+            case TaskButtonGlyph::pause:
+                painter.drawRoundedRect(QRectF(8.0, 7.0, 3.2, 10.0), 1.1, 1.1);
+                painter.drawRoundedRect(QRectF(12.8, 7.0, 3.2, 10.0), 1.1, 1.1);
+                break;
+            case TaskButtonGlyph::folder: {
+                QPainterPath path;
+                path.moveTo(5.0, 9.0);
+                path.lineTo(10.0, 9.0);
+                path.lineTo(11.8, 11.0);
+                path.lineTo(19.0, 11.0);
+                path.lineTo(19.0, 17.2);
+                path.quadTo(19.0, 18.0, 18.2, 18.0);
+                path.lineTo(5.8, 18.0);
+                path.quadTo(5.0, 18.0, 5.0, 17.2);
+                path.closeSubpath();
+                painter.drawPath(path);
+
+                painter.setBrush(color.lighter(122));
+                painter.drawRoundedRect(QRectF(5.0, 11.2, 14.0, 6.8), 1.5, 1.5);
+                break;
+            }
+            case TaskButtonGlyph::clear:
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap));
+                painter.drawLine(QPointF(8.2, 8.2), QPointF(15.8, 15.8));
+                painter.drawLine(QPointF(15.8, 8.2), QPointF(8.2, 15.8));
+                break;
+        }
+    }
+
+    TaskButtonGlyph glyph_ = TaskButtonGlyph::stop;
+};
+
+QToolButton* make_task_tool_button(TaskButtonGlyph glyph,
                                    const QString& tooltip,
                                    QWidget* parent) {
-    auto* button = new QToolButton(parent);
-    button->setIcon(icon);
-    button->setIconSize(QSize(12, 12));
-    button->setToolTip(tooltip);
-    button->setFixedSize(24, 24);
-    return button;
+    return new TaskToolButton(glyph, tooltip, parent);
 }
 
 QString resume_tooltip(const TransferCardActions& actions) {
@@ -55,6 +242,16 @@ bool use_resume_control(const TransferCardActions& actions) {
            (!actions.stop_enabled || actions.resume_queued || actions.change_target);
 }
 
+TaskButtonGlyph control_glyph(const TransferCardActions& actions) {
+    if (use_resume_control(actions)) {
+        return TaskButtonGlyph::play;
+    }
+    if (actions.pause) {
+        return TaskButtonGlyph::pause;
+    }
+    return TaskButtonGlyph::stop;
+}
+
 QString control_style_name(const TransferCardActions& actions) {
     if (use_resume_control(actions)) {
         if (actions.change_target) {
@@ -66,15 +263,6 @@ QString control_style_name(const TransferCardActions& actions) {
         return QStringLiteral("pause");
     }
     return QStringLiteral("stop");
-}
-
-QIcon control_icon(const TransferCardActions& actions) {
-    if (use_resume_control(actions)) {
-        return QApplication::style()->standardIcon(actions.change_target ? QStyle::SP_ComputerIcon
-                                                                         : QStyle::SP_ArrowForward);
-    }
-    return QApplication::style()->standardIcon(actions.pause ? QStyle::SP_MediaPause
-                                                            : QStyle::SP_MediaStop);
 }
 
 QString control_tooltip(const TransferCardActions& actions) {
@@ -137,6 +325,15 @@ QString state_style_name(TransferState state) {
     return QStringLiteral("pending");
 }
 
+QString display_state_text(const TransferSnapshot& snapshot, const TransferCardText& text) {
+    if (snapshot.state == TransferState::completed) {
+        return snapshot.direction == TransferDirection::receive
+                   ? QCoreApplication::translate("TransferCard", "received")
+                   : QCoreApplication::translate("TransferCard", "transferred");
+    }
+    return text.state;
+}
+
 QString metric_text(const TransferCardText& text) {
     auto value = QString("%1 | %2").arg(text.speed, text.size);
     if (!text.detail.isEmpty()) {
@@ -170,8 +367,10 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     auto* name = new ElidedLabel(QString::fromStdString(snapshot.name), this);
     name->setObjectName("transferName");
     name->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    name->setMinimumWidth(0);
+    name->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    auto* state = new QLabel(text.state, this);
+    auto* state = new QLabel(display_state_text(snapshot, text), this);
     state->setObjectName("stateBadge");
     state->setProperty("transferState", state_style_name(snapshot.state));
     state->setAlignment(Qt::AlignCenter);
@@ -191,6 +390,7 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
         progress->setObjectName("transferProgress");
         progress->setTextVisible(false);
         progress->setFixedHeight(6);
+        progress->setMinimumWidth(0);
         progress->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         if (!has_known_progress(snapshot) && snapshot.state == TransferState::running) {
             progress->setRange(0, 0);
@@ -216,13 +416,20 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     auto* detail = new ElidedLabel(metric_text(text), this);
     detail->setObjectName("transferDetail");
     detail->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    detail->setMinimumWidth(0);
+    detail->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
-    auto* action_layout = new QHBoxLayout();
-    action_layout->setContentsMargins(0, 0, 0, 0);
+    auto* action_rail = new QWidget(this);
+    action_rail->setObjectName("transferActionRail");
+    action_rail->setFixedWidth(kTransferActionRailWidth);
+    action_rail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    auto* action_layout = new QHBoxLayout(action_rail);
+    action_layout->setContentsMargins(2, 0, 2, 0);
     action_layout->setSpacing(4);
 
     const auto control_is_resume = use_resume_control(actions);
-    auto* control = make_task_tool_button(control_icon(actions), control_tooltip(actions), this);
+    auto* control = make_task_tool_button(control_glyph(actions), control_tooltip(actions), action_rail);
     control->setObjectName("taskControlButton");
     control->setProperty("controlState", control_style_name(actions));
     control->setEnabled(control_is_resume ? actions.resume_enabled : actions.stop_enabled);
@@ -234,9 +441,9 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     });
 
     auto* open = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DirOpenIcon),
+        TaskButtonGlyph::folder,
         QCoreApplication::translate("TransferCard", "Open containing folder"),
-        this);
+        action_rail);
     open->setObjectName("taskOpenButton");
     open->setEnabled(actions.open_enabled);
     QObject::connect(open, &QToolButton::clicked, this, [callback = std::move(callbacks.on_open)] {
@@ -246,9 +453,9 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     });
 
     auto* remove = make_task_tool_button(
-        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton),
+        TaskButtonGlyph::clear,
         QCoreApplication::translate("TransferCard", "Clear from list"),
-        this);
+        action_rail);
     remove->setObjectName("taskRemoveButton");
     remove->setEnabled(actions.remove_enabled);
     QObject::connect(remove, &QToolButton::clicked, this, [callback = std::move(callbacks.on_remove)] {
@@ -260,10 +467,9 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     action_layout->addWidget(control);
     action_layout->addWidget(open);
     action_layout->addWidget(remove);
-    action_layout->setSizeConstraint(QLayout::SetFixedSize);
 
     footer->addWidget(detail, 1);
-    footer->addLayout(action_layout);
+    footer->addWidget(action_rail, 0, Qt::AlignRight);
     footer->setStretch(0, 1);
     footer->setStretch(1, 0);
 
@@ -275,14 +481,13 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
 }
 
 QSize TransferCard::sizeHint() const {
-    return QSize(kTransferCardMinWidth, minimumSizeHint().height());
+    return QSize(kTransferCardPreferredWidth, minimumSizeHint().height());
 }
 
 QSize TransferCard::minimumSizeHint() const {
     const auto progress = findChild<QProgressBar*>("transferProgress");
     return QSize(kTransferCardMinWidth,
-                 progress != nullptr && progress->isVisible() ? kTransferCardHeight
-                                                              : kCompletedTransferCardHeight);
+                 progress != nullptr ? kTransferCardHeight : kCompletedTransferCardHeight);
 }
 
 }  // namespace lan::gui

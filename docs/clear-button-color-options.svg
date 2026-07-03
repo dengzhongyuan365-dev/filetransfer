@@ -1,0 +1,190 @@
+<svg width="1280" height="760" viewBox="0 0 1280 760" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .font { font-family: Inter, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; }
+      .title { font-size: 28px; font-weight: 750; fill: #172033; }
+      .subtitle { font-size: 14px; fill: #667085; }
+      .section-title { font-size: 18px; font-weight: 750; fill: #172033; }
+      .section-copy { font-size: 13px; fill: #667085; }
+      .state-label { font-size: 12px; font-weight: 700; fill: #667085; }
+      .card-title { font-size: 15px; font-weight: 750; fill: #172033; }
+      .card-meta { font-size: 12px; fill: #667085; }
+      .tiny { font-size: 11px; fill: #667085; }
+      .panel { fill: #ffffff; stroke: #dde4ee; stroke-width: 1; }
+      .preview { fill: #ffffff; stroke: #dfe5ee; stroke-width: 1; }
+      .badge { font-size: 11px; font-weight: 750; fill: #047857; }
+    </style>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#101828" flood-opacity="0.09"/>
+    </filter>
+    <filter id="buttonShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#101828" flood-opacity="0.16"/>
+    </filter>
+    <symbol id="icon-stop" viewBox="0 0 24 24">
+      <rect x="8" y="8" width="8" height="8" rx="1.8"/>
+    </symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24">
+      <path d="M5 9 H10 L12 11 H19 V18 H5 Z"/>
+      <path d="M5 11.2 H19 V18 H5 Z" opacity="0.78"/>
+    </symbol>
+    <symbol id="icon-clear" viewBox="0 0 24 24">
+      <path d="M8.2 8.2 L15.8 15.8 M15.8 8.2 L8.2 15.8" fill="none" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+
+  <rect width="1280" height="760" fill="#f4f6fa"/>
+  <text x="44" y="54" class="font title">清除按钮颜色方案</text>
+  <text x="44" y="84" class="font subtitle">只改清除按钮颜色，不改按钮尺寸、间距、圆形内缩和操作区宽度。下面每套都展示 normal / hover / pressed / disabled 四态。</text>
+
+  <g transform="translate(44 118)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="170" rx="10"/>
+  </g>
+  <text x="68" y="154" class="font section-title">A：轻量危险色</text>
+  <rect x="204" y="138" width="54" height="22" rx="11" fill="#ecfdf3" stroke="#bbf7d0"/>
+  <text x="216" y="153" class="font badge">推荐</text>
+  <text x="68" y="178" class="font section-copy">默认状态柔和，不抢主按钮；鼠标悬浮时变成实心红，能明确表达“清除”。比黑色更贴近删除语义。</text>
+
+  <g transform="translate(68 206)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#fff1f2" stroke="#fecdd3"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#be123c"/>
+      </g>
+    </g>
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" filter="url(#buttonShadow)">
+        <circle cx="12" cy="12" r="10" fill="#e11d48" stroke="#e11d48"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#be123c" stroke="#be123c"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" opacity="0.78">
+        <circle cx="12" cy="12" r="10" fill="#f3f4f6" stroke="transparent"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(44 330)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="170" rx="10"/>
+  </g>
+  <text x="68" y="366" class="font section-title">B：琥珀警示色</text>
+  <text x="68" y="390" class="font section-copy">更像“清理/移除记录”，没有删除文件那么危险；缺点是和暂停按钮的黄色语义可能靠得太近。</text>
+
+  <g transform="translate(68 418)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#fffbeb" stroke="#fde68a"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#b45309"/>
+      </g>
+    </g>
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" filter="url(#buttonShadow)">
+        <circle cx="12" cy="12" r="10" fill="#d97706" stroke="#d97706"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#b45309" stroke="#b45309"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" opacity="0.78">
+        <circle cx="12" cy="12" r="10" fill="#f3f4f6" stroke="transparent"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(44 542)" filter="url(#shadow)">
+    <rect class="panel" x="0" y="0" width="1192" height="170" rx="10"/>
+  </g>
+  <text x="68" y="578" class="font section-title">C：中性蓝灰色</text>
+  <text x="68" y="602" class="font section-copy">看起来最安静，不像危险操作；缺点是和“打开目录”的蓝色体系容易混淆，清除动作不够有辨识度。</text>
+
+  <g transform="translate(68 630)">
+    <text x="0" y="0" class="font state-label">Normal</text>
+    <text x="286" y="0" class="font state-label">Hover</text>
+    <text x="572" y="0" class="font state-label">Pressed</text>
+    <text x="858" y="0" class="font state-label">Disabled</text>
+
+    <g transform="translate(0 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#f1f5f9" stroke="#cbd5e1"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#475569"/>
+      </g>
+    </g>
+    <g transform="translate(286 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" filter="url(#buttonShadow)">
+        <circle cx="12" cy="12" r="10" fill="#2563eb" stroke="#2563eb"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(572 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)">
+        <circle cx="12" cy="12" r="10" fill="#1d4ed8" stroke="#1d4ed8"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#ffffff"/>
+      </g>
+    </g>
+    <g transform="translate(858 18)">
+      <rect class="preview" x="0" y="0" width="258" height="70" rx="9"/>
+      <text x="14" y="27" class="font card-title">Draw</text>
+      <text x="14" y="50" class="font card-meta">0 B/s | 152/152</text>
+      <g transform="translate(148 22)" opacity="0.78">
+        <circle cx="12" cy="12" r="10" fill="#f3f4f6" stroke="transparent"/>
+        <use href="#icon-clear" x="0" y="0" width="24" height="24" stroke="#a6adb8"/>
+      </g>
+    </g>
+  </g>
+</svg>

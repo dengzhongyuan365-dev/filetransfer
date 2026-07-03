@@ -38,3 +38,27 @@ if(Qt6_FOUND)
 
     gtest_discover_tests(gui_unit_tests)
 endif()
+
+find_package(Qt6 COMPONENTS Widgets Network QUIET)
+
+if(Qt6Widgets_FOUND AND Qt6Network_FOUND)
+    add_executable(gui_widget_tests
+        gui_transfer_card_tests.cpp
+        ../src/gui/qt_utils.cpp
+        ../src/gui/transfer_card.cpp
+    )
+
+    target_include_directories(gui_widget_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(gui_widget_tests PRIVATE
+        lan_core
+        Qt6::Widgets
+        Qt6::Network
+        GTest::gtest
+    )
+
+    gtest_discover_tests(gui_widget_tests)
+endif()
