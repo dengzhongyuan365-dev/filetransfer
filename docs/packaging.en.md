@@ -55,7 +55,7 @@ CMAKE_GENERATOR=Ninja scripts/package_deb.sh
 The generated package should be named like:
 
 ```txt
-lan-file-transfer_0.2.0_amd64.deb
+lan-file-transfer_0.2.1_amd64.deb
 ```
 
 The exact architecture suffix depends on the build machine.
@@ -65,7 +65,7 @@ The exact architecture suffix depends on the build machine.
 After building the package, inspect it before installing:
 
 ```sh
-dpkg-deb -c lan-file-transfer_0.2.0_amd64.deb
+dpkg-deb -c lan-file-transfer_0.2.1_amd64.deb
 ```
 
 At minimum, the package must contain these files:
@@ -84,7 +84,7 @@ At minimum, the package must contain these files:
 Use this shortcut to check the important entries:
 
 ```sh
-dpkg-deb -c lan-file-transfer_0.2.0_amd64.deb \
+dpkg-deb -c lan-file-transfer_0.2.1_amd64.deb \
   | grep -E 'usr/bin/(sender|receiver|local-copy|lan-gui)|applications/lan-file-transfer.desktop|icons/hicolor/scalable/apps/lan-file-transfer.svg|translations/lan-file-transfer_zh_CN.qm|doc/lan-file-transfer/CHANGELOG.md'
 ```
 
@@ -141,7 +141,7 @@ Generated 81 translation(s) (81 finished and 0 unfinished)
 Install the generated package:
 
 ```sh
-sudo apt install ./lan-file-transfer_0.2.0_amd64.deb
+sudo apt install ./lan-file-transfer_0.2.1_amd64.deb
 ```
 
 Confirm the installed files:

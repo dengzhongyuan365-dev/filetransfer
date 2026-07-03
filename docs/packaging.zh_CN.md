@@ -52,7 +52,7 @@ CMAKE_GENERATOR=Ninja scripts/package_deb.sh
 生成的包名类似：
 
 ```txt
-lan-file-transfer_0.2.0_amd64.deb
+lan-file-transfer_0.2.1_amd64.deb
 ```
 
 最后的架构后缀取决于当前构建机器。
@@ -62,7 +62,7 @@ lan-file-transfer_0.2.0_amd64.deb
 生成 deb 后，安装前先检查包内容：
 
 ```sh
-dpkg-deb -c lan-file-transfer_0.2.0_amd64.deb
+dpkg-deb -c lan-file-transfer_0.2.1_amd64.deb
 ```
 
 至少必须包含这些文件：
@@ -81,7 +81,7 @@ dpkg-deb -c lan-file-transfer_0.2.0_amd64.deb
 可以用下面的命令快速检查关键文件：
 
 ```sh
-dpkg-deb -c lan-file-transfer_0.2.0_amd64.deb \
+dpkg-deb -c lan-file-transfer_0.2.1_amd64.deb \
   | grep -E 'usr/bin/(sender|receiver|local-copy|lan-gui)|applications/lan-file-transfer.desktop|icons/hicolor/scalable/apps/lan-file-transfer.svg|translations/lan-file-transfer_zh_CN.qm|doc/lan-file-transfer/CHANGELOG.md'
 ```
 
@@ -137,7 +137,7 @@ Generated 81 translation(s) (81 finished and 0 unfinished)
 安装生成的包：
 
 ```sh
-sudo apt install ./lan-file-transfer_0.2.0_amd64.deb
+sudo apt install ./lan-file-transfer_0.2.1_amd64.deb
 ```
 
 确认安装后的文件存在：

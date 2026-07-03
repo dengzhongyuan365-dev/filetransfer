@@ -2,6 +2,20 @@
 
 All notable changes to LAN File Transfer are documented here.
 
+## v0.2.1 - 2026-07-03
+
+### Changed
+
+- Polished transfer card action controls with clearer pause/resume, open-folder, and clear button states.
+- Moved the transfer-list clear action back to the transfer page header for easier batch cleanup.
+- Improved completed transfer labels so sent tasks show as transferred and receive tasks show as received.
+
+### Fixed
+
+- Fixed transfer-card button painting to avoid clipped circular controls and jagged state indicators on first launch and narrow layouts.
+- Fixed transfer-list cleanup so removed completed, failed, or cancelled cards are also removed from persisted task records.
+- Added widget coverage for transfer card action states, completion labels, and clear-list persistence behavior.
+
 ## v0.2.0 - 2026-07-02
 
 ### Added
