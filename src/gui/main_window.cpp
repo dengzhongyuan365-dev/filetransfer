@@ -70,6 +70,7 @@
 #include "gui/transfer_card.h"
 #include "gui/transfer_events.h"
 #include "gui/transfer_record_matcher.h"
+#include "gui/transfer_record_repository.h"
 #include "gui/transfer_record_store.h"
 #include "lan/app/receiver_config.h"
 #include "lan/common/error.h"
@@ -182,6 +183,14 @@ bool parse_manual_peer_endpoint(const QString& text, QString& host, std::uint16_
 
 QSettings app_settings() {
     return QSettings(QStringLiteral("brinstrom"), QStringLiteral("lan-file-transfer"));
+}
+
+std::filesystem::path transfer_records_path() {
+    auto data_dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (data_dir.isEmpty()) {
+        data_dir = QDir::homePath() + QStringLiteral("/.local/share/lan-file-transfer");
+    }
+    return std::filesystem::path(to_string(data_dir)) / "transfer-records.json";
 }
 
 QString saved_receive_dir() {
@@ -374,6 +383,9 @@ MainWindow::MainWindow() : node_id_(load_or_create_node_id()) {
     setMinimumSize(380, 560);
     setObjectName("app");
     build_ui();
+    transfer_record_repository_ = std::make_unique<TransferRecordRepository>(
+        transfer_records_path(),
+        interrupted_transfer_message());
     load_remembered_peers();
     load_persisted_transfers();
     setup_tray();
@@ -383,6 +395,7 @@ MainWindow::MainWindow() : node_id_(load_or_create_node_id()) {
 
 MainWindow::~MainWindow() {
     save_persisted_transfers();
+    flush_persisted_transfers();
     stop_receiver();
     stop_sender();
 }
@@ -406,6 +419,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         if (action == CloseAction::quit) {
             force_quit_ = true;
             save_persisted_transfers();
+            flush_persisted_transfers();
             stop_receiver();
             stop_sender();
             event->accept();
@@ -425,6 +439,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         return;
     }
     save_persisted_transfers();
+    flush_persisted_transfers();
     stop_receiver();
     stop_sender();
     event->accept();
@@ -1494,29 +1509,41 @@ void MainWindow::save_remembered_peers() {
 }
 
 void MainWindow::load_persisted_transfers() {
-    auto settings = app_settings();
-    const auto size = settings.beginReadArray(QStringLiteral("transfers"));
     const auto restored_base = static_cast<std::uint64_t>(QDateTime::currentMSecsSinceEpoch()) << 16;
-    for (int i = 0; i < size; ++i) {
-        settings.setArrayIndex(i);
-        QVariantMap map;
-        for (const auto& key : settings.childKeys()) {
-            map.insert(key, settings.value(key));
-        }
-        const auto record = transfer_record_from_settings(map,
-                                                          restored_base + static_cast<std::uint64_t>(i + 1),
-                                                          interrupted_transfer_message());
-        if (!record.has_value()) {
-            continue;
-        }
-        transfer_model_.upsert(record->snapshot, record->peer_id);
+    QList<PersistedTransferRecord> records;
+    if (transfer_record_repository_ != nullptr) {
+        records = transfer_record_repository_->load(restored_base);
     }
-    settings.endArray();
+
+    std::error_code ec;
+    const auto json_exists = std::filesystem::exists(transfer_records_path(), ec);
+    if (records.isEmpty() && !json_exists) {
+        auto settings = app_settings();
+        records = transfer_records_from_settings_array(settings,
+                                                       QStringLiteral("transfers"),
+                                                       restored_base,
+                                                       interrupted_transfer_message());
+        if (!records.isEmpty()) {
+            if (transfer_record_repository_ != nullptr) {
+                transfer_record_repository_->request_save(records);
+                if (transfer_record_repository_->flush(std::chrono::seconds(2)) &&
+                    transfer_record_repository_->last_error().isEmpty()) {
+                    settings.remove(QStringLiteral("transfers"));
+                }
+            }
+        }
+    }
+
+    for (const auto& record : records) {
+        transfer_model_.upsert(record.snapshot, record.peer_id);
+    }
     refresh_transfer_list();
 }
 
 void MainWindow::save_persisted_transfers() {
-    persisted_transfer_save_scheduled_ = false;
+    if (transfer_record_repository_ == nullptr) {
+        return;
+    }
     auto entries = transfer_model_.entries();
     std::sort(entries.begin(), entries.end(), [](const TransferListEntry& left, const TransferListEntry& right) {
         return left.snapshot.transfer_id > right.snapshot.transfer_id;
@@ -1525,33 +1552,29 @@ void MainWindow::save_persisted_transfers() {
         entries.erase(entries.begin() + kMaxRememberedTransfers, entries.end());
     }
 
-    auto settings = app_settings();
-    settings.remove(QStringLiteral("transfers"));
-    settings.beginWriteArray(QStringLiteral("transfers"), entries.size());
-    for (int i = 0; i < entries.size(); ++i) {
-        settings.setArrayIndex(i);
-        settings.remove(QString{});
-        const auto map = transfer_record_to_settings(
-            PersistedTransferRecord{
-                .peer_id = transfer_model_.peer_id(entries.at(i).key),
-                .snapshot = entries.at(i).snapshot,
-            },
-            interrupted_transfer_message());
-        for (auto it = map.cbegin(); it != map.cend(); ++it) {
-            settings.setValue(it.key(), it.value());
-        }
+    QList<PersistedTransferRecord> records;
+    records.reserve(entries.size());
+    for (const auto& entry : entries) {
+        records.append(PersistedTransferRecord{
+            .peer_id = transfer_model_.peer_id(entry.key),
+            .snapshot = entry.snapshot,
+        });
     }
-    settings.endArray();
+    transfer_record_repository_->request_save(std::move(records));
 }
 
-void MainWindow::schedule_persisted_transfers_save() {
-    if (persisted_transfer_save_scheduled_) {
+void MainWindow::flush_persisted_transfers() {
+    if (transfer_record_repository_ == nullptr) {
         return;
     }
-    persisted_transfer_save_scheduled_ = true;
-    QTimer::singleShot(750, this, [this] {
-        save_persisted_transfers();
-    });
+    if (!transfer_record_repository_->flush(std::chrono::seconds(2))) {
+        log_event(QCoreApplication::translate("MainWindow", "Timed out while saving transfer records."));
+        return;
+    }
+    const auto error = transfer_record_repository_->last_error();
+    if (!error.isEmpty()) {
+        log_event(QCoreApplication::translate("MainWindow", "Failed to save transfer records: %1").arg(error));
+    }
 }
 
 bool MainWindow::start_receiver() {
@@ -2696,7 +2719,7 @@ void MainWindow::remove_transfer_card(const QString& key) {
 
 void MainWindow::remove_transfer_snapshot(const QString& key) {
     transfer_model_.remove(key);
-    schedule_persisted_transfers_save();
+    save_persisted_transfers();
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {
         transfers_layout_->removeWidget(card);
@@ -3234,7 +3257,7 @@ void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
     if (transfer_model_.is_dismissed(key)) {
         if (snapshot.snapshot.state != TransferState::pending) {
             transfer_model_.remove(key);
-            schedule_persisted_transfers_save();
+            save_persisted_transfers();
         }
         refresh_peer_list();
         return;
@@ -3296,7 +3319,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     }
     transfer_model_.upsert(snapshot, peer_id);
     if (snapshot.state != TransferState::running) {
-        schedule_persisted_transfers_save();
+        save_persisted_transfers();
     }
     if (!transfer_belongs_to_active_peer(key)) {
         pending_transfer_render_keys_.remove(key);

@@ -2,10 +2,15 @@
 
 #include <filesystem>
 
+#include <QJsonArray>
+#include <QJsonObject>
+
 #include "lan/common/error.h"
 
 namespace lan::gui {
 namespace {
+
+constexpr int kTransferRecordSchemaVersion = 1;
 
 QString path_to_qstring(const std::filesystem::path& path) {
     return QString::fromStdString(path.string());
@@ -19,6 +24,36 @@ bool is_terminal_transfer_state(TransferState state) {
     return state == TransferState::completed ||
            state == TransferState::failed ||
            state == TransferState::cancelled;
+}
+
+QJsonObject variant_map_to_json_object(const QVariantMap& map) {
+    auto object = QJsonObject::fromVariantMap(map);
+    const QStringList large_number_keys{
+        QStringLiteral("transferId"),
+        QStringLiteral("currentBytes"),
+        QStringLiteral("totalBytes"),
+        QStringLiteral("processedFiles"),
+        QStringLiteral("totalFiles"),
+        QStringLiteral("skippedFiles"),
+        QStringLiteral("fullFiles"),
+        QStringLiteral("deltaFiles"),
+        QStringLiteral("payloadBytes"),
+        QStringLiteral("resumedFrom"),
+    };
+    for (const auto& key : large_number_keys) {
+        if (map.contains(key)) {
+            object.insert(key, QString::number(map.value(key).toULongLong()));
+        }
+    }
+    return object;
+}
+
+QVariantMap json_object_to_variant_map(const QJsonObject& object) {
+    QVariantMap map;
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it) {
+        map.insert(it.key(), it->toVariant());
+    }
+    return map;
 }
 
 }  // namespace
@@ -108,6 +143,73 @@ std::optional<PersistedTransferRecord> transfer_record_from_settings(const QVari
     }
     snapshot = snapshot_for_persistence(snapshot, interrupted_message);
     return PersistedTransferRecord{.peer_id = peer_id, .snapshot = snapshot};
+}
+
+QJsonDocument transfer_records_to_json(const QList<PersistedTransferRecord>& records,
+                                       const QString& interrupted_message) {
+    QJsonArray array;
+    for (const auto& record : records) {
+        if (record.peer_id.isEmpty()) {
+            continue;
+        }
+        const auto map = transfer_record_to_settings(record, interrupted_message);
+        array.append(variant_map_to_json_object(map));
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), kTransferRecordSchemaVersion);
+    root.insert(QStringLiteral("records"), array);
+    return QJsonDocument(root);
+}
+
+QList<PersistedTransferRecord> transfer_records_from_json(const QJsonDocument& document,
+                                                          std::uint64_t restored_base,
+                                                          const QString& interrupted_message) {
+    QList<PersistedTransferRecord> records;
+    if (!document.isObject()) {
+        return records;
+    }
+
+    const auto root = document.object();
+    if (root.value(QStringLiteral("version")).toInt() != kTransferRecordSchemaVersion) {
+        return records;
+    }
+    const auto array = root.value(QStringLiteral("records")).toArray();
+    for (int i = 0; i < array.size(); ++i) {
+        if (!array.at(i).isObject()) {
+            continue;
+        }
+        auto record = transfer_record_from_settings(json_object_to_variant_map(array.at(i).toObject()),
+                                                    restored_base + static_cast<std::uint64_t>(i + 1),
+                                                    interrupted_message);
+        if (record.has_value()) {
+            records.append(record.value());
+        }
+    }
+    return records;
+}
+
+QList<PersistedTransferRecord> transfer_records_from_settings_array(QSettings& settings,
+                                                                    const QString& array_name,
+                                                                    std::uint64_t restored_base,
+                                                                    const QString& interrupted_message) {
+    QList<PersistedTransferRecord> records;
+    const auto size = settings.beginReadArray(array_name);
+    for (int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
+        QVariantMap map;
+        for (const auto& key : settings.childKeys()) {
+            map.insert(key, settings.value(key));
+        }
+        auto record = transfer_record_from_settings(map,
+                                                    restored_base + static_cast<std::uint64_t>(i + 1),
+                                                    interrupted_message);
+        if (record.has_value()) {
+            records.append(record.value());
+        }
+    }
+    settings.endArray();
+    return records;
 }
 
 }  // namespace lan::gui

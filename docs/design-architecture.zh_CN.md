@@ -428,7 +428,9 @@ graph TD
 
 ### 6.4 传输记录持久化和再次请求
 
-传输列表不是纯内存 UI。GUI 会把最近的任务快照写入 `QSettings`，应用重启后恢复到对应设备的传输页面。
+传输列表不是纯内存 UI。GUI 会把最近的任务快照写入独立 JSON 文件，应用重启后恢复到对应设备的传输页面。
+
+传输记录不再存放在 `QSettings` 里。原因是任务记录是批量结构化数据，而且失败风暴时会频繁更新；如果在 UI 线程里用 `QSettings` 同步落盘，底层可能触发 `QSaveFile::commit` 和 `fdatasync`，从而卡住界面。现在设置项仍然使用 `QSettings`，但传输记录由 `TransferRecordRepository` 单独负责。
 
 保存策略：
 
@@ -437,20 +439,50 @@ graph TD
 - 已完成、失败、取消的任务按原状态恢复。
 - 运行中、排队中、暂停中的任务在退出时恢复为已取消，并标记为可重试。
 - 用户手动清除的任务会从持久化记录里删除。
+- UI 线程只把内存快照提交给 repository，不直接做磁盘同步。
+- repository 在后台线程 debounce 合并保存请求，并用临时文件加 rename 的方式原子替换 JSON。
+- 退出时 GUI 会请求保存最终快照并等待短时间 flush；失败或超时只记录日志，不无限阻塞 UI。
 
 ```mermaid
 graph TD
     A["TransferSnapshot 更新"] --> B["TransferListModel"]
-    B --> C{"是否需要保存"}
-    C -->|运行中| D["暂不频繁保存"]
-    C -->|终态或非运行| E["写入 QSettings"]
-    F["应用启动"] --> G["读取 QSettings"]
-    G --> H["恢复 TransferSnapshot"]
-    H --> I{"是否非终态"}
-    I -->|是| J["转为 cancelled"]
-    I -->|否| K["保留原状态"]
-    J --> L["按 peer_id 放回列表"]
-    K --> L
+    B --> C{"是否需要持久化"}
+    C -->|运行中| D["暂不保存"]
+    C -->|终态或删除| E["request_save"]
+    E --> F["TransferRecordRepository"]
+    F --> G["后台线程 debounce"]
+    G --> H["写 transfer-records.json"]
+    I["应用启动"] --> J["读取 JSON"]
+    J --> K{"JSON 是否存在"}
+    K -->|存在| L["恢复 records"]
+    K -->|不存在| M["迁移旧 QSettings"]
+    M --> F
+    L --> N["恢复 TransferSnapshot"]
+    N --> O{"是否非终态"}
+    O -->|是| P["转为 cancelled"]
+    O -->|否| Q["保留原状态"]
+    P --> R["按 peer_id 放回列表"]
+    Q --> R
+```
+
+JSON 文件位置由 `QStandardPaths::AppDataLocation` 决定，文件名为 `transfer-records.json`。当前 schema：
+
+```json
+{
+  "version": 1,
+  "records": [
+    {
+      "peerId": "node id",
+      "state": 3,
+      "direction": 0,
+      "kind": 1,
+      "path": "/path/to/source-or-target",
+      "name": "display name",
+      "totalBytes": "123",
+      "totalFiles": "10"
+    }
+  ]
+}
 ```
 
 再次请求用于解决一个真实使用场景：接收端曾经收到文件，但后来本地文件被删掉，希望从原发送设备再拿一次。

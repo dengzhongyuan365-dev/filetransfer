@@ -22,6 +22,7 @@ if(Qt6_FOUND)
         ../src/gui/device_manager.cpp
         ../src/gui/transfer_list_model.cpp
         ../src/gui/transfer_record_matcher.cpp
+        ../src/gui/transfer_record_repository.cpp
         ../src/gui/transfer_record_store.cpp
     )
 

@@ -75,6 +75,7 @@ if(Qt6_FOUND)
         gui/transfer_events.cpp
         gui/transfer_list_model.cpp
         gui/transfer_record_matcher.cpp
+        gui/transfer_record_repository.cpp
         gui/transfer_record_store.cpp
         gui_main.cpp
     )

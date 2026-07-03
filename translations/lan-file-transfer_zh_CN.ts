@@ -783,6 +783,14 @@ Send to selected machine(s)</source>
         <translation>应用关闭时传输已中断。</translation>
     </message>
     <message>
+        <source>Timed out while saving transfer records.</source>
+        <translation>保存传输记录超时。</translation>
+    </message>
+    <message>
+        <source>Failed to save transfer records: %1</source>
+        <translation>保存传输记录失败：%1</translation>
+    </message>
+    <message>
         <source>This transfer cannot be requested again.</source>
         <translation>这个任务无法重新获取。</translation>
     </message>
