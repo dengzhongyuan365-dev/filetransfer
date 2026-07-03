@@ -19,7 +19,6 @@
 - 全局并发和单设备并发控制
 - 超出并发限制后的任务排队
 - 每个设备独立的传输任务视图
-- 接收历史记录
 - 托盘运行和关闭动作设置
 - 拖拽发送文件和文件夹
 - 粘贴剪贴板文件、文件夹和截图图片
@@ -50,7 +49,6 @@ graph TD
     P --> F["传输页面"]
     F --> G["拖拽或粘贴发送"]
     F --> H["切换发送目标"]
-    F --> I["查看接收历史"]
     C --> J["设置页面"]
     J --> K["接收目录"]
     J --> L["发现网段"]
@@ -186,7 +184,6 @@ graph LR
 - `TransferCard`：单个任务展示。
 - `DropPanel`：拖拽区域。
 - `SettingsDialog`：接收目录、发现网段、并发限制、关闭动作、日志入口。
-- `ReceiveHistoryDialog`：接收历史。
 - `target_dialogs`：发送目标选择和任务目标切换。
 
 ## 5. GUI 运行状态模型
@@ -788,25 +785,7 @@ GUI 卡片操作和含义：
 - Remove：只移除列表卡片，不代表停止底层任务。
 - Open：打开接收完成后的本机目录。
 
-## 15. 接收历史流程
-
-接收历史只记录本机接收完成的任务，方便用户打开保存目录。
-
-```mermaid
-sequenceDiagram
-    participant R as Receiver
-    participant G as GUI
-    participant H as History
-
-    R-->>G: receive completed snapshot
-    G->>H: record item
-    H->>H: save to settings
-    G->>H: open history dialog
-    H-->>G: selected item
-    G->>G: open containing folder
-```
-
-## 16. 日志和调试设计
+## 15. 日志和调试设计
 
 日志分两层：
 
@@ -918,7 +897,6 @@ graph TD
 - per-chunk checksum。
 - 更详细的任务详情页。
 - 任务筛选和批量操作。
-- 更强的历史记录搜索。
 - 局域网发现的更多网络环境适配。
 - CI 自动构建测试。
 - GitHub Release 自动上传多架构包。

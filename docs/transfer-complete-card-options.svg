@@ -39,6 +39,6 @@
     <text x="16" y="54" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#5f6978">已完成 · 18 个文件 · 保存到接收目录</text>
     <rect x="752" y="24" width="72" height="24" rx="7" fill="#e7f8ef"/>
     <text x="771" y="40" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#087443">已完成</text>
-    <text x="16" y="92" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#475467">适合历史列表；当前传输列表里信息略少。</text>
+    <text x="16" y="92" font-family="Inter, Noto Sans CJK SC, sans-serif" font-size="12" fill="#475467">适合详情列表；当前传输列表里信息略少。</text>
   </g>
 </svg>

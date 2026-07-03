@@ -105,8 +105,6 @@ private:
     bool can_change_transfer_target(const TransferSnapshot& snapshot) const;
     QString transfer_open_dir(const TransferSnapshot& snapshot) const;
     void open_transfer_dir(const QString& key);
-    void show_receive_history();
-    void record_receive_history(const TransferSnapshot& snapshot);
     void copy_received_clipboard_image(const TransferSnapshot& snapshot);
     void resume_transfer(const QString& key);
     void request_resend_transfer(const QString& key);
@@ -186,7 +184,6 @@ private:
     QSet<QString> pending_transfer_render_keys_;
     QElapsedTimer transfer_render_timer_;
     bool transfer_render_scheduled_ = false;
-    QSet<QString> recorded_history_keys_;
     QSet<QString> copied_clipboard_image_keys_;
     QStringList log_lines_;
     QMap<QString, QString> pending_link_codes_;

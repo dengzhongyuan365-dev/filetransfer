@@ -68,7 +68,6 @@ if(Qt6_FOUND)
         gui/device_manager.cpp
         gui/main_window.cpp
         gui/qt_utils.cpp
-        gui/receive_history_dialog.cpp
         gui/settings_dialog.cpp
         gui/target_dialogs.cpp
         gui/transfer_card.cpp

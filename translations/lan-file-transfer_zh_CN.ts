@@ -128,11 +128,6 @@
         <translation>未连接</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="651"/>
-        <source>History</source>
-        <translation>历史</translation>
-    </message>
-    <message>
         <location filename="../src/gui/main_window.cpp" line="649"/>
         <source>Targets</source>
         <translation>目标</translation>
@@ -731,24 +726,9 @@ Send to selected machine(s)</source>
         <translation>已打开目录：%1</translation>
     </message>
     <message>
-        <location filename="../src/gui/main_window.cpp" line="1870"/>
-        <source>Receive history</source>
-        <translation>接收历史</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/main_window.cpp" line="1883"/>
-        <source>No receive history yet.</source>
-        <translation>暂无接收历史。</translation>
-    </message>
-    <message>
         <location filename="../src/gui/main_window.cpp" line="1919"/>
         <source>Open folder</source>
         <translation>打开目录</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/main_window.cpp" line="1921"/>
-        <source>Clear history</source>
-        <translation>清空历史</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="1923"/>
@@ -762,16 +742,6 @@ Send to selected machine(s)</source>
     <message>
         <source>No logs yet.</source>
         <translation>暂无日志。</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/main_window.cpp" line="1942"/>
-        <source>No local receive folder for this history item.</source>
-        <translation>这条历史没有可打开的本地接收目录。</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/main_window.cpp" line="1956"/>
-        <source>Receive history cleared.</source>
-        <translation>接收历史已清空。</translation>
     </message>
     <message>
         <location filename="../src/gui/main_window.cpp" line="2005"/>
@@ -1202,34 +1172,6 @@ Code: %2</source>
     <message>
         <source>Device settings updated.</source>
         <translation>设备设置已更新。</translation>
-    </message>
-</context>
-<context>
-    <name>ReceiveHistoryDialog</name>
-    <message>
-        <location filename="../src/gui/receive_history_dialog.cpp" line="19"/>
-        <source>Receive history</source>
-        <translation>接收历史</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/receive_history_dialog.cpp" line="32"/>
-        <source>No receive history yet.</source>
-        <translation>暂无接收历史。</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/receive_history_dialog.cpp" line="45"/>
-        <source>Open folder</source>
-        <translation>打开目录</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/receive_history_dialog.cpp" line="47"/>
-        <source>Clear history</source>
-        <translation>清空历史</translation>
-    </message>
-    <message>
-        <location filename="../src/gui/receive_history_dialog.cpp" line="49"/>
-        <source>Close</source>
-        <translation>关闭</translation>
     </message>
 </context>
 <context>

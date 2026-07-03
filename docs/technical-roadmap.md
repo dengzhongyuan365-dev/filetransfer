@@ -17,7 +17,6 @@ This is now the baseline for later multi-device and queue work:
 - `src/gui/transfer_list_model.*`: transfer snapshot storage, peer ownership, per-peer filtering, and dismissed transfer keys.
 - `src/gui/transfer_card.*`: transfer item widget rendering and action buttons.
 - `src/gui/settings_dialog.*`: receive-folder, close-action, and send-concurrency settings dialog.
-- `src/gui/receive_history_dialog.*`: receive-history list dialog and user actions.
 - `TransferScheduler::set_runner_factory`: injectable send runner factory used by tests to simulate concurrent sends without real network I/O.
 
 The intent is to keep `MainWindow` focused on Qt widgets and user actions.

@@ -50,7 +50,6 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QUuid>
-#include <QVariant>
 #include <QVBoxLayout>
 #include <QCheckBox>
 
@@ -64,7 +63,6 @@
 
 #include "gui/drop_panel.h"
 #include "gui/qt_utils.h"
-#include "gui/receive_history_dialog.h"
 #include "gui/settings_dialog.h"
 #include "gui/target_dialogs.h"
 #include "gui/transfer_card.h"
@@ -80,7 +78,6 @@ namespace lan::gui {
 namespace {
 
 constexpr int kMaxRememberedPeers = 10;
-constexpr int kMaxReceiveHistory = 100;
 constexpr int kMaxRememberedTransfers = 200;
 constexpr int kPresenceProbeMs = 5000;
 constexpr qint64 kPeerStaleMs = 15000;
@@ -103,16 +100,6 @@ QString state_text(TransferState state) {
             return QCoreApplication::translate("MainWindow", "cancelled");
     }
     return to_qstring(std::string(transfer_state_name(state)));
-}
-
-QString kind_text(TransferKind kind) {
-    switch (kind) {
-        case TransferKind::file:
-            return QCoreApplication::translate("MainWindow", "file");
-        case TransferKind::directory:
-            return QCoreApplication::translate("MainWindow", "folder");
-    }
-    return {};
 }
 
 QString display_peer_name(const Peer& peer) {
@@ -658,11 +645,8 @@ QWidget* MainWindow::build_transfer_page() {
     footer->setSpacing(8);
     target_button_ = new QPushButton(QCoreApplication::translate("MainWindow", "Targets"), transfer_page_);
     target_button_->setObjectName("secondaryButton");
-    auto* history = new QPushButton(QCoreApplication::translate("MainWindow", "History"), transfer_page_);
-    history->setObjectName("secondaryButton");
     footer->addWidget(target_button_);
     footer->addStretch(1);
-    footer->addWidget(history);
 
     layout->addLayout(header);
     layout->addWidget(transfer_frame, 1);
@@ -670,9 +654,6 @@ QWidget* MainWindow::build_transfer_page() {
 
     connect(back, &QPushButton::clicked, this, [this] {
         stack_->setCurrentWidget(peer_page_);
-    });
-    connect(history, &QPushButton::clicked, this, [this] {
-        show_receive_history();
     });
     connect(target_button_, &QPushButton::clicked, this, [this] {
         show_send_targets();
@@ -2448,97 +2429,6 @@ void MainWindow::open_transfer_dir(const QString& key) {
     log_event(QCoreApplication::translate("MainWindow", "Opened folder: %1").arg(dir));
 }
 
-void MainWindow::show_receive_history() {
-    auto settings = app_settings();
-    const auto history = settings.value(QStringLiteral("receiveHistory")).toList();
-    std::vector<ReceiveHistoryItem> items;
-    items.reserve(static_cast<std::size_t>(history.size()));
-    for (const auto& value : history) {
-        const auto map = value.toMap();
-        const auto finished_at = QDateTime::fromMSecsSinceEpoch(map.value(QStringLiteral("finishedAt")).toLongLong());
-        const auto state = state_text(static_cast<TransferState>(map.value(QStringLiteral("state")).toInt()));
-        const auto kind = kind_text(static_cast<TransferKind>(map.value(QStringLiteral("kind")).toInt()));
-        const auto name = map.value(QStringLiteral("name")).toString();
-        const auto path = map.value(QStringLiteral("path")).toString();
-        const auto open_dir = map.value(QStringLiteral("openDir")).toString();
-        const auto bytes = map.value(QStringLiteral("bytes")).toULongLong();
-        const auto files = map.value(QStringLiteral("files")).toULongLong();
-        const auto error = map.value(QStringLiteral("error")).toString();
-        const auto amount = files > 0
-                                ? QCoreApplication::translate("MainWindow", "%1 file(s)").arg(files)
-                                : to_qstring(format_size(bytes));
-        auto text = QStringLiteral("%1\n%2, %3, %4, %5\n%6")
-                        .arg(name,
-                             state,
-                             kind,
-                             amount,
-                             finished_at.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
-                             path);
-        if (!error.isEmpty()) {
-            text += QStringLiteral("\n%1").arg(error);
-        }
-        items.push_back(ReceiveHistoryItem{
-            .text = text,
-            .open_dir = open_dir,
-            .has_error = !error.isEmpty(),
-        });
-    }
-
-    const auto action = show_receive_history_dialog(this, items);
-    if (!action.has_value()) {
-        return;
-    }
-    if (action->type == ReceiveHistoryActionType::clear) {
-        settings.remove(QStringLiteral("receiveHistory"));
-        recorded_history_keys_.clear();
-        log_event(QCoreApplication::translate("MainWindow", "Receive history cleared."));
-        return;
-    }
-
-    const auto dir = action->open_dir;
-    if (dir.isEmpty()) {
-        show_log(QCoreApplication::translate("MainWindow", "No local receive folder for this history item."));
-        return;
-    }
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
-        show_log(QCoreApplication::translate("MainWindow", "Failed to open folder: %1").arg(dir));
-    }
-}
-
-void MainWindow::record_receive_history(const TransferSnapshot& snapshot) {
-    if (snapshot.direction != TransferDirection::receive || !is_terminal_state(snapshot.state)) {
-        return;
-    }
-
-    const auto key = transfer_snapshot_key(snapshot);
-    if (recorded_history_keys_.contains(key)) {
-        return;
-    }
-    recorded_history_keys_.insert(key);
-
-    QVariantMap entry;
-    entry.insert(QStringLiteral("finishedAt"), QDateTime::currentMSecsSinceEpoch());
-    entry.insert(QStringLiteral("state"), static_cast<int>(snapshot.state));
-    entry.insert(QStringLiteral("kind"), static_cast<int>(snapshot.kind));
-    entry.insert(QStringLiteral("name"), QString::fromStdString(snapshot.name));
-    entry.insert(QStringLiteral("path"), to_qstring(snapshot.path));
-    entry.insert(QStringLiteral("openDir"), transfer_open_dir(snapshot));
-    entry.insert(QStringLiteral("bytes"), QVariant::fromValue<qulonglong>(snapshot.total_bytes));
-    entry.insert(QStringLiteral("files"), QVariant::fromValue<qulonglong>(
-                                           snapshot.total_files > 0 ? snapshot.total_files : snapshot.processed_files));
-    if (snapshot.error.has_value()) {
-        entry.insert(QStringLiteral("error"), to_qstring(format_error(*snapshot.error)));
-    }
-
-    auto settings = app_settings();
-    auto history = settings.value(QStringLiteral("receiveHistory")).toList();
-    history.prepend(entry);
-    while (history.size() > kMaxReceiveHistory) {
-        history.removeLast();
-    }
-    settings.setValue(QStringLiteral("receiveHistory"), history);
-}
-
 void MainWindow::copy_received_clipboard_image(const TransferSnapshot& snapshot) {
     if (!is_clipboard_image_transfer(snapshot)) {
         return;
@@ -3301,7 +3191,6 @@ void MainWindow::merge_snapshots(TransferSnapshotStore store, QMap<std::uint64_t
 }
 
 void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString& peer_id) {
-    record_receive_history(snapshot);
     copy_received_clipboard_image(snapshot);
     const auto key = transfer_snapshot_key(snapshot);
     if (snapshot.direction == TransferDirection::receive && !is_terminal_state(snapshot.state)) {
