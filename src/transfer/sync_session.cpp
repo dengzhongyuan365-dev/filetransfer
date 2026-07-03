@@ -12,6 +12,7 @@
 #include <vector>
 #include <utility>
 
+#include "lan/common/path.h"
 #include "lan/common/stopwatch.h"
 #include "lan/fs/file_hash.h"
 #include "lan/net/connection.h"
@@ -116,6 +117,18 @@ std::filesystem::path part_path_for(const std::filesystem::path& target) {
     return part;
 }
 
+Result<bool> ensure_directory_path(const std::filesystem::path& path, std::string_view label) {
+    std::error_code ec;
+    std::filesystem::create_directories(path, ec);
+    if (ec) {
+        return Result<bool>::failure(
+            make_error(ErrorCode::io_error,
+                       "failed to create " + std::string(label) + " " + quote_path(path) +
+                           ": " + ec.message()));
+    }
+    return Result<bool>::success(true);
+}
+
 Result<bool> verify_file_hash(const std::filesystem::path& path,
                               const ManifestEntry& entry,
                               std::string_view expected_sha256) {
@@ -186,7 +199,10 @@ Result<DeltaStreamReceiveReport> apply_delta_stream_to_target(
     const ReceiveProgressPublisher& publish_progress) {
     const auto target = receive_root / entry.manifest_entry.relative_path;
     const auto part_path = part_path_for(target);
-    std::filesystem::create_directories(target.parent_path());
+    auto parent_ready = ensure_directory_path(target.parent_path(), "target directory");
+    if (!parent_ready) {
+        return Result<DeltaStreamReceiveReport>::failure(parent_ready.error());
+    }
     PartFileGuard part_file(part_path);
 
     auto begin_frame = read_frame(connection);
@@ -541,22 +557,23 @@ Result<SyncPlan> receive_manifest_and_send_plan(Connection& connection,
     }
     manifest_files = manifest.value().files.size();
 
+    auto receive_root_ready = ensure_directory(config.receive_dir);
+    if (!receive_root_ready) {
+        return Result<SyncPlan>::failure(receive_root_ready.error());
+    }
+
+    auto receive_root = std::move(receive_root_ready).value();
+    if (!manifest.value().root_name.empty()) {
+        receive_root /= manifest.value().root_name;
+        auto root_ready = ensure_directory_path(receive_root, "receive root");
+        if (!root_ready) {
+            return Result<SyncPlan>::failure(root_ready.error());
+        }
+    }
+
     auto manifest_ack = send_ack_frame(connection, "manifest received");
     if (!manifest_ack) {
         return Result<SyncPlan>::failure(manifest_ack.error());
-    }
-
-    auto receive_root = config.receive_dir;
-    if (!manifest.value().root_name.empty()) {
-        receive_root /= manifest.value().root_name;
-        std::error_code ec;
-        std::filesystem::create_directories(receive_root, ec);
-        if (ec) {
-            return Result<SyncPlan>::failure(
-                make_error(ErrorCode::io_error,
-                           "failed to create receive root " + quote_path(receive_root) +
-                               ": " + ec.message()));
-        }
     }
 
     auto plan = build_sync_plan(manifest.value(), receive_root, block_size);

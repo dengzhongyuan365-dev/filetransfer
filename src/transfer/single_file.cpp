@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "lan/common/path.h"
 #include "lan/common/stopwatch.h"
 #include "lan/fs/file_descriptor.h"
 #include "lan/fs/file_hash.h"
@@ -553,7 +554,14 @@ Result<ReceiveFileReport> receive_single_file_from_connection(
         return fail_receive_with_error(connection, metadata.error());
     }
 
-    auto target = safe_target_path(config, metadata.value().name);
+    auto ready_config = config;
+    auto receive_dir = ensure_directory(config.receive_dir);
+    if (!receive_dir) {
+        return fail_receive_with_error(connection, receive_dir.error());
+    }
+    ready_config.receive_dir = std::move(receive_dir).value();
+
+    auto target = safe_target_path(ready_config, metadata.value().name);
     if (!target) {
         return fail_receive_with_error(connection, target.error());
     }

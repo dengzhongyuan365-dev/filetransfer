@@ -1516,6 +1516,7 @@ void MainWindow::load_persisted_transfers() {
 }
 
 void MainWindow::save_persisted_transfers() {
+    persisted_transfer_save_scheduled_ = false;
     auto entries = transfer_model_.entries();
     std::sort(entries.begin(), entries.end(), [](const TransferListEntry& left, const TransferListEntry& right) {
         return left.snapshot.transfer_id > right.snapshot.transfer_id;
@@ -1541,6 +1542,16 @@ void MainWindow::save_persisted_transfers() {
         }
     }
     settings.endArray();
+}
+
+void MainWindow::schedule_persisted_transfers_save() {
+    if (persisted_transfer_save_scheduled_) {
+        return;
+    }
+    persisted_transfer_save_scheduled_ = true;
+    QTimer::singleShot(750, this, [this] {
+        save_persisted_transfers();
+    });
 }
 
 bool MainWindow::start_receiver() {
@@ -2685,7 +2696,7 @@ void MainWindow::remove_transfer_card(const QString& key) {
 
 void MainWindow::remove_transfer_snapshot(const QString& key) {
     transfer_model_.remove(key);
-    save_persisted_transfers();
+    schedule_persisted_transfers_save();
     auto* card = transfer_cards_.take(key);
     if (card != nullptr) {
         transfers_layout_->removeWidget(card);
@@ -3223,7 +3234,7 @@ void MainWindow::handle_scheduler_snapshot(SchedulerSnapshot snapshot) {
     if (transfer_model_.is_dismissed(key)) {
         if (snapshot.snapshot.state != TransferState::pending) {
             transfer_model_.remove(key);
-            save_persisted_transfers();
+            schedule_persisted_transfers_save();
         }
         refresh_peer_list();
         return;
@@ -3285,7 +3296,7 @@ void MainWindow::upsert_snapshot(const TransferSnapshot& snapshot, const QString
     }
     transfer_model_.upsert(snapshot, peer_id);
     if (snapshot.state != TransferState::running) {
-        save_persisted_transfers();
+        schedule_persisted_transfers_save();
     }
     if (!transfer_belongs_to_active_peer(key)) {
         pending_transfer_render_keys_.remove(key);

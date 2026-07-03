@@ -72,6 +72,7 @@ private:
     void save_remembered_peers();
     void load_persisted_transfers();
     void save_persisted_transfers();
+    void schedule_persisted_transfers_save();
     bool start_receiver();
     void stop_receiver();
     void show_settings();
@@ -193,6 +194,7 @@ private:
     bool force_quit_ = false;
     bool tray_message_shown_ = false;
     bool applying_style_ = false;
+    bool persisted_transfer_save_scheduled_ = false;
     std::unique_ptr<ReceiverServerRunner> receiver_runner_;
     std::unique_ptr<GuiReceiverEvents> receiver_events_;
     std::unique_ptr<TransferScheduler> scheduler_;

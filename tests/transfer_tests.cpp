@@ -1485,6 +1485,44 @@ TEST(SendSingleFileTest, ReportsProgressForChunks) {
     EXPECT_EQ(progress_totals, expected_totals);
 }
 
+TEST(ReceiveSingleFileTest, RecreatesMissingReceiveDirectory) {
+    TempDir temp("receive-recreate-dir-test");
+    const auto source = temp.path() / "source.txt";
+    const auto receive_dir = temp.path() / "receive";
+    write_text(source, "abcdef");
+    std::filesystem::create_directories(receive_dir);
+    std::filesystem::remove_all(receive_dir);
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source;
+    sender_config.chunk_size = 3;
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto received = lan::Result<lan::ReceiveFileReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+    std::thread receiver([&] {
+        auto hello = lan::read_frame(pair.server);
+        if (!hello) {
+            received = lan::Result<lan::ReceiveFileReport>::failure(hello.error());
+            return;
+        }
+        received = lan::receive_single_file_from_connection(receiver_config, pair.server, hello.value());
+    });
+
+    auto sent = lan::send_single_file_to_connection(sender_config, pair.client);
+
+    receiver.join();
+
+    ASSERT_TRUE(sent) << sent.error().message;
+    ASSERT_TRUE(received) << received.error().message;
+    EXPECT_TRUE(std::filesystem::is_directory(receive_dir));
+    EXPECT_EQ(read_text(receive_dir / "source.txt"), "abcdef");
+}
+
 TEST(SendSingleFileTest, ResumesFromExistingPartFile) {
     TempDir temp("send-resume-test");
     const auto source = temp.path() / "source.txt";
@@ -2038,6 +2076,54 @@ TEST(SyncSessionTest, SyncsDirectoryThroughConnectionInterface) {
         EXPECT_EQ(src_hash.value().hex_digest, dst_hash.value().hex_digest);
     }
     EXPECT_FALSE(std::filesystem::exists(receive.path() / "sub" / "new.txt"));
+}
+
+TEST(SyncSessionTest, RecreatesMissingReceiveDirectory) {
+    TempDir source("sync-session-recreate-source-test");
+    TempDir receive("sync-session-recreate-receive-test");
+    const auto receive_dir = receive.path() / "missing";
+    const auto receive_root = receive_dir / source.path().filename();
+
+    write_text(source.path() / "same.txt", "same\n");
+    write_text(source.path() / "sub" / "new.txt", "new nested\n");
+    std::filesystem::create_directories(receive_dir);
+    std::filesystem::remove_all(receive_dir);
+
+    lan::SenderConfig sender_config;
+    sender_config.source_path = source.path();
+    sender_config.sender_id = "node-a";
+
+    lan::ReceiverConfig receiver_config;
+    receiver_config.receive_dir = receive_dir;
+
+    auto pair = make_memory_connection_pair();
+
+    auto sender_result = lan::Result<lan::SendSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "sender did not run"});
+    auto receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(
+        lan::Error{lan::ErrorCode::internal_error, "receiver did not run"});
+
+    std::thread sender([&] {
+        sender_result = lan::sync_sender_to_connection(sender_config, 5, pair.client);
+    });
+    std::thread receiver([&] {
+        auto initial_hello = lan::read_frame(pair.server);
+        if (!initial_hello) {
+            receiver_result = lan::Result<lan::ReceiveSyncReport>::failure(initial_hello.error());
+            return;
+        }
+        receiver_result = lan::sync_receiver_from_connection(
+            receiver_config, 5, pair.server, initial_hello.value());
+    });
+
+    sender.join();
+    receiver.join();
+
+    ASSERT_TRUE(sender_result) << sender_result.error().message;
+    ASSERT_TRUE(receiver_result) << receiver_result.error().message;
+    EXPECT_TRUE(std::filesystem::is_directory(receive_root));
+    EXPECT_EQ(read_text(receive_root / "same.txt"), "same\n");
+    EXPECT_EQ(read_text(receive_root / "sub" / "new.txt"), "new nested\n");
 }
 
 TEST(SyncSessionTest, RejectsUnexpectedHelloThroughConnectionInterface) {
