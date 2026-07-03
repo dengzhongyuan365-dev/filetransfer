@@ -619,10 +619,12 @@ QWidget* MainWindow::build_transfer_page() {
     scroll->setObjectName("transferScroll");
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
     auto* transfer_list = new QWidget(scroll);
     transfer_list->setObjectName("transferListSurface");
+    transfer_list->setMinimumWidth(380);
+    transfer_list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     transfers_layout_ = new QVBoxLayout(transfer_list);
     transfers_layout_->setContentsMargins(0, 0, 0, 0);
     transfers_layout_->setSpacing(8);

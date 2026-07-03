@@ -18,6 +18,7 @@ namespace {
 
 constexpr int kTransferCardHeight = 92;
 constexpr int kCompletedTransferCardHeight = 72;
+constexpr int kTransferCardMinWidth = 360;
 
 QToolButton* make_task_tool_button(const QIcon& icon,
                                    const QString& tooltip,
@@ -155,6 +156,7 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
     setObjectName("transferCard");
     setMinimumHeight(snapshot.state == TransferState::completed ? kCompletedTransferCardHeight
                                                                 : kTransferCardHeight);
+    setMinimumWidth(kTransferCardMinWidth);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto* root = new QVBoxLayout(this);
@@ -262,6 +264,8 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
 
     footer->addWidget(detail, 1);
     footer->addLayout(action_layout);
+    footer->setStretch(0, 1);
+    footer->setStretch(1, 0);
 
     root->addLayout(header);
     if (progress_row != nullptr) {
@@ -271,13 +275,14 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
 }
 
 QSize TransferCard::sizeHint() const {
-    return QSize(360, minimumSizeHint().height());
+    return QSize(kTransferCardMinWidth, minimumSizeHint().height());
 }
 
 QSize TransferCard::minimumSizeHint() const {
     const auto progress = findChild<QProgressBar*>("transferProgress");
-    return QSize(220, progress != nullptr && progress->isVisible() ? kTransferCardHeight
-                                                                   : kCompletedTransferCardHeight);
+    return QSize(kTransferCardMinWidth,
+                 progress != nullptr && progress->isVisible() ? kTransferCardHeight
+                                                              : kCompletedTransferCardHeight);
 }
 
 }  // namespace lan::gui
