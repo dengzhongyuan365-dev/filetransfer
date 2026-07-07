@@ -87,7 +87,7 @@ build/tests/unit_tests
 ctest --test-dir build --output-on-failure
 ```
 
-当前测试数量：`95` 个。
+当前测试数量：`96` 个。
 
 ## GUI 使用方式
 

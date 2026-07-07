@@ -23,12 +23,15 @@ constexpr int kTransferCardHeight = 92;
 constexpr int kCompletedTransferCardHeight = 88;
 constexpr int kTransferCardMinWidth = 280;
 constexpr int kTransferCardPreferredWidth = 360;
-constexpr int kTransferActionRailWidth = 84;
+constexpr int kTransferActionButtonSize = 24;
+constexpr int kTransferActionButtonSpacing = 4;
+constexpr int kTransferActionRailHorizontalMargin = 2;
 
 enum class TaskButtonGlyph {
     stop,
     play,
     pause,
+    clipboard,
     folder,
     clear,
 };
@@ -90,7 +93,9 @@ TaskButtonColors action_colors(const QToolButton& button) {
         return TaskButtonColors{QColor(normal_fg), QColor(normal_bg), QColor(normal_border)};
     };
 
-    if (object == QStringLiteral("taskOpenButton") || control == QStringLiteral("change")) {
+    if (object == QStringLiteral("taskOpenButton") ||
+        object == QStringLiteral("taskCopyClipboardButton") ||
+        control == QStringLiteral("change")) {
         return dark
                    ? solid("#93c5fd", "#172a4c", "#294775", "#3b82f6", "#2563eb", state)
                    : solid("#2563eb", "#eff6ff", "#bfdbfe", "#2563eb", "#1d4ed8", state);
@@ -183,6 +188,15 @@ private:
                 painter.drawRoundedRect(QRectF(8.0, 7.0, 3.2, 10.0), 1.1, 1.1);
                 painter.drawRoundedRect(QRectF(12.8, 7.0, 3.2, 10.0), 1.1, 1.1);
                 break;
+            case TaskButtonGlyph::clipboard: {
+                painter.setBrush(Qt::NoBrush);
+                painter.setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter.drawRoundedRect(QRectF(7.2, 7.4, 9.6, 10.4), 1.8, 1.8);
+                painter.drawRoundedRect(QRectF(9.2, 5.8, 5.6, 3.0), 1.2, 1.2);
+                painter.drawLine(QPointF(9.4, 11.0), QPointF(14.6, 11.0));
+                painter.drawLine(QPointF(9.4, 14.0), QPointF(13.2, 14.0));
+                break;
+            }
             case TaskButtonGlyph::folder: {
                 QPainterPath path;
                 path.moveTo(5.0, 9.0);
@@ -342,6 +356,15 @@ QString metric_text(const TransferCardText& text) {
     return value;
 }
 
+int action_rail_width(int button_count) {
+    if (button_count <= 0) {
+        return 0;
+    }
+    return kTransferActionRailHorizontalMargin * 2 +
+           button_count * kTransferActionButtonSize +
+           (button_count - 1) * kTransferActionButtonSpacing;
+}
+
 }  // namespace
 
 TransferCard::TransferCard(const TransferSnapshot& snapshot,
@@ -421,12 +444,14 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
 
     auto* action_rail = new QWidget(this);
     action_rail->setObjectName("transferActionRail");
-    action_rail->setFixedWidth(kTransferActionRailWidth);
+    const auto action_button_count = actions.copy_clipboard_enabled ? 4 : 3;
+    action_rail->setFixedWidth(action_rail_width(action_button_count));
     action_rail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     auto* action_layout = new QHBoxLayout(action_rail);
-    action_layout->setContentsMargins(2, 0, 2, 0);
-    action_layout->setSpacing(4);
+    action_layout->setContentsMargins(kTransferActionRailHorizontalMargin, 0,
+                                      kTransferActionRailHorizontalMargin, 0);
+    action_layout->setSpacing(kTransferActionButtonSpacing);
 
     const auto control_is_resume = use_resume_control(actions);
     auto* control = make_task_tool_button(control_glyph(actions), control_tooltip(actions), action_rail);
@@ -452,6 +477,21 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
         }
     });
 
+    QToolButton* copy_clipboard = nullptr;
+    if (actions.copy_clipboard_enabled) {
+        copy_clipboard = make_task_tool_button(
+            TaskButtonGlyph::clipboard,
+            QCoreApplication::translate("TransferCard", "Copy to clipboard"),
+            action_rail);
+        copy_clipboard->setObjectName("taskCopyClipboardButton");
+        copy_clipboard->setEnabled(true);
+        QObject::connect(copy_clipboard, &QToolButton::clicked, this, [callback = std::move(callbacks.on_copy_clipboard)] {
+            if (callback) {
+                callback();
+            }
+        });
+    }
+
     auto* remove = make_task_tool_button(
         TaskButtonGlyph::clear,
         QCoreApplication::translate("TransferCard", "Clear from list"),
@@ -466,6 +506,9 @@ TransferCard::TransferCard(const TransferSnapshot& snapshot,
 
     action_layout->addWidget(control);
     action_layout->addWidget(open);
+    if (copy_clipboard != nullptr) {
+        action_layout->addWidget(copy_clipboard);
+    }
     action_layout->addWidget(remove);
 
     footer->addWidget(detail, 1);

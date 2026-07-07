@@ -1020,6 +1020,22 @@ Code: %2</source>
         <translation>接收到的剪贴板图片已写入剪贴板。</translation>
     </message>
     <message>
+        <source>Clipboard image ready</source>
+        <translation>剪贴板图片已就绪</translation>
+    </message>
+    <message>
+        <source>The image has been copied to the clipboard.</source>
+        <translation>图片已复制到剪贴板。</translation>
+    </message>
+    <message>
+        <source>Copied image to clipboard.</source>
+        <translation>已复制图片到剪贴板。</translation>
+    </message>
+    <message>
+        <source>This transfer cannot be copied to the clipboard.</source>
+        <translation>这个传输无法复制到剪贴板。</translation>
+    </message>
+    <message>
         <source>Clipboard image received</source>
         <translation>已收到剪贴板图片</translation>
     </message>
@@ -1397,6 +1413,10 @@ Code: %2</source>
         <location filename="../src/gui/transfer_card.cpp" line="111"/>
         <source>Open containing folder</source>
         <translation>打开所在目录</translation>
+    </message>
+    <message>
+        <source>Copy to clipboard</source>
+        <translation>复制到剪贴板</translation>
     </message>
     <message>
         <location filename="../src/gui/transfer_card.cpp" line="135"/>

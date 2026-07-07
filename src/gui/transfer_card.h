@@ -11,6 +11,7 @@ namespace lan::gui {
 struct TransferCardActions {
     bool resume_enabled = false;
     bool open_enabled = false;
+    bool copy_clipboard_enabled = false;
     bool stop_enabled = false;
     bool remove_enabled = false;
     bool resume_queued = false;
@@ -29,6 +30,7 @@ struct TransferCardText {
 struct TransferCardCallbacks {
     std::function<void()> on_resume;
     std::function<void()> on_open;
+    std::function<void()> on_copy_clipboard;
     std::function<void()> on_stop;
     std::function<void()> on_remove;
 };

@@ -99,13 +99,16 @@ private:
     bool can_pause_transfer(const TransferSnapshot& snapshot) const;
     bool can_clear_transfer(const TransferSnapshot& snapshot) const;
     bool can_open_transfer_dir(const TransferSnapshot& snapshot) const;
+    bool can_copy_transfer_to_clipboard(const TransferSnapshot& snapshot) const;
     bool can_resume_transfer(const TransferSnapshot& snapshot) const;
     bool can_request_resend_transfer(const QString& key, const TransferSnapshot& snapshot) const;
     bool can_resume_queued_transfer(const TransferSnapshot& snapshot) const;
     bool can_change_transfer_target(const TransferSnapshot& snapshot) const;
     QString transfer_open_dir(const TransferSnapshot& snapshot) const;
     void open_transfer_dir(const QString& key);
+    bool copy_clipboard_image_from_snapshot(const TransferSnapshot& snapshot, bool show_failure);
     void copy_received_clipboard_image(const TransferSnapshot& snapshot);
+    void copy_transfer_to_clipboard(const QString& key);
     void resume_transfer(const QString& key);
     void request_resend_transfer(const QString& key);
     void resume_queued_transfer(const QString& key);

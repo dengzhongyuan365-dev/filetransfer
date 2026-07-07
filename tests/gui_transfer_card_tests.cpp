@@ -126,6 +126,42 @@ TEST(TransferCardLayoutTest, KeepsCompletedCardActionsInsideMinimumHeight) {
     }
 }
 
+TEST(TransferCardLayoutTest, KeepsClipboardActionInsideNarrowCard) {
+    auto snapshot = make_completed_snapshot();
+    snapshot.direction = lan::TransferDirection::receive;
+    snapshot.source = lan::FileTransferSource::clipboard_image;
+    lan::gui::TransferCard card(
+        snapshot,
+        lan::gui::TransferCardText{
+            .detail = "clipboard image",
+            .speed = "0 B/s",
+            .size = "128 KiB",
+            .state = QStringLiteral("completed"),
+        },
+        lan::gui::TransferCardActions{
+            .resume_enabled = false,
+            .open_enabled = true,
+            .copy_clipboard_enabled = true,
+            .stop_enabled = false,
+            .remove_enabled = true,
+        },
+        lan::gui::TransferCardCallbacks{});
+
+    card.resize(280, card.minimumSizeHint().height());
+    card.show();
+    QApplication::processEvents();
+
+    auto* copy = card.findChild<QToolButton*>("taskCopyClipboardButton");
+    ASSERT_NE(copy, nullptr);
+
+    const auto buttons = card.findChildren<QToolButton*>();
+    ASSERT_EQ(buttons.size(), 4);
+    for (auto* button : buttons) {
+        expect_widget_inside_card(card, *button);
+        expect_widget_has_card_edge_padding(card, *button);
+    }
+}
+
 TEST(TransferCardTextTest, CompletedStateUsesDirectionSpecificLabel) {
     auto send_snapshot = make_completed_snapshot();
     send_snapshot.direction = lan::TransferDirection::send;

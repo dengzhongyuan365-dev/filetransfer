@@ -2101,6 +2101,7 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
         TransferCardActions{
             .resume_enabled = can_resume_queue || can_change_target || can_request_resend || can_resume_transfer(snapshot),
             .open_enabled = can_open_transfer_dir(snapshot),
+            .copy_clipboard_enabled = can_copy_transfer_to_clipboard(snapshot),
             .stop_enabled = can_pause || can_stop_transfer(snapshot),
             .remove_enabled = can_clear_transfer(snapshot),
             .resume_queued = can_resume_queue,
@@ -2127,6 +2128,9 @@ QWidget* MainWindow::make_transfer_card(const TransferSnapshot& snapshot) {
             },
             .on_open = [this, key] {
                 open_transfer_dir(key);
+            },
+            .on_copy_clipboard = [this, key] {
+                copy_transfer_to_clipboard(key);
             },
             .on_stop = [this, key] {
                 TransferSnapshot snapshot;
@@ -2209,6 +2213,14 @@ bool MainWindow::can_open_transfer_dir(const TransferSnapshot& snapshot) const {
            !transfer_open_dir(snapshot).isEmpty();
 }
 
+bool MainWindow::can_copy_transfer_to_clipboard(const TransferSnapshot& snapshot) const {
+    if (!is_clipboard_image_transfer(snapshot)) {
+        return false;
+    }
+    std::error_code ec;
+    return std::filesystem::is_regular_file(snapshot.path, ec);
+}
+
 bool MainWindow::can_resume_transfer(const TransferSnapshot& snapshot) const {
     if (snapshot.direction != TransferDirection::send ||
         (snapshot.state != TransferState::failed &&
@@ -2278,7 +2290,7 @@ void MainWindow::open_transfer_dir(const QString& key) {
 }
 
 void MainWindow::copy_received_clipboard_image(const TransferSnapshot& snapshot) {
-    if (!is_clipboard_image_transfer(snapshot)) {
+    if (!can_copy_transfer_to_clipboard(snapshot)) {
         return;
     }
 
@@ -2288,23 +2300,45 @@ void MainWindow::copy_received_clipboard_image(const TransferSnapshot& snapshot)
     }
     copied_clipboard_image_keys_.insert(key);
 
+    copy_clipboard_image_from_snapshot(snapshot, false);
+}
+
+bool MainWindow::copy_clipboard_image_from_snapshot(const TransferSnapshot& snapshot, bool show_failure) {
     const auto path = to_qstring(snapshot.path);
     QImageReader reader(path);
     reader.setAutoTransform(true);
     const auto image = reader.read();
     if (image.isNull()) {
-        log_event(QCoreApplication::translate("MainWindow", "Failed to copy received clipboard image: %1").arg(path));
-        return;
+        const auto message = QCoreApplication::translate("MainWindow", "Failed to copy received clipboard image: %1").arg(path);
+        if (show_failure) {
+            show_log(message);
+        } else {
+            log_event(message);
+        }
+        return false;
     }
 
     QApplication::clipboard()->setImage(image);
     log_event(QCoreApplication::translate("MainWindow", "Received clipboard image copied to clipboard."));
     if (tray_icon_ != nullptr && QSystemTrayIcon::isSystemTrayAvailable()) {
         tray_icon_->showMessage(
-            QCoreApplication::translate("MainWindow", "Clipboard image received"),
-            QCoreApplication::translate("MainWindow", "The received image has been copied to the clipboard."),
+            QCoreApplication::translate("MainWindow", "Clipboard image ready"),
+            QCoreApplication::translate("MainWindow", "The image has been copied to the clipboard."),
             QSystemTrayIcon::Information,
             2500);
+    }
+    return true;
+}
+
+void MainWindow::copy_transfer_to_clipboard(const QString& key) {
+    TransferSnapshot snapshot;
+    if (!transfer_model_.try_snapshot(key, &snapshot) || !can_copy_transfer_to_clipboard(snapshot)) {
+        show_log(QCoreApplication::translate("MainWindow", "This transfer cannot be copied to the clipboard."));
+        return;
+    }
+
+    if (copy_clipboard_image_from_snapshot(snapshot, true)) {
+        show_log(QCoreApplication::translate("MainWindow", "Copied image to clipboard."));
     }
 }
 
